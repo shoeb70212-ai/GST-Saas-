@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { DollarSign, FileText, Settings, Loader2, CheckCircle2, TrendingUp, Building2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Link } from 'react-router-dom';
@@ -26,20 +27,65 @@ const DEFAULT_WIDGETS = ['total_taxable', 'total_cgst', 'total_sgst', 'invoice_c
 
 export default function DashboardPage() {
   const { activeClientId, clients } = useClient();
-  const [loading, setLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [visibleWidgets, setVisibleWidgets] = useState<string[]>(DEFAULT_WIDGETS);
   
-  const [metrics, setMetrics] = useState({
-    totalTaxable: 0,
-    totalCgst: 0,
-    totalSgst: 0,
-    totalIgst: 0,
-    totalOutstanding: 0,
-    invoiceCount: 0,
+  const { data: invoices, isLoading } = useQuery({
+    queryKey: ['invoices', activeClientId],
+    queryFn: async () => {
+      if (!activeClientId) return [];
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return [];
+      
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .eq('client_id', activeClientId)
+        .order('created_at', { ascending: false });
+        
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!activeClientId,
   });
-  
-  const [recentInvoices, setRecentInvoices] = useState<any[]>([]);
+
+  const metrics = useMemo(() => {
+    if (!invoices) return { totalTaxable: 0, totalCgst: 0, totalSgst: 0, totalIgst: 0, totalOutstanding: 0, invoiceCount: 0 };
+    
+    let totalTaxable = 0;
+    let totalCgst = 0;
+    let totalSgst = 0;
+    let totalIgst = 0;
+    let totalOutstanding = 0;
+
+    invoices.forEach(inv => {
+      const amountPaid = inv.received_amount || 0;
+      const totalAmount = inv.total_amount || 0;
+      
+      totalTaxable += inv.taxable_amount || 0;
+      totalCgst += inv.cgst_amount || 0;
+      totalSgst += inv.sgst_amount || 0;
+      totalIgst += inv.igst_amount || 0;
+      
+      if (totalAmount > amountPaid) {
+        totalOutstanding += (totalAmount - amountPaid);
+      }
+    });
+
+    return {
+      totalTaxable,
+      totalCgst,
+      totalSgst,
+      totalIgst,
+      totalOutstanding,
+      invoiceCount: invoices.length,
+    };
+  }, [invoices]);
+
+  const recentInvoices = useMemo(() => {
+    return invoices ? invoices.slice(0, 5) : [];
+  }, [invoices]);
 
   useEffect(() => {
     const saved = localStorage.getItem('payforce_widgets');
@@ -56,74 +102,6 @@ export default function DashboardPage() {
       localStorage.setItem('payforce_widgets', JSON.stringify(next));
       return next;
     });
-  };
-
-  useEffect(() => {
-    fetchDashboardData();
-  }, [activeClientId]);
-
-  const fetchDashboardData = async () => {
-    try {
-      setLoading(true);
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      let query = supabase
-        .from('invoices')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .order('created_at', { ascending: false });
-
-      if (activeClientId) {
-        query = query.eq('client_id', activeClientId);
-      } else {
-        // If no active client, don't show any data to prevent mixing
-        setMetrics({ totalTaxable: 0, totalCgst: 0, totalSgst: 0, totalIgst: 0, totalOutstanding: 0, invoiceCount: 0 });
-        setRecentInvoices([]);
-        setLoading(false);
-        return;
-      }
-
-      const { data: invoices, error } = await query;
-
-      if (error) throw error;
-      if (!invoices) return;
-
-      let totalTaxable = 0;
-      let totalCgst = 0;
-      let totalSgst = 0;
-      let totalIgst = 0;
-      let totalOutstanding = 0;
-
-      invoices.forEach(inv => {
-        const amountPaid = inv.received_amount || 0;
-        const totalAmount = inv.total_amount || 0;
-        
-        totalTaxable += inv.taxable_amount || 0;
-        totalCgst += inv.cgst_amount || 0;
-        totalSgst += inv.sgst_amount || 0;
-        totalIgst += inv.igst_amount || 0;
-        
-        if (totalAmount > amountPaid) {
-          totalOutstanding += (totalAmount - amountPaid);
-        }
-      });
-
-      setMetrics({
-        totalTaxable,
-        totalCgst,
-        totalSgst,
-        totalIgst,
-        totalOutstanding,
-        invoiceCount: invoices.length,
-      });
-
-      setRecentInvoices(invoices.slice(0, 5));
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-    } finally {
-      setLoading(false);
-    }
   };
 
   const getWidgetValue = (key: string) => {
@@ -155,7 +133,7 @@ export default function DashboardPage() {
     );
   }
 
-  if (loading) {
+  if (isLoading) {
     return <div className="min-h-[80vh] flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   }
 

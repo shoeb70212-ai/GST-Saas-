@@ -13,7 +13,16 @@ import ClientsPage from './pages/ClientsPage';
 import { ScanProvider } from './lib/ScanContext';
 import { ClientProvider } from './lib/ClientContext';
 import { Toaster } from 'react-hot-toast';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
@@ -58,6 +67,7 @@ export default function App() {
   }
 
   return (
+    <QueryClientProvider client={queryClient}>
     <ClientProvider>
     <ScanProvider>
       <BrowserRouter>
@@ -81,5 +91,6 @@ export default function App() {
       </BrowserRouter>
     </ScanProvider>
     </ClientProvider>
+    </QueryClientProvider>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { Loader2, FileText, Search, Download, X, DollarSign, Filter, Building2, MapPin, Settings, CheckCircle2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -21,13 +22,34 @@ const formatCurrency = (amount: number) => {
 };
 
 export default function SavedInvoicesPage() {
-  const [invoices, setInvoices] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { activeClientId } = useClient();
+  
+  const { data: rawInvoices, isLoading: invoicesLoading } = useQuery({
+    queryKey: ['invoices', activeClientId],
+    queryFn: async () => {
+      if (!activeClientId) return [];
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return [];
+
+      const { data: queryData, error: queryError } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .eq('client_id', activeClientId)
+        .order('created_at', { ascending: false });
+
+      if (queryError) throw queryError;
+      return queryData || [];
+    },
+    enabled: !!activeClientId,
+  });
+
+  const invoices = rawInvoices || [];
+  const loading = invoicesLoading;
+
   const [isExporting, setIsExporting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   
-  const { activeClientId } = useClient();
-
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -57,36 +79,6 @@ export default function SavedInvoicesPage() {
   const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
   const [invoiceLineItems, setInvoiceLineItems] = useState<any[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
-
-  useEffect(() => {
-    fetchInvoices();
-  }, [activeClientId]);
-
-  const fetchInvoices = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      let query = supabase
-        .from('invoices')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .order('created_at', { ascending: false });
-
-      if (activeClientId) {
-        query = query.eq('client_id', activeClientId);
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-      if (data) setInvoices(data);
-    } catch (error) {
-      console.error('Error fetching invoices:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleRowClick = async (invoice: any) => {
     setSelectedInvoice(invoice);
