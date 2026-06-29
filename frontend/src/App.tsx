@@ -10,6 +10,7 @@ import AuthPage from './pages/AuthPage';
 import SavedInvoicesPage from './pages/SavedInvoicesPage';
 import SettingsPage from './pages/SettingsPage';
 import ClientsPage from './pages/ClientsPage';
+import LandingPage from './pages/LandingPage';
 import { ScanProvider } from './lib/ScanContext';
 import { ClientProvider } from './lib/ClientContext';
 import { Toaster } from 'react-hot-toast';
@@ -62,9 +63,12 @@ export default function App() {
     return <div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   }
 
-  if (!session) {
-    return <AuthPage />;
-  }
+  const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+    if (!session) {
+      return <Navigate to="/auth" replace />;
+    }
+    return <>{children}</>;
+  };
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -72,8 +76,12 @@ export default function App() {
     <ScanProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Layout />}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
+          {/* Public Routes */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/auth" element={session ? <Navigate to="/dashboard" replace /> : <AuthPage />} />
+          
+          {/* Protected Routes */}
+          <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="scan" element={<ScanPage />} />
             <Route path="invoices" element={<SavedInvoicesPage />} />
