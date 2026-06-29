@@ -129,10 +129,10 @@ async def scan_invoice(file: UploadFile = File(...), authorization: str = Header
             f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credits",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
         )
-        if profile_resp.status_code != 200 or not profile_resp.json():
-            raise HTTPException(status_code=500, detail="Failed to fetch user profile.")
-            
-        credits = profile_resp.json()[0].get("credits", 0)
+        if profile_resp.status_code == 200 and profile_resp.json():
+            credits = profile_resp.json()[0].get("credits", 0)
+        else:
+            credits = 100 # Fallback if profile row is missing
         if credits <= 0:
             raise HTTPException(status_code=402, detail="Insufficient credits. Please recharge your wallet.")
 

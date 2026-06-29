@@ -182,7 +182,7 @@ export default function ScanPage() {
           .from('profiles')
           .select('credits')
           .eq('id', session.user.id)
-          .single();
+          .maybeSingle();
         if (data) {
           setCredits(data.credits);
         }
