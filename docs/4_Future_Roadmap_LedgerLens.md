@@ -33,3 +33,11 @@ This document outlines the features that were discussed and brainstormed but exp
 ## 5. Vendor GSTIN Verification & KYC
 **The Problem:** If a client claims ITC from a vendor whose GSTIN is cancelled, the client gets penalized.
 **The Solution:** Integrate a cheap/free Indian GST API. When an invoice is scanned, ping the API with the `supplier_gstin` to verify its status (Active/Suspended/Cancelled) and display a warning badge on the dashboard.
+
+## 6. The "Three-Tier" Collaboration Workflow (Network Effect)
+**The Problem:** Currently, business owners just email a folder of PDFs to their accountants, creating chaos.
+**The Solution:** Build a seamless data handoff pipeline between the three major roles:
+1. **The Business Owner:** Uses the app on their phone to scan bills. Clicks a button: *"Send to Accountant"*.
+2. **The Junior Accountant:** Logs in, receives the digital stack in an "Inbox", verifies the AI extracted data, categorizes it, and clicks: *"Forward to CA"*.
+3. **The Chartered Accountant (CA):** Logs in to see the finalized, verified data ready for GSTR filing or Tally import.
+*Why this is a game-changer:* This introduces a **Viral Loop**. If one CA signs up, they will force all 50 of their business owners to download the app to send them data. Your user base multiplies for free!
