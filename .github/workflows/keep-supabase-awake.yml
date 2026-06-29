@@ -1,0 +1,18 @@
+name: Keep Supabase Awake
+
+on:
+  schedule:
+    # Runs at 00:00 UTC every day
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allows manual triggering from the GitHub Actions tab
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          curl -s -o /dev/null -w "%{http_code}" \
+          --request GET '${{ secrets.VITE_SUPABASE_URL }}/rest/v1/clients?limit=1' \
+          --header 'apikey: ${{ secrets.VITE_SUPABASE_ANON_KEY }}' \
+          --header 'Authorization: Bearer ${{ secrets.VITE_SUPABASE_ANON_KEY }}'
