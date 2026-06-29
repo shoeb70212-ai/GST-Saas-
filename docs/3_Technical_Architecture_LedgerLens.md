@@ -41,3 +41,10 @@ The core Supabase authentication table. Represents the Accountant/CA using the s
 - **Hosting:** The frontend is fully statically compiled and can run for free on Vercel, Netlify, or Cloudflare Pages.
 - **Database:** Supabase Free Tier (500MB). Kept alive automatically by a nightly GitHub Action pinging the REST API.
 - **AI Backend:** By executing the Gemini API call directly from the client browser (using Vite environment variables), we completely eliminated the need for a separate Python/Node backend server, saving hosting costs and complexity.
+
+## 🛑 Immutable Technical Decisions
+### AI Image Pre-Processing (Resolution Rules)
+**Rule:** The frontend image compressor (`ScanPage.tsx`) is hardcoded to downscale images to a maximum of **1536x1536 pixels** at **80% JPEG quality** before sending to the AI.
+**Why this must NOT be changed:** 
+While dropping the resolution to 1024x1024 would make uploads faster, we explicitly tested and rejected that. GST invoices contain incredibly dense, tiny text (HSN codes, decimal points, PAN numbers). Any resolution lower than 1536x1536 causes the OCR/AI extraction accuracy to drop. 
+*A 3-5 second upload wait time is an acceptable trade-off for near-perfect data accuracy. Do not attempt to "optimize" this by lowering the resolution.*
