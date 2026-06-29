@@ -15,8 +15,8 @@ const FeatureCard = ({ icon: Icon, title, description, badge }: { icon: any, tit
     <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
       <Icon className="w-6 h-6 text-accent" />
     </div>
-    <h3 className="text-xl font-semibold text-text-primary mb-3">{title}</h3>
-    <p className="text-text-secondary leading-relaxed">{description}</p>
+    <h3 className="text-xl font-semibold text-white mb-3">{title}</h3>
+    <p className="text-white/70 leading-relaxed">{description}</p>
   </motion.div>
 );
 
@@ -58,7 +58,7 @@ export default function LandingPage() {
               The AI Workspace for <br/>
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent to-purple-400">Modern Accountants</span>
             </h1>
-            <p className="text-xl text-text-secondary mb-10 max-w-2xl mx-auto leading-relaxed">
+            <p className="text-xl text-white/70 mb-10 max-w-2xl mx-auto leading-relaxed">
               Eliminate manual data entry forever. LedgerLens uses advanced AI to instantly extract 37 fields from complex GST invoices, managing hundreds of clients in one seamless dashboard.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -69,7 +69,7 @@ export default function LandingPage() {
                 Start Free Beta <ArrowRight className="w-5 h-5" />
               </Link>
             </div>
-            <p className="mt-4 text-sm text-text-muted">Includes 100 free AI extraction credits.</p>
+            <p className="mt-4 text-sm text-white/50">Includes 100 free AI extraction credits.</p>
           </motion.div>
         </div>
       </section>
@@ -79,7 +79,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-3xl lg:text-4xl font-bold mb-4">Available Today</h2>
-            <p className="text-text-secondary text-lg max-w-2xl mx-auto">
+            <p className="text-white/70 text-lg max-w-2xl mx-auto">
               Everything you need to automate your tax filing workflow right now.
             </p>
           </div>
@@ -109,7 +109,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-3xl lg:text-4xl font-bold mb-4">The Future Roadmap</h2>
-            <p className="text-text-secondary text-lg max-w-2xl mx-auto">
+            <p className="text-white/70 text-lg max-w-2xl mx-auto">
               We are building the ultimate financial operating system. Here is what is launching next.
             </p>
           </div>
@@ -147,7 +147,7 @@ export default function LandingPage() {
       <footer className="border-t border-white/5 bg-black">
         <div className="max-w-4xl mx-auto text-center py-24 px-6">
           <h2 className="text-4xl font-bold mb-6">Ready to upgrade your firm?</h2>
-          <p className="text-xl text-text-secondary mb-10">
+          <p className="text-xl text-white/70 mb-10">
             Join the Beta today and experience zero-touch invoice processing.
           </p>
           <Link 
@@ -157,7 +157,7 @@ export default function LandingPage() {
             Get Started Now
           </Link>
         </div>
-        <div className="py-6 text-center border-t border-white/5 text-sm text-text-muted">
+        <div className="py-6 text-center border-t border-white/5 text-sm text-white/50">
           &copy; {new Date().getFullYear()} LedgerLens. Built for Accountants.
         </div>
       </footer>
