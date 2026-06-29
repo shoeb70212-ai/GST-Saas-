@@ -651,9 +651,9 @@ export default function ScanPage() {
       </nav>
 
       {/* Main Content */}
-      <main className="pt-28 px-6 max-w-7xl mx-auto relative z-10 h-[calc(100vh-60px)]">
+      <main className="pt-24 lg:pt-28 px-4 lg:px-6 max-w-7xl mx-auto relative z-10 lg:h-[calc(100vh-60px)] min-h-[calc(100vh-60px)] flex flex-col pb-8">
         
-        <div className="card h-full flex flex-col lg:flex-row p-0 overflow-hidden shadow-lg border-border">
+        <div className="card flex-1 flex flex-col lg:flex-row p-0 overflow-hidden shadow-lg border-border">
           
           {/* Left Column: Upload & List */}
           <div className="w-full lg:w-[40%] xl:w-[35%] flex flex-col border-b lg:border-b-0 lg:border-r border-border bg-bg-surface">
@@ -753,8 +753,8 @@ export default function ScanPage() {
         </div>
 
         {/* Right Column: Verification Grid */}
-          <div className="w-full lg:w-[60%] xl:w-[65%] h-full flex flex-col bg-bg-base">
-            <div className="p-4 border-b border-border flex flex-wrap gap-4 items-center justify-between bg-bg-surface h-[84px] shrink-0">
+          <div className="w-full lg:w-[60%] xl:w-[65%] min-h-[500px] lg:h-full flex flex-col bg-bg-base border-t lg:border-t-0 border-border">
+            <div className="p-4 border-b border-border flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-bg-surface min-h-[84px] shrink-0">
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-text-secondary" />
                 <h2 className="text-sm font-semibold text-text-primary">Verification Grid</h2>
@@ -765,22 +765,22 @@ export default function ScanPage() {
                 )}
               </div>
               
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
                   <button 
                     onClick={handleSaveToCloud}
                     disabled={unsavedCount === 0 || isSaving || !activeClientId}
-                    className="btn-ghost"
+                    className="btn-ghost flex-1 sm:flex-none justify-center"
                   >
                     {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}
-                    {!activeClientId ? 'Select Client First' : `Save to Cloud ${unsavedCount > 0 ? `(${unsavedCount})` : ''}`}
+                    {!activeClientId ? 'Select Client' : `Save ${unsavedCount > 0 ? `(${unsavedCount})` : ''}`}
                   </button>
                 <button 
                   onClick={handleExportExcel}
                   disabled={successfullyExtractedCount === 0 || isExporting}
-                  className="btn-ghost"
+                  className="btn-ghost flex-1 sm:flex-none justify-center"
                 >
                   {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                  Export Excel
+                  Export
                 </button>
               </div>
             </div>
