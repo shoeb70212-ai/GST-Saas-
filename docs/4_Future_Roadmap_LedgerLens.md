@@ -40,3 +40,12 @@ This document outlines the features that were discussed and brainstormed but exp
 1. **The Business Owner (Direct User):** Uses the app on their phone to scan bills as they receive them. Clicks a button: *"Send to Accountant"*.
 2. **The Accountant:** Logs in, receives the digital stack in their "Inbox", verifies the AI extracted data, and exports it directly to Tally or the GST portal.
 *Why this is a game-changer:* This introduces a **Viral Loop**. If one Accountant signs up, they will ask all 50 of their business clients to download the app to send them data. Your user base multiplies organically!
+
+## 7. The "Tax Liability Predictor" (Sales Import)
+**The Problem:** Building an Invoice Generator from scratch puts us in direct competition with giants like Vyapar, Zoho, and Tally. The market is too crowded. However, business owners always want to know: *"How much GST do I have to pay in cash this month?"*
+**The Solution:** Instead of generating sales invoices, we allow them to **Import** their Sales Register (a simple Excel export from whatever billing software they currently use). 
+*   We already have their **Purchase ITC** (from our AI scans).
+*   We import their **Sales Tax Collected** (from the Excel).
+*   The frontend ($0 cost) instantly calculates: `(Total Sales Tax) - (Total Purchase ITC)`.
+*   We display a massive, beautiful dashboard widget: **"Estimated GST Cash Liability this Month: ₹14,500"**.
+*Why this works:* It provides immense financial value to the Business Owner (cashflow planning) and saves the Accountant time, without us having to build and maintain a complex, buggy billing system.
