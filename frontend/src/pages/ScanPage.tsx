@@ -726,7 +726,7 @@ export default function ScanPage() {
                         <p className="text-text-secondary text-[10px] mt-0.5">Ready</p>
                       )}
                     </div>
-                    <div className="flex items-center opacity-0 group-hover:opacity-100 transition-all gap-1">
+                    <div className="flex items-center opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-all gap-1">
                       {fs.error && (
                         <button 
                           onClick={() => retryScan(fs.id)}
