@@ -1,11 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UploadCloud, CheckCircle2, FileText, Loader2, Sparkles, Download, Settings, ChevronRight, X, File as FileIcon, ChevronDown, ChevronUp, Cloud, LogOut, RefreshCw } from 'lucide-react';
+import { UploadCloud, CheckCircle2, FileText, Loader2, Sparkles, Download, Settings, X, File as FileIcon, ChevronDown, ChevronUp, Cloud, LogOut, RefreshCw } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
+import toast from 'react-hot-toast';
 // Session import removed
 
 function cn(...inputs: ClassValue[]) {
@@ -14,6 +15,7 @@ function cn(...inputs: ClassValue[]) {
 
 import { useScanContext, AVAILABLE_COLUMNS } from '../lib/ScanContext';
 import type { FileState, InvoiceData, LineItem } from '../lib/ScanContext';
+import { useClient } from '../lib/ClientContext';
 
 // Auth logic moved to App.tsx
 
@@ -51,13 +53,13 @@ function InvoiceRow({ fs, visibleColumns, onUpdate }: { fs: FileState, visibleCo
           </div>
         </td>
         {visibleColumns.map(col => (
-          <td key={col} className="p-4 text-sm text-textMain whitespace-nowrap">
+          <td key={col} className="p-4 text-sm text-text-primary whitespace-nowrap">
             <input 
               type="text" 
               defaultValue={data[col] || ''} 
               onChange={(e) => onUpdate({ ...data, [col]: e.target.value })}
               className={cn(
-                "bg-transparent border-none focus:ring-1 focus:ring-primary rounded px-1 py-0.5 w-full min-w-[100px]",
+                "bg-transparent border-none focus:ring-1 focus:ring-accent rounded px-1 py-0.5 w-full min-w-[100px]",
                 col.includes('Amount') || col === 'Round_Off' ? 'text-right font-mono' : ''
               )} 
             />
@@ -65,71 +67,71 @@ function InvoiceRow({ fs, visibleColumns, onUpdate }: { fs: FileState, visibleCo
         ))}
       </tr>
       {expanded && (
-        <tr className="bg-surface/20">
-          <td colSpan={visibleColumns.length + 2} className="p-6 border-b border-white/5">
+        <tr className="bg-bg-sunken">
+          <td colSpan={visibleColumns.length + 2} className="p-6 border-b border-border">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-6">
                <div className="space-y-3">
-                 <h4 className="text-xs font-semibold text-primary uppercase flex items-center gap-2">Supplier Info</h4>
+                 <h4 className="text-xs font-semibold text-accent uppercase flex items-center gap-2">Supplier Info</h4>
                  {[
                    {k:'Supplier_Name', l:'Name'}, {k:'Supplier_Address', l:'Address'}, {k:'Supplier_Phone', l:'Phone'},
                    {k:'Supplier_Email', l:'Email'}, {k:'Supplier_GSTIN', l:'GSTIN'}, {k:'Supplier_PAN', l:'PAN'}
                  ].map(f => (
                    <div key={f.k} className="flex flex-col">
-                     <label className="text-[10px] text-textMuted uppercase tracking-wider">{f.l}</label>
-                     <input type="text" defaultValue={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-white/10 focus:border-primary px-0 py-1 text-sm text-white/90 outline-none w-full" />
+                     <label className="text-[10px] text-text-secondary uppercase tracking-wider">{f.l}</label>
+                     <input type="text" defaultValue={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-border focus:border-accent px-0 py-1 text-sm text-text-primary outline-none w-full" />
                    </div>
                  ))}
                </div>
                
                <div className="space-y-3">
-                 <h4 className="text-xs font-semibold text-primary uppercase flex items-center gap-2">Buyer Info</h4>
+                 <h4 className="text-xs font-semibold text-accent uppercase flex items-center gap-2">Buyer Info</h4>
                  {[
                    {k:'Buyer_Name', l:'Name'}, {k:'Buyer_Address', l:'Address'}, {k:'Buyer_PIN', l:'PIN'},
                    {k:'Buyer_GSTIN', l:'GSTIN'}, {k:'Buyer_PAN', l:'PAN'}, {k:'Place_Of_Supply', l:'Place of Supply'}
                  ].map(f => (
                    <div key={f.k} className="flex flex-col">
-                     <label className="text-[10px] text-textMuted uppercase tracking-wider">{f.l}</label>
-                     <input type="text" defaultValue={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-white/10 focus:border-primary px-0 py-1 text-sm text-white/90 outline-none w-full" />
+                     <label className="text-[10px] text-text-secondary uppercase tracking-wider">{f.l}</label>
+                     <input type="text" defaultValue={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-border focus:border-accent px-0 py-1 text-sm text-text-primary outline-none w-full" />
                    </div>
                  ))}
                </div>
 
                <div className="space-y-3">
-                 <h4 className="text-xs font-semibold text-primary uppercase flex items-center gap-2">Bank Details</h4>
+                 <h4 className="text-xs font-semibold text-accent uppercase flex items-center gap-2">Bank Details</h4>
                  {[
                    {k:'Account_Holder', l:'Account Holder'}, {k:'Account_Number', l:'Account Number'}, {k:'Bank_Name', l:'Bank Name'},
                    {k:'Branch_Name', l:'Branch Name'}, {k:'IFSC_Code', l:'IFSC Code'}, {k:'UPI_ID', l:'UPI ID'}
                  ].map(f => (
                    <div key={f.k} className="flex flex-col">
-                     <label className="text-[10px] text-textMuted uppercase tracking-wider">{f.l}</label>
-                     <input type="text" defaultValue={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-white/10 focus:border-primary px-0 py-1 text-sm text-white/90 outline-none w-full" />
+                     <label className="text-[10px] text-text-secondary uppercase tracking-wider">{f.l}</label>
+                     <input type="text" defaultValue={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-border focus:border-accent px-0 py-1 text-sm text-text-primary outline-none w-full" />
                    </div>
                  ))}
                </div>
 
                <div className="space-y-3">
-                 <h4 className="text-xs font-semibold text-primary uppercase flex items-center gap-2">Other Details</h4>
+                 <h4 className="text-xs font-semibold text-accent uppercase flex items-center gap-2">Other Details</h4>
                  {[
                    {k:'Invoice_Date', l:'Invoice Date'}, {k:'Due_Date', l:'Due Date'}, {k:'PO_Number', l:'PO Number'},
                    {k:'Amount_In_Words', l:'Amount in Words'}, {k:'Received_Amount', l:'Received Amount'}, {k:'Balance_Amount', l:'Balance Amount'}
                  ].map(f => (
                    <div key={f.k} className="flex flex-col">
-                     <label className="text-[10px] text-textMuted uppercase tracking-wider">{f.l}</label>
-                     <input type="text" defaultValue={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-white/10 focus:border-primary px-0 py-1 text-sm text-white/90 outline-none w-full" />
+                     <label className="text-[10px] text-text-secondary uppercase tracking-wider">{f.l}</label>
+                     <input type="text" defaultValue={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-border focus:border-accent px-0 py-1 text-sm text-text-primary outline-none w-full" />
                    </div>
                  ))}
                </div>
             </div>
 
             {hasItems && (
-              <div className="mt-4 pt-4 border-t border-white/5">
-                <h4 className="text-xs font-semibold text-textMuted uppercase mb-2 flex items-center gap-2">
+              <div className="mt-4 pt-4 border-t border-border">
+                <h4 className="text-xs font-semibold text-text-secondary uppercase mb-2 flex items-center gap-2">
                   <FileText className="w-3 h-3" /> Line Items
                 </h4>
                 <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
                   <thead>
-                    <tr className="text-textMuted border-b border-white/10">
+                    <tr className="text-text-secondary border-b border-border">
                       <th className="pb-2 font-medium">Description</th>
                       <th className="pb-2 font-medium">HSN/SAC</th>
                       <th className="pb-2 font-medium text-right">Qty</th>
@@ -138,9 +140,9 @@ function InvoiceRow({ fs, visibleColumns, onUpdate }: { fs: FileState, visibleCo
                       <th className="pb-2 font-medium text-right">Amount</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/5">
+                  <tbody className="divide-y divide-border">
                     {data.Line_Items?.map((item: LineItem, idx: number) => (
-                      <tr key={idx} className="hover:bg-white/5">
+                      <tr key={idx} className="hover:bg-bg-subtle">
                         <td className="py-2 pr-2"><input type="text" defaultValue={item.Description || ''} className="bg-transparent border-none w-full min-w-[150px]" /></td>
                         <td className="py-2 px-2"><input type="text" defaultValue={item.HSN_SAC || ''} className="bg-transparent border-none w-full min-w-[80px]" /></td>
                         <td className="py-2 px-2 text-right"><input type="text" defaultValue={item.Quantity || ''} className="bg-transparent border-none w-full text-right font-mono min-w-[60px]" /></td>
@@ -162,18 +164,32 @@ function InvoiceRow({ fs, visibleColumns, onUpdate }: { fs: FileState, visibleCo
 }
 
 export default function ScanPage() {
-  // Session is now handled globally in App.tsx
-  // We can just rely on Supabase client when we need the session
   const { fileStates, setFileStates, visibleColumns, setVisibleColumns } = useScanContext();
+  const { activeClientId } = useClient();
+
   const [isExporting, setIsExporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [credits, setCredits] = useState<number | null>(null);
   
   const [showSettings, setShowSettings] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
 
-  // local storage column init is now handled in ScanContext
-
   useEffect(() => {
+    const fetchCredits = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('credits')
+          .eq('id', session.user.id)
+          .single();
+        if (data) {
+          setCredits(data.credits);
+        }
+      }
+    };
+    fetchCredits();
+    
     function handleClickOutside(event: MouseEvent) {
       if (settingsRef.current && !settingsRef.current.contains(event.target as Node)) {
         setShowSettings(false);
@@ -182,7 +198,6 @@ export default function ScanPage() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
 
   const toggleColumn = (key: string) => {
     setVisibleColumns(prev => {
@@ -229,23 +244,84 @@ export default function ScanPage() {
   };
 
   const updateExtractedData = (id: string, data: InvoiceData) => {
-    // If they edit it, it's no longer safely saved (conceptually), but we'll leave it simple for now.
     setFileStates(prev => prev.map(f => f.id === id ? { ...f, extractedData: data, savedToCloud: false } : f));
   };
 
-  const scanFile = async (item: FileState) => {
-    const formData = new FormData();
-    formData.append('file', item.file);
+  const compressImage = (file: File, maxWidth: number, maxHeight: number): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      if (!file.type.startsWith('image/')) {
+        resolve(file);
+        return;
+      }
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
 
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpeg", {
+                  type: 'image/jpeg',
+                  lastModified: Date.now(),
+                });
+                resolve(newFile);
+              } else {
+                resolve(file);
+              }
+            },
+            'image/jpeg',
+            0.8
+          );
+        };
+        img.onerror = (error) => reject(error);
+      };
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  const scanFile = async (item: FileState) => {
     try {
+      const processedFile = await compressImage(item.file, 1536, 1536);
+      const formData = new FormData();
+      formData.append('file', processedFile);
+
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Authentication required.");
+
       const response = await fetch(`${apiUrl}/api/scan-invoice`, {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        },
         body: formData,
       });
       
       if (!response.ok) {
         const errData = await response.json().catch(() => null);
+        if (response.status === 402) {
+          toast.error("Insufficient Credits. Please recharge your wallet.", { duration: 5000 });
+        }
         throw new Error(errData?.detail || `Scan failed with status: ${response.status}`);
       }
       
@@ -253,10 +329,92 @@ export default function ScanPage() {
       setFileStates(prev => prev.map(f => 
         f.id === item.id ? { ...f, extractedData: result.data, isScanning: false } : f
       ));
+      
+      setCredits(prev => (prev !== null && prev > 0) ? prev - 1 : prev);
+      
+      await autoSaveInvoice(item.id, result.data);
     } catch (err: any) {
       setFileStates(prev => prev.map(f => 
         f.id === item.id ? { ...f, error: err.message || 'An error occurred.', isScanning: false } : f
       ));
+    }
+  };
+
+  const autoSaveInvoice = async (fileId: string, data: any) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const { data: invoiceRes, error: invoiceError } = await supabase
+        .from('invoices')
+        .insert({
+          user_id: session.user.id,
+          client_id: activeClientId,
+          file_name: fileStates.find(f => f.id === fileId)?.file.name || 'Unknown',
+          supplier_name: data.Supplier_Name,
+          supplier_address: data.Supplier_Address,
+          supplier_phone: data.Supplier_Phone,
+          supplier_email: data.Supplier_Email,
+          supplier_gstin: data.Supplier_GSTIN,
+          supplier_pan: data.Supplier_PAN,
+          buyer_name: data.Buyer_Name,
+          buyer_address: data.Buyer_Address,
+          buyer_pin: data.Buyer_PIN,
+          buyer_gstin: data.Buyer_GSTIN,
+          buyer_pan: data.Buyer_PAN,
+          place_of_supply: data.Place_Of_Supply,
+          invoice_date: data.Invoice_Date,
+          due_date: data.Due_Date,
+          invoice_number: data.Invoice_Number,
+          po_number: data.PO_Number,
+          e_way_bill_number: data.E_Way_Bill_Number,
+          vehicle_number: data.Vehicle_Number,
+          taxable_amount: data.Taxable_Amount,
+          cgst_amount: data.CGST_Amount,
+          sgst_amount: data.SGST_Amount,
+          igst_amount: data.IGST_Amount,
+          round_off: data.Round_Off,
+          total_amount: data.Total_Amount,
+          gst_amount: data.GST_Amount,
+          confidence_score: data.Confidence_Score,
+          amount_in_words: data.Amount_In_Words,
+          received_amount: data.Received_Amount,
+          balance_amount: data.Balance_Amount,
+          previous_balance: data.Previous_Balance,
+          current_balance: data.Current_Balance,
+          account_holder: data.Account_Holder,
+          account_number: data.Account_Number,
+          bank_name: data.Bank_Name,
+          branch_name: data.Branch_Name,
+          ifsc_code: data.IFSC_Code,
+          upi_id: data.UPI_ID,
+        })
+        .select('id')
+        .single();
+        
+      if (invoiceError) throw invoiceError;
+      
+      if (data.Line_Items && data.Line_Items.length > 0) {
+        const itemsToInsert = data.Line_Items.map((item: any) => ({
+          invoice_id: invoiceRes.id,
+          description: item.Description,
+          hsn_sac: item.HSN_SAC,
+          quantity: item.Quantity,
+          unit_price: item.Unit_Price,
+          tax_rate: item.Tax_Rate,
+          amount: item.Amount
+        }));
+        
+        const { error: itemsError } = await supabase
+          .from('invoice_line_items')
+          .insert(itemsToInsert);
+          
+        if (itemsError) throw itemsError;
+      }
+
+      setFileStates(prev => prev.map(f => f.id === fileId ? { ...f, savedToCloud: true } : f));
+    } catch (err) {
+      console.error("Auto-save failed:", err);
     }
   };
 
@@ -296,11 +454,12 @@ export default function ScanPage() {
       for (const fs of toSave) {
         const data = fs.extractedData!;
         
-        // 1. Insert Invoice
         const { data: invoiceRes, error: invoiceError } = await supabase
           .from('invoices')
           .insert({
             user_id: userId,
+            client_id: activeClientId,
+            file_name: fs.file.name,
             supplier_name: data.Supplier_Name,
             supplier_address: data.Supplier_Address,
             supplier_phone: data.Supplier_Phone,
@@ -344,7 +503,6 @@ export default function ScanPage() {
           
         if (invoiceError) throw invoiceError;
         
-        // 2. Insert Line Items if any
         if (data.Line_Items && data.Line_Items.length > 0) {
           const itemsToInsert = data.Line_Items.map(item => ({
             invoice_id: invoiceRes.id,
@@ -363,14 +521,13 @@ export default function ScanPage() {
           if (itemsError) throw itemsError;
         }
 
-        // Mark as saved
         setFileStates(prev => prev.map(f => f.id === fs.id ? { ...f, savedToCloud: true } : f));
       }
       
-      alert('Successfully saved to cloud database!');
+      toast.success('Successfully saved to cloud database!');
     } catch (err: any) {
       console.error(err);
-      alert('Error saving to cloud: ' + (err.message || 'Unknown error'));
+      toast.error('Error saving to cloud: ' + (err.message || 'Unknown error'));
     } finally {
       setIsSaving(false);
     }
@@ -384,7 +541,6 @@ export default function ScanPage() {
       fileStates.filter(fs => fs.extractedData).forEach(fs => {
         const baseData: any = { 'Filename': fs.file.name };
         
-        // Include only visible columns
         visibleColumns.forEach(key => {
           const colDef = AVAILABLE_COLUMNS.find(c => c.key === key);
           if (colDef && fs.extractedData) {
@@ -394,7 +550,6 @@ export default function ScanPage() {
         
         const items = fs.extractedData?.Line_Items || [];
         if (items.length > 0) {
-          // Flatten line items: Repeat base data for each item
           items.forEach((item: LineItem) => {
             dataToExport.push({
               ...baseData,
@@ -407,7 +562,6 @@ export default function ScanPage() {
             });
           });
         } else {
-          // No items, just export header row
           dataToExport.push(baseData);
         }
       });
@@ -426,60 +580,58 @@ export default function ScanPage() {
     }
   };
 
-  // Auth is globally enforced in App.tsx
-
   const successfullyExtractedCount = fileStates.filter(f => f.extractedData).length;
   const unsavedCount = fileStates.filter(f => f.extractedData && !f.savedToCloud).length;
 
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden font-sans text-textMain selection:bg-primary/30 pb-20">
-      <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-primary/20 blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-20%] right-[-10%] w-[600px] h-[600px] rounded-full bg-secondary/10 blur-[150px] pointer-events-none" />
+    <div className="min-h-screen bg-bg-base relative font-sans text-text-primary selection:bg-accent-subtle pb-20">
       
       {/* Navbar */}
-      <nav className="glass fixed top-0 w-full z-50 px-6 py-4 flex justify-between items-center border-b border-white/5">
+      <nav className="fixed top-0 w-full z-50 px-6 py-4 flex justify-between items-center border-b border-border bg-bg-surface/90 backdrop-blur-md">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-blue-400 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-md bg-accent flex items-center justify-center shadow-sm">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
-          <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70">
-            PayForce AI
+          <span className="text-xl font-bold text-text-primary">
+            LedgerLens
           </span>
         </div>
         <div className="flex items-center gap-4">
-          <div className="glass-card px-4 py-1.5 flex items-center gap-2 text-sm font-medium border-primary/20">
-            <span className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
-            <span>9 Credits</span>
-          </div>
+          {credits !== null && (
+            <div className="badge border border-accent/20 text-accent bg-accent-subtle py-1 px-3">
+              <span className="w-2 h-2 rounded-full bg-accent animate-pulse mr-2" />
+              <span>{credits} Credits</span>
+            </div>
+          )}
           <div className="relative" ref={settingsRef}>
             <button 
               onClick={() => setShowSettings(!showSettings)} 
-              className={cn("p-2 hover:bg-white/5 rounded-lg transition-colors", showSettings && "bg-white/10")}
+              className={cn("p-2 hover:bg-bg-sunken rounded-md transition-colors", showSettings && "bg-bg-sunken")}
               title="Column Settings"
             >
-              <Settings className="w-5 h-5 text-textMuted" />
+              <Settings className="w-5 h-5 text-text-secondary" />
             </button>
             
             <AnimatePresence>
               {showSettings && (
                 <motion.div 
                   initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
-                  className="absolute right-0 mt-2 w-64 glass-card border border-white/10 rounded-xl p-3 z-50 shadow-2xl"
+                  className="absolute right-0 mt-2 w-64 card p-3 z-50 shadow-lg"
                 >
-                  <h4 className="text-xs font-semibold text-textMuted uppercase tracking-wider mb-3">Visible Columns</h4>
+                  <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Visible Columns</h4>
                   <div className="space-y-1.5 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
                     {AVAILABLE_COLUMNS.map(col => (
-                      <label key={col.key} className="flex items-center gap-3 px-2 py-1.5 hover:bg-white/5 rounded cursor-pointer group">
+                      <label key={col.key} className="flex items-center gap-3 px-2 py-1.5 hover:bg-bg-sunken rounded cursor-pointer group">
                         <div className="relative flex items-center justify-center w-4 h-4">
                           <input 
                             type="checkbox" 
                             checked={visibleColumns.includes(col.key)} 
                             onChange={() => toggleColumn(col.key)}
-                            className="peer appearance-none w-4 h-4 border border-white/20 rounded bg-transparent checked:bg-primary checked:border-primary transition-all cursor-pointer"
+                            className="peer appearance-none w-4 h-4 border border-border rounded bg-transparent checked:bg-accent checked:border-accent transition-all cursor-pointer"
                           />
                           <CheckCircle2 className="w-3 h-3 text-white absolute opacity-0 peer-checked:opacity-100 pointer-events-none" />
                         </div>
-                        <span className="text-sm text-white/80 group-hover:text-white transition-colors">{col.label}</span>
+                        <span className="text-sm text-text-secondary group-hover:text-text-primary transition-colors">{col.label}</span>
                       </label>
                     ))}
                   </div>
@@ -490,7 +642,7 @@ export default function ScanPage() {
           
             <button 
               onClick={() => supabase.auth.signOut()} 
-              className="p-2 hover:bg-red-500/10 hover:text-red-400 text-textMuted rounded-lg transition-colors"
+              className="p-2 hover:bg-error-subtle hover:text-error text-text-secondary rounded-md transition-colors"
               title="Sign Out"
             >
               <LogOut className="w-5 h-5" />
@@ -499,32 +651,36 @@ export default function ScanPage() {
       </nav>
 
       {/* Main Content */}
-      <main className="pt-28 px-6 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 relative z-10">
+      <main className="pt-28 px-6 max-w-7xl mx-auto relative z-10 h-[calc(100vh-60px)]">
         
-        {/* Left Column: Upload & List */}
-        <div className="lg:col-span-4 xl:col-span-3 space-y-6">
-          <div className="space-y-2">
-            <h1 className="text-3xl font-semibold tracking-tight">Digitize.</h1>
-            <p className="text-textMuted text-sm">Drop messy invoices, get perfect data.</p>
-          </div>
+        <div className="card h-full flex flex-col lg:flex-row p-0 overflow-hidden shadow-lg border-border">
+          
+          {/* Left Column: Upload & List */}
+          <div className="w-full lg:w-[40%] xl:w-[35%] flex flex-col border-b lg:border-b-0 lg:border-r border-border bg-bg-surface">
+            <div className="p-6 border-b border-border bg-bg-sunken/50">
+              <h1 className="text-2xl font-bold tracking-tight text-text-primary mb-1">Digitize.</h1>
+              <p className="text-text-secondary text-sm">Drop messy invoices, get perfect data.</p>
+            </div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
-            <div
-              {...getRootProps()}
-              className={cn(
-                "glass-card border-2 border-dashed p-8 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group text-center",
-                isDragActive ? "border-primary bg-primary/5" : "border-white/10 hover:border-primary/50 hover:bg-white/5"
-              )}
-            >
+            <div className="p-6 flex-1 flex flex-col overflow-y-auto custom-scrollbar">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-6 flex-1 min-h-[200px]"
+              >
+                <div
+                  {...getRootProps()}
+                  className={cn(
+                    "w-full h-full min-h-[250px] rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group text-center shadow-none",
+                    isDragActive ? "border-accent bg-accent-subtle" : "border-border hover:border-accent hover:bg-bg-sunken bg-bg-base"
+                  )}
+                >
               <input {...getInputProps()} />
-              <div className="w-14 h-14 rounded-full bg-surface flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                <UploadCloud className={cn("w-6 h-6", isDragActive ? "text-primary" : "text-textMuted")} />
+              <div className="w-14 h-14 rounded-full bg-bg-sunken flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                <UploadCloud className={cn("w-6 h-6", isDragActive ? "text-accent" : "text-text-secondary")} />
               </div>
-              <p className="font-medium mb-1">Drag & drop invoices</p>
-              <p className="text-xs text-textMuted">JPG, PNG, PDF (Max 10)</p>
+              <p className="font-medium text-text-primary mb-1">Drag & drop invoices</p>
+              <p className="text-xs text-text-secondary">JPG, PNG, PDF (Max 10)</p>
             </div>
           </motion.div>
 
@@ -545,36 +701,36 @@ export default function ScanPage() {
 
               <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
                 {fileStates.map((fs) => (
-                  <div key={fs.id} className="glass-card p-3 flex gap-3 items-center group">
+                  <div key={fs.id} className="card p-3 flex gap-3 items-center group shadow-none">
                     {fs.previewUrl ? (
-                      <img src={fs.previewUrl} alt="preview" className="w-10 h-10 rounded object-cover border border-white/10" />
+                      <img src={fs.previewUrl} alt="preview" className="w-10 h-10 rounded object-cover border border-border" />
                     ) : (
-                      <div className="w-10 h-10 bg-surface rounded border border-white/10 flex items-center justify-center">
-                        <FileIcon className="w-4 h-4 text-textMuted" />
+                      <div className="w-10 h-10 bg-bg-sunken rounded border border-border flex items-center justify-center">
+                        <FileIcon className="w-4 h-4 text-text-secondary" />
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium truncate text-white/90">{fs.file.name}</p>
+                      <p className="text-xs font-medium truncate text-text-primary">{fs.file.name}</p>
                       
                       {fs.isScanning ? (
-                        <p className="text-primary text-[10px] mt-0.5 flex items-center gap-1 animate-pulse">
+                        <p className="text-accent text-[10px] mt-0.5 flex items-center gap-1 animate-pulse">
                           <Loader2 className="w-3 h-3 animate-spin" /> Scanning...
                         </p>
                       ) : fs.error ? (
-                        <p className="text-red-400 text-[10px] mt-0.5 truncate" title={fs.error}>{fs.error}</p>
+                        <p className="text-error text-[10px] mt-0.5 truncate" title={fs.error}>{fs.error}</p>
                       ) : fs.extractedData ? (
-                        <p className="text-secondary text-[10px] mt-0.5 flex items-center gap-1">
+                        <p className="text-success text-[10px] mt-0.5 flex items-center gap-1">
                           <CheckCircle2 className="w-3 h-3" /> Complete
                         </p>
                       ) : (
-                        <p className="text-textMuted text-[10px] mt-0.5">Ready</p>
+                        <p className="text-text-secondary text-[10px] mt-0.5">Ready</p>
                       )}
                     </div>
                     <div className="flex items-center opacity-0 group-hover:opacity-100 transition-all gap-1">
                       {fs.error && (
                         <button 
                           onClick={() => retryScan(fs.id)}
-                          className="p-1 hover:bg-white/10 rounded text-textMuted hover:text-white"
+                          className="p-1 hover:bg-bg-sunken rounded text-text-secondary hover:text-text-primary"
                           title="Retry"
                         >
                           <RefreshCw className="w-3 h-3" />
@@ -582,7 +738,7 @@ export default function ScanPage() {
                       )}
                       <button 
                         onClick={() => removeFile(fs.id)}
-                        className="p-1 hover:bg-white/10 rounded text-textMuted hover:text-white"
+                        className="p-1 hover:bg-bg-sunken rounded text-text-secondary hover:text-text-primary"
                         title="Remove"
                       >
                         <X className="w-3 h-3" />
@@ -593,17 +749,17 @@ export default function ScanPage() {
               </div>
             </div>
           )}
+          </div>
         </div>
 
         {/* Right Column: Verification Grid */}
-        <div className="lg:col-span-8 xl:col-span-9 h-full">
-          <div className="glass-card h-full min-h-[70vh] flex flex-col">
-            <div className="p-4 border-b border-white/5 flex flex-wrap gap-4 items-center justify-between bg-surface/50">
+          <div className="w-full lg:w-[60%] xl:w-[65%] h-full flex flex-col bg-bg-base">
+            <div className="p-4 border-b border-border flex flex-wrap gap-4 items-center justify-between bg-bg-surface h-[84px] shrink-0">
               <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-textMuted" />
-                <h2 className="text-sm font-semibold">Verification Grid</h2>
+                <FileText className="w-4 h-4 text-text-secondary" />
+                <h2 className="text-sm font-semibold text-text-primary">Verification Grid</h2>
                 {successfullyExtractedCount > 0 && (
-                  <span className="bg-primary/20 text-primary text-xs px-2 py-0.5 rounded-full ml-2">
+                  <span className="badge bg-accent-subtle text-accent border border-accent/20 ml-2">
                     {successfullyExtractedCount} extracted
                   </span>
                 )}
@@ -612,51 +768,53 @@ export default function ScanPage() {
               <div className="flex items-center gap-3">
                   <button 
                     onClick={handleSaveToCloud}
-                    disabled={unsavedCount === 0 || isSaving}
-                    className="flex items-center gap-2 text-xs font-medium bg-primary/20 text-primary hover:bg-primary/30 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={unsavedCount === 0 || isSaving || !activeClientId}
+                    className="btn-ghost"
                   >
-                    {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Cloud className="w-3 h-3" />}
-                    Save to Cloud {unsavedCount > 0 ? `(${unsavedCount})` : ''}
+                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}
+                    {!activeClientId ? 'Select Client First' : `Save to Cloud ${unsavedCount > 0 ? `(${unsavedCount})` : ''}`}
                   </button>
                 <button 
                   onClick={handleExportExcel}
                   disabled={successfullyExtractedCount === 0 || isExporting}
-                  className="flex items-center gap-2 text-xs font-medium bg-secondary/10 text-secondary hover:bg-secondary/20 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="btn-ghost"
                 >
-                  {isExporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                  {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                   Export Excel
                 </button>
               </div>
             </div>
             
-            <div className="flex-1 p-0 relative overflow-hidden flex flex-col">
+            <div className="flex-1 p-0 relative overflow-hidden flex flex-col bg-bg-base">
               {!fileStates.some(f => f.extractedData) ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-textMuted p-6 text-center">
-                  <div className="w-16 h-16 border-2 border-dashed border-white/10 rounded-full flex items-center justify-center mb-4">
-                    <ChevronRight className="w-6 h-6 opacity-50" />
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-text-secondary p-8 text-center bg-bg-surface m-4 rounded-xl border border-dashed border-border">
+                  <div className="w-20 h-20 rounded-full bg-bg-sunken flex items-center justify-center mb-6">
+                    <FileText className="w-10 h-10 text-text-disabled" />
                   </div>
-                  <p className="text-sm">Upload and extract invoices to verify data.</p>
-                  <p className="text-xs mt-2 opacity-50 max-w-sm">Use the Settings icon in the top right to configure which columns are visible.</p>
+                  <h3 className="text-lg font-bold text-text-primary mb-2">No Invoices Extracted</h3>
+                  <p className="text-sm text-text-secondary max-w-md">
+                    Drag and drop your invoices in the panel on the left to begin the automated data extraction process.
+                  </p>
                 </div>
               ) : (
                 <div className="overflow-x-auto overflow-y-auto flex-1 custom-scrollbar">
                   <table className="w-full text-left border-collapse">
-                    <thead className="bg-surface/30 sticky top-0 backdrop-blur-md z-10 shadow-sm">
+                    <thead className="bg-bg-sunken sticky top-0 z-10 shadow-sm border-b border-border">
                       <tr>
-                        <th className="p-4 w-8 border-b border-white/5"></th>
-                        <th className="p-4 text-xs font-semibold text-textMuted uppercase tracking-wider border-b border-white/5 whitespace-nowrap">Filename</th>
+                        <th className="p-4 w-8"></th>
+                        <th className="p-4 text-xs font-semibold text-text-secondary uppercase tracking-wider whitespace-nowrap">Filename</th>
                         {visibleColumns.map(col => {
                            const colDef = AVAILABLE_COLUMNS.find(c => c.key === col);
                            const isAmount = col.includes('Amount') || col === 'Round_Off';
                            return (
-                             <th key={col} className={cn("p-4 text-xs font-semibold text-textMuted uppercase tracking-wider border-b border-white/5 whitespace-nowrap", isAmount ? "text-right" : "")}>
+                             <th key={col} className={cn("p-4 text-xs font-semibold text-text-secondary uppercase tracking-wider whitespace-nowrap", isAmount ? "text-right" : "")}>
                                {colDef?.label}
                              </th>
                            );
                         })}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-white/5">
+                    <tbody className="divide-y divide-border">
                       {fileStates.filter(fs => fs.extractedData).map((fs) => (
                         <InvoiceRow key={fs.id} fs={fs} visibleColumns={visibleColumns} onUpdate={(data) => updateExtractedData(fs.id, data)} />
                       ))}

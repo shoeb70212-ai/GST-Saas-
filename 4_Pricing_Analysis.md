@@ -34,10 +34,44 @@ Here is the recalculated cost comparison to process **1,000 Invoice Images**:
 
 ## Conclusion & Unit Economics
 
-If you charge your users **₹500 for a pack of 100 Scans**:
+Let's analyze your proposed pricing model of **₹1.49 per invoice scan**, taking into account both the AI costs and the fixed "other things" (servers, database, hosting).
 
-*   **Using AWS Textract**: Your cost is ₹84. Profit = ₹416.
-*   **Using GPT-4o-mini**: Your cost is ₹3.50. Profit = ₹496.50.
-*   **Using Gemini 1.5 Flash**: Your cost is ₹0.16. Profit = ₹499.84.
+### The Per-Scan Margin (Variable Costs)
+*   **Revenue per scan**: ₹1.49
+*   **OpenRouter AI Cost**: ₹0.58 
+*   **Payment Gateway Fee (approx 2%)**: ₹0.03
+*   **Gross Profit per scan**: **₹0.88** (a very healthy ~59% gross margin)
 
-**Recommendation:** Start with the **Google Gemini API**. The Generative AI free tier allows you to build, test, and launch to your first 100 users without putting in a credit card. If accuracy issues arise on crumpled physical invoices, we can swap the backend to OpenAI GPT-4o-mini with 5 lines of code.
+### The Server Costs (Fixed Costs)
+To run this SaaS reliably, you will eventually need paid tiers for your infrastructure:
+*   **Supabase Database (Pro Tier)**: ~$25/month (₹2,500)
+*   **Vercel/Frontend Hosting (Pro Tier)**: ~$20/month (₹2,000)
+*   **Total Fixed Costs**: ~₹4,500 per month
+
+*(Note: You can start entirely on Free Tiers for both Supabase and Vercel, meaning your fixed costs are ₹0 on Day 1).*
+
+### The Break-Even Point
+To cover a fully paid professional server setup (₹4,500/month) using only the ₹0.88 profit per scan:
+*   ₹4,500 ÷ ₹0.88 = **~5,113 scans per month** to break even.
+
+### Is ₹1.49 a good price?
+**Yes, absolutely.** ₹1.49 is incredibly cheap for the end-user (saving them hours of manual data entry), but still leaves you with a 59% margin. 
+
+If you get just 100 MSMEs to use your platform, and they each process 200 invoices a month:
+*   Total Scans: 20,000
+*   Revenue: ₹29,800
+*   AI + Gateway Costs: -₹12,200
+*   Server Costs: -₹4,500
+*   **Net Profit: ₹13,100 / month** (And this scales infinitely as you add users).
+
+**Recommendation:** Sell this as prepaid "Credit Packs" to avoid micro-transaction fees. For example: **100 Scans for ₹149**.
+
+---
+
+## Future Strategy: The Accountant (B2B) Pivot
+*Note: This is a discussed concept and still needs further planning/validation.*
+
+If the primary user is an **Accountant/CA** managing multiple clients, the architecture and pricing strategy will evolve:
+1. **Multi-Tenant Architecture**: Add a "Client" layer. An accountant logs in and scans invoices specifically into "Client A" or "Client B" workspaces.
+2. **Value Proposition**: A manual data entry clerk costs ~₹15,000/mo and types ~1,000 complex invoices (₹15 per invoice). At ₹1.49 per scan, PayForce is a 10x ROI for CA firms.
+3. **B2B Bulk Pricing**: Instead of prepaid credits, offer heavy monthly subscriptions (e.g., ₹3,999/month for 5,000 scans). Acquiring just 10 CA firms guarantees a profitable, recurring base revenue.

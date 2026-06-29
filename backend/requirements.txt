@@ -6,3 +6,6 @@ requests
 python-dotenv
 openai
 pdf2image
+httpx
+supabase
+pyjwt

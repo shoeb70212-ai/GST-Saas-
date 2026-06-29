@@ -1,8 +1,11 @@
-# PayForce (MSME Collections with GST Leverage)
+# LedgerLens (formerly PayForce)
 
-**PayForce** is an innovative SaaS application designed specifically for Indian Micro, Small, and Medium Enterprises (MSMEs). It tackles one of the most significant challenges faced by small businesses: **unpaid invoices and the resulting permanent financial loss due to "Sunk GST."**
+**LedgerLens** is an AI-powered GST Invoice Scanner and Multi-Tenant Accountant Workspace. 
+*   **AI Extraction:** Automatically extracts 37 fields from purchase invoices using Gemini 2.5 Flash.
+*   **Accountant Workspaces:** Multi-tenancy support for managing dozens of clients securely.
+*   **Custom Dashboards:** Dynamic widgets for tracking Sunk GST, Total Taxable, CGST, SGST, IGST, and Outstanding amounts per client.
 
-Unlike traditional Accounts Receivable (AR) tools that merely send generic reminders, PayForce leverages actual Indian GST compliance laws and the MSMED Act to legally compel buyers to settle their dues. 
+*(The original concept, PayForce, focused on MSME Collections and AR management, which remains part of the core infrastructure).*
 
 ## 🚀 The Core Problem & Our Solution
 When an MSME raises an invoice and the buyer defaults, the MSME has already paid the GST to the government. This **"Sunk GST Exposure"** is a permanent cash loss because the GST law (Section 34) does not allow credit notes for bad debts.

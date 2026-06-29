@@ -7,17 +7,40 @@ import Layout from './components/Layout';
 import DashboardPage from './pages/DashboardPage';
 import ScanPage from './pages/ScanPage';
 import AuthPage from './pages/AuthPage';
+import SavedInvoicesPage from './pages/SavedInvoicesPage';
+import SettingsPage from './pages/SettingsPage';
+import ClientsPage from './pages/ClientsPage';
 import { ScanProvider } from './lib/ScanContext';
+import { ClientProvider } from './lib/ClientContext';
+import { Toaster } from 'react-hot-toast';
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    const initSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session && import.meta.env.DEV) {
+        // Try auto-login in DEV mode
+        const { data: signInData } = await supabase.auth.signInWithPassword({
+          email: 'dev@payforce.com',
+          password: 'DevPass123!'
+        });
+        
+        if (signInData?.session) {
+          setSession(signInData.session);
+        } else {
+          setSession(null);
+        }
+      } else {
+        setSession(session);
+      }
       setIsInitializing(false);
-    });
+    };
+
+    initSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
@@ -35,6 +58,7 @@ export default function App() {
   }
 
   return (
+    <ClientProvider>
     <ScanProvider>
       <BrowserRouter>
         <Routes>
@@ -42,10 +66,20 @@ export default function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="scan" element={<ScanPage />} />
-            <Route path="invoices" element={<div className="p-8 text-white"><h1 className="text-2xl font-bold mb-4">Saved Invoices</h1><p className="text-textMuted">Coming Soon...</p></div>} />
+            <Route path="invoices" element={<SavedInvoicesPage />} />
+            <Route path="clients" element={<ClientsPage />} />
+            <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>
+        <Toaster position="bottom-right" toastOptions={{
+          style: {
+            background: '#FFFFFF',
+            color: '#09090B',
+            border: '1px solid #E4E4E7'
+          }
+        }} />
       </BrowserRouter>
     </ScanProvider>
+    </ClientProvider>
   );
 }

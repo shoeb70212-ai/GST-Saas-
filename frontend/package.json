@@ -12,11 +12,13 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
     "clsx": "^2.1.1",
+    "dotenv": "^17.4.2",
     "framer-motion": "^12.42.0",
     "lucide-react": "^1.22.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-dropzone": "^15.0.0",
+    "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.18.0",
     "tailwind-merge": "^3.6.0",
     "xlsx": "^0.18.5"

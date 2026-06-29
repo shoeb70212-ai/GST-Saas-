@@ -1,29 +1,148 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #0B0F19;
-  --color-surface: #1A2235;
-  --color-primary: #3B82F6;
-  --color-secondary: #10B981;
-  --color-textMain: #F8FAFC;
-  --color-textMuted: #94A3B8;
+  --color-bg-base: var(--bg-base);
+  --color-bg-surface: var(--bg-surface);
+  --color-bg-sunken: var(--bg-sunken);
+  --color-bg-overlay: var(--bg-overlay);
 
+  --color-border: var(--border);
+  --color-border-focus: var(--border-focus);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-disabled: var(--text-disabled);
+  --color-text-inverse: var(--text-inverse);
+
+  --color-accent: var(--accent);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-accent-hover: var(--accent-hover);
+
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-warning: var(--warning);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-error: var(--error);
+  --color-error-subtle: var(--error-subtle);
+
+  --color-gst-cgst: var(--gst-cgst);
+  --color-gst-sgst: var(--gst-sgst);
+  --color-gst-igst: var(--gst-igst);
+
+  --font-display: "Plus Jakarta Sans", sans-serif;
+  --font-body: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  
   --font-sans: "Inter", sans-serif;
 
-  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --shadow-xs: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-lg: 0 10px 15px rgba(0,0,0,0.05), 0 4px 6px rgba(0,0,0,0.03);
 }
 
 @layer base {
+  :root {
+    --bg-base: #FAFAFA;
+    --bg-surface: #FFFFFF;
+    --bg-sunken: #F4F4F5;
+    --bg-overlay: rgba(24, 24, 27, 0.8);
+
+    --border: #E4E4E7;
+    --border-focus: #A1A1AA;
+
+    --text-primary: #09090B;
+    --text-secondary: #71717A;
+    --text-disabled: #A1A1AA;
+    --text-inverse: #FAFAFA;
+
+    --accent: #E8500A;
+    --accent-subtle: #FEF3EE;
+    --accent-hover: #C9450A;
+
+    --success: #16A34A;
+    --success-subtle: #F0FDF4;
+    --warning: #CA8A04;
+    --warning-subtle: #FEFCE8;
+    --error: #DC2626;
+    --error-subtle: #FEF2F2;
+
+    --gst-cgst: #7C3AED;
+    --gst-sgst: #2563EB;
+    --gst-igst: #0891B2;
+  }
+
+  .dark {
+    --bg-base: #09090B;
+    --bg-surface: #18181B;
+    --bg-sunken: #27272A;
+    --bg-overlay: rgba(0, 0, 0, 0.8);
+
+    --border: #3F3F46;
+    --border-focus: #71717A;
+
+    --text-primary: #FAFAFA;
+    --text-secondary: #A1A1AA;
+    --text-disabled: #52525B;
+    --text-inverse: #09090B;
+
+    --accent: #E8500A;
+    --accent-subtle: rgba(232, 80, 10, 0.15);
+    --accent-hover: #FF6721;
+
+    --success: #22C55E;
+    --success-subtle: rgba(34, 197, 94, 0.15);
+    --warning: #EAB308;
+    --warning-subtle: rgba(234, 179, 8, 0.15);
+    --error: #EF4444;
+    --error-subtle: rgba(239, 68, 68, 0.15);
+
+    --gst-cgst: #8B5CF6;
+    --gst-sgst: #3B82F6;
+    --gst-igst: #06B6D4;
+  }
+
   body {
-    @apply bg-background text-textMain antialiased selection:bg-primary/30 selection:text-primary;
+    @apply bg-bg-base text-text-primary font-body antialiased selection:bg-accent-subtle selection:text-accent transition-colors duration-200;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
   }
 }
 
 @layer utilities {
-  .glass {
-    @apply bg-surface/50 backdrop-blur-xl border border-white/10 shadow-2xl;
+  .card {
+    @apply bg-bg-surface border border-border shadow-sm rounded-lg p-5;
   }
-  .glass-card {
-    @apply bg-surface/80 backdrop-blur-md border border-white/5 shadow-xl rounded-2xl;
+  .input-field {
+    @apply h-9 bg-bg-sunken border border-border rounded-md px-3 text-sm focus:border-text-primary focus:shadow-xs outline-none transition-colors placeholder:text-text-disabled text-text-primary;
+  }
+  .btn-primary {
+    @apply h-9 bg-accent hover:bg-accent-hover text-white font-medium text-sm rounded-md px-4 transition-colors inline-flex items-center justify-center gap-2;
+  }
+  .btn-ghost {
+    @apply h-9 bg-transparent border border-border text-text-primary hover:bg-bg-sunken font-medium text-sm rounded-md px-4 transition-colors inline-flex items-center justify-center gap-2;
+  }
+  .btn-destructive {
+    @apply h-9 bg-error hover:bg-error/90 text-white font-medium text-sm rounded-md px-4 transition-colors inline-flex items-center justify-center gap-2;
+  }
+  .badge {
+    @apply h-5 rounded-sm px-1.5 text-[11px] font-medium inline-flex items-center justify-center;
+  }
+  .table-header {
+    @apply bg-bg-sunken text-[11px] uppercase tracking-[0.06em] text-text-secondary py-3 px-4 text-left font-medium border-b border-border;
+  }
+  .table-row {
+    @apply border-b border-border hover:bg-bg-sunken transition-colors bg-bg-surface;
+  }
+  /* Zebra striping for tables */
+  tbody tr:nth-child(even) {
+    @apply bg-bg-base;
+  }
+  tbody tr:nth-child(odd) {
+    @apply bg-bg-surface;
+  }
+  .table-cell-custom {
+    @apply py-3 px-4 text-[15px] text-text-primary;
   }
 }

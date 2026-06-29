@@ -2,7 +2,8 @@ import os
 import base64
 import json
 import io
-from fastapi import FastAPI, File, UploadFile, HTTPException
+import httpx
+from fastapi import FastAPI, File, UploadFile, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -24,6 +25,8 @@ app.add_middleware(
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
+SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
 
 if OPENROUTER_API_KEY:
     client = AsyncOpenAI(
@@ -76,10 +79,6 @@ class InvoiceData(BaseModel):
     PO_Number: str | None = Field(description="Purchase Order (PO) Number if available")
     E_Way_Bill_Number: str | None = Field(description="E-Way Bill Number if available")
     Vehicle_Number: str | None = Field(description="Vehicle Number if available")
-    Taxable_Amount: float | None = Field(description="Total taxable amount before GST")
-    CGST_Amount: float | None = Field(description="Total CGST amount")
-    SGST_Amount: float | None = Field(description="Total SGST amount")
-    IGST_Amount: float | None = Field(description="Total IGST amount")
     Round_Off: float | None = Field(description="Round off amount if any")
     Total_Amount: float | None = Field(description="Total invoice amount including taxes")
     GST_Amount: float | None = Field(description="Total GST amount on the invoice")
@@ -101,9 +100,41 @@ def read_root():
     return {"status": "InvoiceScanner Backend is running."}
 
 @app.post("/api/scan-invoice")
-async def scan_invoice(file: UploadFile = File(...)):
+async def scan_invoice(file: UploadFile = File(...), authorization: str = Header(None)):
+    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        raise HTTPException(status_code=500, detail="Missing Supabase configuration in .env.")
+        
     if not client:
         raise HTTPException(status_code=500, detail="Missing API Key. Set OPENROUTER_API_KEY or OPENAI_API_KEY in .env.")
+
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized. Missing or invalid Authorization header.")
+        
+    token = authorization.split(" ")[1]
+    
+    # 1. Verify User and Get Profile
+    async with httpx.AsyncClient() as http_client:
+        # Get User
+        user_resp = await http_client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_resp.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid session token.")
+            
+        user_id = user_resp.json().get("id")
+        
+        # Get Profile
+        profile_resp = await http_client.get(
+            f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credits",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if profile_resp.status_code != 200 or not profile_resp.json():
+            raise HTTPException(status_code=500, detail="Failed to fetch user profile.")
+            
+        credits = profile_resp.json()[0].get("credits", 0)
+        if credits <= 0:
+            raise HTTPException(status_code=402, detail="Insufficient credits. Please recharge your wallet.")
 
     content = await file.read()
     
@@ -153,7 +184,50 @@ async def scan_invoice(file: UploadFile = File(...)):
         if not extracted_data:
             raise HTTPException(status_code=500, detail="Failed to parse structured output from primary AI.")
             
-        return {"status": "success", "data": extracted_data.model_dump()}
+        data_dict = extracted_data.model_dump()
+        
+        # --- STRATEGY 1: BACKEND MATH ---
+        # Calculate taxes and totals locally to save AI generation tokens & speed up processing
+        taxable = sum((item.get("Amount") or 0) for item in data_dict.get("Line_Items", []))
+        cgst = 0
+        sgst = 0
+        igst = 0
+        
+        sup_gstin = data_dict.get("Supplier_GSTIN")
+        buy_gstin = data_dict.get("Buyer_GSTIN")
+        is_interstate = False
+        if sup_gstin and buy_gstin and len(sup_gstin) >= 2 and len(buy_gstin) >= 2:
+            if sup_gstin[:2] != buy_gstin[:2]:
+                is_interstate = True
+                
+        for item in data_dict.get("Line_Items", []):
+            amt = item.get("Amount") or 0
+            rate = item.get("Tax_Rate") or 0
+            tax_val = amt * (rate / 100)
+            
+            if is_interstate:
+                igst += tax_val
+            else:
+                cgst += tax_val / 2
+                sgst += tax_val / 2
+                
+        data_dict["Taxable_Amount"] = taxable
+        data_dict["CGST_Amount"] = round(cgst, 2)
+        data_dict["SGST_Amount"] = round(sgst, 2)
+        data_dict["IGST_Amount"] = round(igst, 2)
+        
+        if not data_dict.get("Total_Amount"):
+            data_dict["Total_Amount"] = round(taxable + cgst + sgst + igst + (data_dict.get("Round_Off") or 0), 2)
+            
+        # Deduct Credit
+        async with httpx.AsyncClient() as http_client:
+            await http_client.patch(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={"credits": credits - 1}
+            )
+            
+        return {"status": "success", "data": data_dict}
         
     except Exception as e:
         print(f"Primary AI failed with error: {e}. Attempting fallback to Gemini...")
@@ -177,7 +251,40 @@ async def scan_invoice(file: UploadFile = File(...)):
                 if not extracted_data:
                     raise HTTPException(status_code=500, detail="Failed to parse structured output from Gemini.")
                     
-                return {"status": "success", "data": extracted_data.model_dump(), "source": "gemini"}
+                data_dict = extracted_data.model_dump()
+                
+                # --- STRATEGY 1: BACKEND MATH ---
+                taxable = sum((item.get("Amount") or 0) for item in data_dict.get("Line_Items", []))
+                cgst = 0; sgst = 0; igst = 0
+                sup_gstin = data_dict.get("Supplier_GSTIN")
+                buy_gstin = data_dict.get("Buyer_GSTIN")
+                is_interstate = False
+                if sup_gstin and buy_gstin and len(sup_gstin) >= 2 and len(buy_gstin) >= 2:
+                    if sup_gstin[:2] != buy_gstin[:2]:
+                        is_interstate = True
+                for item in data_dict.get("Line_Items", []):
+                    amt = item.get("Amount") or 0
+                    rate = item.get("Tax_Rate") or 0
+                    tax_val = amt * (rate / 100)
+                    if is_interstate: igst += tax_val
+                    else: cgst += tax_val / 2; sgst += tax_val / 2
+                        
+                data_dict["Taxable_Amount"] = taxable
+                data_dict["CGST_Amount"] = round(cgst, 2)
+                data_dict["SGST_Amount"] = round(sgst, 2)
+                data_dict["IGST_Amount"] = round(igst, 2)
+                if not data_dict.get("Total_Amount"):
+                    data_dict["Total_Amount"] = round(taxable + cgst + sgst + igst + (data_dict.get("Round_Off") or 0), 2)
+                    
+                # Deduct Credit
+                async with httpx.AsyncClient() as http_client:
+                    await http_client.patch(
+                        f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
+                        headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                        json={"credits": credits - 1}
+                    )
+                    
+                return {"status": "success", "data": data_dict, "source": "gemini"}
             except Exception as gemini_e:
                 raise HTTPException(status_code=500, detail=f"Both primary AI and Gemini fallback failed. Gemini Error: {str(gemini_e)}")
         else:
