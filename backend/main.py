@@ -16,7 +16,7 @@ def compute_confidence(extracted: dict, computed_total: float) -> dict:
     
     supplier_gstin = extracted.get("Supplier_GSTIN")
     if supplier_gstin:
-        if not re.match(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$', supplier_gstin.upper()):
+        if not re.match(r'^[0-3][0-9][A-Z]{5}[0-9]{4}[A-Z][1-9A-Z][A-Z0-9][0-9A-Z]$', supplier_gstin.upper()):
             penalties += 25.0
     else:
         penalties += 15.0
