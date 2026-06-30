@@ -56,7 +56,7 @@ export default function AuthPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="input-field w-full pl-10"
+                  className="input-field w-full !pl-10"
                   placeholder="Enter your email"
                   required
                 />
@@ -71,7 +71,7 @@ export default function AuthPage() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="input-field w-full pl-10"
+                  className="input-field w-full !pl-10"
                   placeholder="Enter your password"
                   required
                 />
