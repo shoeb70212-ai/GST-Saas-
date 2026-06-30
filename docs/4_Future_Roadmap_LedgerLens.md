@@ -2,6 +2,13 @@
 
 This document outlines the features that were discussed and brainstormed but explicitly parked until after the initial Beta test completes.
 
+## 🚨 IMMEDIATE PENDING TASK (Next Session)
+**Task:** Configure the GitHub Secret for the keep-alive workflow.
+- **Action Required:** Go to GitHub Repository Settings -> Secrets and variables -> Actions.
+- **Secret Name:** `RENDER_BACKEND_URL`
+- **Secret Value:** The root URL of the Render backend (e.g., `https://your-backend-name.onrender.com/`).
+*Once added, the GitHub Action will automatically keep the backend awake 24/7.*
+
 ## 1. GSTR-2B Reconciliation & "AI Deep Match" (High Priority)
 **The Problem:** Currently, accountants must manually cross-reference the invoices they digitized against the government's GSTR-2B portal report to see which vendors failed to upload their bills (resulting in a loss of Input Tax Credit). Furthermore, matching is extremely difficult because human typos cause mismatches in invoice numbers (e.g., `INV/24/01` vs `INV-24-01`) and supplier names.
 **The Solution (Hybrid 2-Step Approach):** 
