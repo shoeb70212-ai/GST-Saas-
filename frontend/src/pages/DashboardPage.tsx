@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { DollarSign, FileText, Settings, Loader2, CheckCircle2, TrendingUp, Building2, Briefcase } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useClient } from '../lib/ClientContext';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
