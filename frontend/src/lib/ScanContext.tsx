@@ -11,6 +11,8 @@ export type LineItem = {
 };
 
 export type InvoiceData = {
+  Expense_Category?: string;
+  Extraction_State?: string;
   Confidence_Score?: number;
   Supplier_Name?: string;
   Supplier_Address?: string;
@@ -63,6 +65,8 @@ export type FileState = {
 };
 
 export const AVAILABLE_COLUMNS = [
+  { key: 'Extraction_State', label: 'Status' },
+  { key: 'Expense_Category', label: 'Category' },
   { key: 'Confidence_Score', label: 'Confidence %' },
   { key: 'Supplier_Name', label: 'Supplier Name' },
   { key: 'Supplier_Address', label: 'Supplier Address' },

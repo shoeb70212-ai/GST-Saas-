@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UploadCloud, CheckCircle2, FileText, Loader2, Sparkles, Download, Settings, X, File as FileIcon, ChevronDown, ChevronUp, Cloud, LogOut, RefreshCw } from 'lucide-react';
+import { UploadCloud, CheckCircle2, FileText, Loader2, Sparkles, Download, Settings, X, File as FileIcon, ChevronDown, ChevronUp, Cloud, LogOut, RefreshCw, AlertCircle, AlertTriangle } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import * as XLSX from 'xlsx';
@@ -16,6 +16,27 @@ function cn(...inputs: ClassValue[]) {
 import { useScanContext, AVAILABLE_COLUMNS } from '../lib/ScanContext';
 import type { FileState, InvoiceData, LineItem } from '../lib/ScanContext';
 import { useClient } from '../lib/ClientContext';
+import { isValidGSTIN } from '../utils/gstin';
+
+function formatDateToIso(dateStr: string | null | undefined): string | null {
+  if (!dateStr) return null;
+  const s = dateStr.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  
+  const match1 = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+  if (match1) {
+    const [, d, m, y] = match1;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  
+  const match2 = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (match2) {
+    const [, y, m, d] = match2;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  
+  return s; 
+}
 
 // Auth logic moved to App.tsx
 
@@ -38,15 +59,15 @@ function InvoiceRow({ fs, visibleColumns, onUpdate }: { fs: FileState, visibleCo
               {fs.savedToCloud && <span title="Saved to Cloud"><Cloud className="w-3 h-3 text-secondary" /></span>}
               <span className="truncate">{fs.file.name}</span>
             </div>
-            {data.Confidence_Score !== undefined && (
+            {data.Extraction_State && (
               <div>
                 <span className={cn(
                   "text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider",
-                  data.Confidence_Score >= 90 ? "bg-green-500/20 text-green-400" :
-                  data.Confidence_Score >= 70 ? "bg-yellow-500/20 text-yellow-400" :
+                  data.Extraction_State === 'auto_accepted' ? "bg-green-500/20 text-green-400" :
+                  data.Extraction_State === 'needs_review' ? "bg-yellow-500/20 text-yellow-400" :
                   "bg-red-500/20 text-red-400"
                 )}>
-                  {data.Confidence_Score}% Match
+                  {data.Extraction_State === 'auto_accepted' ? 'Auto Accepted' : data.Extraction_State === 'needs_review' ? 'Needs Review' : 'Needs Retry'}
                 </span>
               </div>
             )}
@@ -69,6 +90,28 @@ function InvoiceRow({ fs, visibleColumns, onUpdate }: { fs: FileState, visibleCo
       {expanded && (
         <tr className="bg-bg-sunken">
           <td colSpan={visibleColumns.length + 2} className="p-6 border-b border-border">
+            {data.Extraction_State !== 'auto_accepted' && data.Extraction_State && (
+              <div className={cn(
+                "mb-6 p-4 rounded-lg flex items-start gap-3 border",
+                data.Extraction_State === 'needs_retry' ? "bg-red-500/10 border-red-500/20 text-red-400" : "bg-yellow-500/10 border-yellow-500/20 text-yellow-400"
+              )}>
+                {data.Extraction_State === 'needs_retry' ? (
+                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+                )}
+                <div>
+                  <h4 className="text-sm font-semibold mb-1">
+                    {data.Extraction_State === 'needs_retry' ? "Low Confidence Extraction" : "Moderate Confidence Extraction"}
+                  </h4>
+                  <p className="text-xs opacity-90">
+                    {data.Extraction_State === 'needs_retry' 
+                      ? "The AI had difficulty reading this invoice. Accuracy may be poor. Please carefully review all fields below or retry the scan with a clearer image." 
+                      : "Please manually review and validate the extracted fields before saving to ensure accuracy."}
+                  </p>
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-6">
                <div className="space-y-3">
                  <h4 className="text-xs font-semibold text-accent uppercase flex items-center gap-2">Supplier Info</h4>
@@ -77,7 +120,28 @@ function InvoiceRow({ fs, visibleColumns, onUpdate }: { fs: FileState, visibleCo
                    {k:'Supplier_Email', l:'Email'}, {k:'Supplier_GSTIN', l:'GSTIN'}, {k:'Supplier_PAN', l:'PAN'}
                  ].map(f => (
                    <div key={f.k} className="flex flex-col">
-                     <label className="text-[10px] text-text-secondary uppercase tracking-wider">{f.l}</label>
+                     <div className="flex items-center justify-between">
+                       <label className="text-[10px] text-text-secondary uppercase tracking-wider">{f.l}</label>
+                       {(f.k === 'Supplier_GSTIN' || f.k === 'Buyer_GSTIN') && data[f.k] && (
+                         <div className="flex items-center gap-2">
+                           {!isValidGSTIN(data[f.k]) ? (
+                             <span className="text-[9px] text-red-500 font-medium">Invalid Format</span>
+                           ) : (
+                             <span className="text-[9px] text-green-500 font-medium">Valid Format</span>
+                           )}
+                           <a 
+                             href="https://services.gst.gov.in/services/searchtp" 
+                             target="_blank" 
+                             rel="noreferrer"
+                             onClick={() => navigator.clipboard.writeText(data[f.k])}
+                             title="Copy GSTIN and verify on Govt Portal"
+                             className="text-[9px] bg-accent/10 text-accent px-1.5 py-0.5 rounded hover:bg-accent hover:text-white transition-colors cursor-pointer"
+                           >
+                             Verify KYC
+                           </a>
+                         </div>
+                       )}
+                     </div>
                      <input type="text" defaultValue={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-border focus:border-accent px-0 py-1 text-sm text-text-primary outline-none w-full" />
                    </div>
                  ))}
@@ -90,7 +154,28 @@ function InvoiceRow({ fs, visibleColumns, onUpdate }: { fs: FileState, visibleCo
                    {k:'Buyer_GSTIN', l:'GSTIN'}, {k:'Buyer_PAN', l:'PAN'}, {k:'Place_Of_Supply', l:'Place of Supply'}
                  ].map(f => (
                    <div key={f.k} className="flex flex-col">
-                     <label className="text-[10px] text-text-secondary uppercase tracking-wider">{f.l}</label>
+                     <div className="flex items-center justify-between">
+                       <label className="text-[10px] text-text-secondary uppercase tracking-wider">{f.l}</label>
+                       {(f.k === 'Supplier_GSTIN' || f.k === 'Buyer_GSTIN') && data[f.k] && (
+                         <div className="flex items-center gap-2">
+                           {!isValidGSTIN(data[f.k]) ? (
+                             <span className="text-[9px] text-red-500 font-medium">Invalid Format</span>
+                           ) : (
+                             <span className="text-[9px] text-green-500 font-medium">Valid Format</span>
+                           )}
+                           <a 
+                             href="https://services.gst.gov.in/services/searchtp" 
+                             target="_blank" 
+                             rel="noreferrer"
+                             onClick={() => navigator.clipboard.writeText(data[f.k])}
+                             title="Copy GSTIN and verify on Govt Portal"
+                             className="text-[9px] bg-accent/10 text-accent px-1.5 py-0.5 rounded hover:bg-accent hover:text-white transition-colors cursor-pointer"
+                           >
+                             Verify KYC
+                           </a>
+                         </div>
+                       )}
+                     </div>
                      <input type="text" defaultValue={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-border focus:border-accent px-0 py-1 text-sm text-text-primary outline-none w-full" />
                    </div>
                  ))}
@@ -207,7 +292,125 @@ export default function ScanPage() {
     });
   };
 
+  const fetchPendingBatchInvoices = async () => {
+    if (!activeClientId) return;
+    const { data } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('client_id', activeClientId)
+      .eq('processing_status', 'pending');
+      
+    if (data && data.length > 0) {
+      // Map these pending DB records back to our frontend FileState
+      const newFiles = data.map(dbInv => {
+        // Only add if not already in our state
+        if (fileStates.some(f => f.id === dbInv.id)) return null;
+        return {
+          id: dbInv.id,
+          file: new File([""], dbInv.file_name || "batch_file"),
+          previewUrl: null,
+          isScanning: true, // Show scanning spinner since it's pending in background
+          extractedData: null,
+          error: null,
+          savedToCloud: false,
+          isBatch: true
+        };
+      }).filter(Boolean);
+      
+      if (newFiles.length > 0) {
+        setFileStates(prev => [...prev, ...newFiles as any]);
+      }
+    }
+  };
+
+  useEffect(() => {
+    // Setup realtime listener for batch updates
+    if (!activeClientId) return;
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'invoices', filter: `client_id=eq.${activeClientId}` },
+        (payload) => {
+          const updated = payload.new;
+          if (updated.processing_status === 'completed' || updated.processing_status === 'failed') {
+            // Update UI state
+            setFileStates(prev => prev.map(fs => {
+              if (fs.id === updated.id) {
+                if (updated.processing_status === 'failed') {
+                  return { ...fs, isScanning: false, error: updated.error_message || 'Batch processing failed' };
+                } else {
+                  return {
+                    ...fs,
+                    isScanning: false,
+                    savedToCloud: true,
+                    extractedData: {
+                      Supplier_Name: updated.supplier_name,
+                      Invoice_Number: updated.invoice_number,
+                      Total_Amount: updated.total_amount,
+                      Extraction_State: updated.extraction_state,
+                      Confidence_Score: updated.confidence_score,
+                      // mapped fields
+                    }
+                  };
+                }
+              }
+              return fs;
+            }));
+          }
+        }
+      )
+      .subscribe();
+      
+    fetchPendingBatchInvoices();
+      
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeClientId, fileStates]);
+
+  const handleZipUpload = async (file: File) => {
+    if (!activeClientId) {
+      toast.error("Please select a client first.");
+      return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('client_id', activeClientId);
+    
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Authentication required.");
+      
+      toast.loading("Uploading ZIP batch...", { id: "zip-upload" });
+      
+      const response = await fetch(`${apiUrl}/api/upload-batch`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: formData,
+      });
+      
+      if (!response.ok) throw new Error("Failed to upload ZIP");
+      const resData = await response.json();
+      
+      toast.success(`Queued ${resData.queued_ids?.length || 0} invoices for background processing!`, { id: "zip-upload" });
+      fetchPendingBatchInvoices();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload ZIP", { id: "zip-upload" });
+    }
+  };
+
   const onDrop = useCallback((acceptedFiles: File[]) => {
+    const zipFiles = acceptedFiles.filter(f => f.name.toLowerCase().endsWith('.zip'));
+    if (zipFiles.length > 0) {
+      handleZipUpload(zipFiles[0]);
+      return;
+    }
+
     const newFiles = acceptedFiles.map(file => {
       let previewUrl = null;
       if (file.type.startsWith('image/')) {
@@ -224,15 +427,18 @@ export default function ScanPage() {
       };
     });
     setFileStates(prev => [...prev, ...newFiles]);
-  }, []);
+  }, [activeClientId, fileStates]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'image/*': ['.jpeg', '.jpg', '.png'],
-      'application/pdf': ['.pdf']
+      'image/jpeg': ['.jpg', '.jpeg'],
+      'image/png': ['.png'],
+      'image/webp': ['.webp'],
+      'application/pdf': ['.pdf'],
+      'application/zip': ['.zip', '.x-zip-compressed']
     },
-    maxFiles: 10,
+    maxFiles: 50,
   });
 
   const removeFile = (id: string) => {
@@ -363,8 +569,8 @@ export default function ScanPage() {
           buyer_gstin: data.Buyer_GSTIN,
           buyer_pan: data.Buyer_PAN,
           place_of_supply: data.Place_Of_Supply,
-          invoice_date: data.Invoice_Date,
-          due_date: data.Due_Date,
+          invoice_date: formatDateToIso(data.Invoice_Date),
+          due_date: formatDateToIso(data.Due_Date),
           invoice_number: data.Invoice_Number,
           po_number: data.PO_Number,
           e_way_bill_number: data.E_Way_Bill_Number,
@@ -472,8 +678,8 @@ export default function ScanPage() {
             buyer_gstin: data.Buyer_GSTIN,
             buyer_pan: data.Buyer_PAN,
             place_of_supply: data.Place_Of_Supply,
-            invoice_date: data.Invoice_Date,
-            due_date: data.Due_Date,
+            invoice_date: formatDateToIso(data.Invoice_Date),
+            due_date: formatDateToIso(data.Due_Date),
             invoice_number: data.Invoice_Number,
             po_number: data.PO_Number,
             e_way_bill_number: data.E_Way_Bill_Number,
@@ -679,8 +885,8 @@ export default function ScanPage() {
               <div className="w-14 h-14 rounded-full bg-bg-sunken flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <UploadCloud className={cn("w-6 h-6", isDragActive ? "text-accent" : "text-text-secondary")} />
               </div>
-              <p className="font-medium text-text-primary mb-1">Drag & drop invoices</p>
-              <p className="text-xs text-text-secondary">JPG, PNG, PDF (Max 10)</p>
+              <p className="font-medium text-text-primary mb-1">Drag & drop invoices or ZIP folder</p>
+              <p className="text-xs text-text-secondary">JPG, PNG, PDF, ZIP (Max 50 files)</p>
             </div>
           </motion.div>
 

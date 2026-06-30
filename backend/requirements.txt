@@ -5,7 +5,9 @@ python-multipart
 requests
 python-dotenv
 openai
-pdf2image
+PyMuPDF
 httpx
 supabase
 pyjwt
+pandas
+openpyxl

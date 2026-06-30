@@ -57,11 +57,14 @@ export default function Layout() {
     await supabase.auth.signOut();
   };
 
+  const isBusiness = localStorage.getItem('accountType') === 'business';
+  
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Scan Invoices', path: '/scan', icon: ScanLine },
     { name: 'Saved Invoices', path: '/invoices', icon: FileText },
-    { name: 'Clients', path: '/clients', icon: Building2 },
+    { name: 'GSTR-2B Recon', path: '/reconcile', icon: FileText },
+    { name: isBusiness ? 'Businesses' : 'Clients', path: '/clients', icon: Building2 },
   ];
 
   return (
@@ -115,8 +118,8 @@ export default function Layout() {
               <Building2 className="w-4 h-4 text-accent shrink-0" />
               <span className="text-sm font-medium text-text-primary truncate">
                 {activeClientId 
-                  ? clients.find(c => c.id === activeClientId)?.client_name || 'Select Client'
-                  : 'Select Client'}
+                  ? clients.find(c => c.id === activeClientId)?.client_name || `Select ${isBusiness ? 'Business' : 'Client'}`
+                  : `Select ${isBusiness ? 'Business' : 'Client'}`}
               </span>
             </div>
             <ChevronDown className="w-4 h-4 text-text-secondary shrink-0" />
@@ -132,7 +135,7 @@ export default function Layout() {
               >
                 <div className="max-h-48 overflow-y-auto custom-scrollbar p-1">
                   {clients.length === 0 ? (
-                    <div className="p-3 text-xs text-text-secondary text-center">No clients found</div>
+                    <div className="p-3 text-xs text-text-secondary text-center">No {isBusiness ? 'businesses' : 'clients'} found</div>
                   ) : (
                     clients.map(client => (
                       <button
@@ -157,7 +160,7 @@ export default function Layout() {
                     onClick={() => { setClientMenuOpen(false); setMobileMenuOpen(false); }}
                     className="w-full text-left px-3 py-2 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-sunken rounded-md transition-colors flex items-center gap-2"
                   >
-                    <Settings className="w-3 h-3" /> Manage Clients
+                    <Settings className="w-3 h-3" /> Manage {isBusiness ? 'Businesses' : 'Clients'}
                   </Link>
                 </div>
               </motion.div>

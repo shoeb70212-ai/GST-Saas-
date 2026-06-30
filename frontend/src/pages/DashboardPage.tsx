@@ -1,9 +1,10 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { DollarSign, FileText, Settings, Loader2, CheckCircle2, TrendingUp, Building2 } from 'lucide-react';
+import { DollarSign, FileText, Settings, Loader2, CheckCircle2, TrendingUp, Building2, Briefcase } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useClient } from '../lib/ClientContext';
+import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const formatCurrency = (amount: number) => {
@@ -13,6 +14,8 @@ const formatCurrency = (amount: number) => {
     maximumFractionDigits: 0 
   }).format(amount);
 };
+
+import * as XLSX from 'xlsx';
 
 export const AVAILABLE_WIDGETS = [
   { key: 'total_taxable', label: 'Total Taxable Amount', icon: DollarSign },
@@ -29,6 +32,9 @@ export default function DashboardPage() {
   const { activeClientId, clients } = useClient();
   const [showSettings, setShowSettings] = useState(false);
   const [visibleWidgets, setVisibleWidgets] = useState<string[]>(DEFAULT_WIDGETS);
+  
+  const [salesTaxCollected, setSalesTaxCollected] = useState<number>(0);
+  const [isSalesRegisterUploaded, setIsSalesRegisterUploaded] = useState(false);
   
   const { data: invoices, isLoading } = useQuery({
     queryKey: ['invoices', activeClientId],
@@ -116,18 +122,93 @@ export default function DashboardPage() {
     }
   };
 
+  const handleSalesRegisterUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
+        
+        let totalSalesTax = 0;
+        data.forEach((row: any) => {
+          // Look for common tax columns in sales register
+          const taxCols = ['tax', 'cgst', 'sgst', 'igst', 'total tax', 'tax amount'];
+          Object.keys(row).forEach(key => {
+            if (taxCols.some(t => key.toLowerCase().includes(t))) {
+              const val = parseFloat(row[key]);
+              if (!isNaN(val)) totalSalesTax += val;
+            }
+          });
+        });
+        
+        setSalesTaxCollected(totalSalesTax);
+        setIsSalesRegisterUploaded(true);
+      } catch (err) {
+        console.error("Failed to parse Sales Register", err);
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
   if (!activeClientId) {
     return (
       <div className="p-4 md:p-8 max-w-7xl mx-auto h-[80vh] flex flex-col items-center justify-center text-center">
         <div className="w-20 h-20 rounded-full bg-bg-sunken flex items-center justify-center mb-6">
           <Building2 className="w-10 h-10 text-text-disabled" />
         </div>
-        <h2 className="text-2xl font-bold text-text-primary mb-2">No Active Client Selected</h2>
-        <p className="text-text-secondary max-w-md mb-6">
-          Please select a client from the sidebar dropdown to view their specific dashboard metrics and invoices.
+        <h2 className="text-3xl font-bold text-text-primary mb-2">Welcome to LedgerLens</h2>
+        <p className="text-text-secondary max-w-md mb-8">
+          How will you be using LedgerLens? Choose your account type to set up your workspace.
         </p>
-        {clients.length === 0 && (
-          <Link to="/clients" className="btn-primary">Manage Clients</Link>
+        
+        {clients.length === 0 ? (
+          <div className="flex flex-col gap-4 w-full max-w-xs mx-auto">
+             <button 
+               onClick={async () => {
+                 try {
+                   toast.loading("Setting up your workspace...", { id: "setup" });
+                   const { data: { user } } = await supabase.auth.getUser();
+                   if (!user) throw new Error("Not authenticated");
+                   const { error } = await supabase.from('clients').insert({
+                     user_id: user.id,
+                     client_name: 'My Business',
+                     gstin: 'PENDING'
+                   });
+                   if (error) throw error;
+                   localStorage.setItem('accountType', 'business');
+                   toast.success("Workspace ready!", { id: "setup" });
+                   window.location.reload(); 
+                 } catch (err: any) {
+                   toast.error(err.message || "Failed to setup workspace", { id: "setup" });
+                 }
+               }}
+               className="btn-primary flex items-center justify-center gap-3 py-3 w-full"
+             >
+               <Briefcase className="w-5 h-5" /> I'm a Single Business
+             </button>
+             <button 
+               onClick={() => {
+                 localStorage.setItem('accountType', 'firm');
+                 window.location.href = '/clients';
+               }} 
+               className="btn-secondary flex items-center justify-center gap-3 py-3 w-full"
+             >
+               <Building2 className="w-5 h-5" /> I'm an Accounting Firm
+             </button>
+          </div>
+        ) : (
+          <div className="mt-4">
+             <p className="text-text-secondary max-w-md mb-6">
+               Please select a workspace from the sidebar dropdown to view its specific dashboard metrics and invoices.
+             </p>
+             <Link to="/clients" className="btn-primary">Manage {localStorage.getItem('accountType') === 'business' ? 'Businesses' : 'Clients'}</Link>
+          </div>
         )}
       </div>
     );
@@ -206,6 +287,50 @@ export default function DashboardPage() {
             No widgets selected. Click Customize to add widgets to your dashboard.
           </div>
         )}
+      </div>
+
+      {/* Tax Liability Predictor Widget */}
+      <div className="card bg-gradient-to-br from-bg-surface to-bg-sunken border-accent/20 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-accent/5 rounded-full blur-[80px] pointer-events-none"></div>
+        <div className="flex flex-col md:flex-row gap-8 justify-between items-start md:items-center relative z-10">
+          <div>
+            <h2 className="text-xl font-bold text-text-primary mb-2 flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-accent" /> Tax Liability Predictor
+            </h2>
+            <p className="text-sm text-text-secondary max-w-md">
+              Import your Sales Register (Excel) to instantly calculate your estimated GST cash liability for this period.
+            </p>
+            
+            <div className="mt-4 flex items-center gap-4">
+              <div className="relative">
+                <input type="file" accept=".xlsx,.xls,.csv" onChange={handleSalesRegisterUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                <button className="btn-secondary text-sm">Upload Sales Register</button>
+              </div>
+              {isSalesRegisterUploaded && (
+                <span className="text-success text-sm flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> Loaded</span>
+              )}
+            </div>
+          </div>
+          
+          <div className="flex-1 w-full md:w-auto md:max-w-xs card bg-bg-base/50 border border-white/5 backdrop-blur-sm">
+            <div className="space-y-2 mb-4 pb-4 border-b border-white/5">
+              <div className="flex justify-between text-sm">
+                <span className="text-text-secondary">Sales Tax Collected:</span>
+                <span className="font-mono text-text-primary">{formatCurrency(salesTaxCollected)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-text-secondary">Purchase ITC (from DB):</span>
+                <span className="font-mono text-success">-{formatCurrency(metrics.totalCgst + metrics.totalSgst + metrics.totalIgst)}</span>
+              </div>
+            </div>
+            <div className="flex justify-between font-bold">
+              <span className="text-text-primary">Est. Cash Liability:</span>
+              <span className={`font-mono ${salesTaxCollected - (metrics.totalCgst + metrics.totalSgst + metrics.totalIgst) > 0 ? 'text-error' : 'text-success'}`}>
+                {formatCurrency(Math.max(0, salesTaxCollected - (metrics.totalCgst + metrics.totalSgst + metrics.totalIgst)))}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="space-y-4">

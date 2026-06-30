@@ -1,5 +1,5 @@
 -- 1. Create the new Clients Table
-CREATE TABLE clients (
+CREATE TABLE IF NOT EXISTS clients (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   client_name TEXT NOT NULL,

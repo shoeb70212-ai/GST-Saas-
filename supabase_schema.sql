@@ -11,7 +11,8 @@ CREATE TABLE clients (
   gstin TEXT,
   pan TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, gstin)
 );
 
 -- 2. Invoices Table
@@ -32,8 +33,8 @@ CREATE TABLE invoices (
   buyer_gstin TEXT,
   buyer_pan TEXT,
   place_of_supply TEXT,
-  invoice_date TEXT,
-  due_date TEXT,
+  invoice_date DATE,
+  due_date DATE,
   invoice_number TEXT,
   po_number TEXT,
   e_way_bill_number TEXT,
@@ -45,6 +46,9 @@ CREATE TABLE invoices (
   round_off DECIMAL(12,2),
   total_amount DECIMAL(12,2),
   gst_amount DECIMAL(12,2),
+  gst_math_valid BOOLEAN GENERATED ALWAYS AS (
+    round(COALESCE(taxable_amount, 0) + COALESCE(cgst_amount, 0) + COALESCE(sgst_amount, 0) + COALESCE(igst_amount, 0) + COALESCE(round_off, 0), 2) = round(COALESCE(total_amount, 0), 2)
+  ) STORED,
   confidence_score DECIMAL(5,2),
   amount_in_words TEXT,
   received_amount DECIMAL(12,2),
@@ -57,6 +61,8 @@ CREATE TABLE invoices (
   branch_name TEXT,
   ifsc_code TEXT,
   upi_id TEXT,
+  recon_status TEXT CHECK (recon_status IN ('unreconciled', 'matched', 'mismatch', 'missing_in_2b', 'missing_in_pr')),
+  recon_period TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -158,3 +164,57 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+
+-- Missing Indexes for Performance
+CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices(user_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_client_id ON invoices(client_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_supplier_gstin ON invoices(supplier_gstin);
+CREATE INDEX IF NOT EXISTS idx_clients_user_id ON clients(user_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_id_user_id ON invoices(id, user_id);
+
+-- Auto-update updated_at trigger function
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+   NEW.updated_at = NOW();
+   RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER update_clients_updated_at BEFORE UPDATE ON clients FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+CREATE TRIGGER update_invoices_updated_at BEFORE UPDATE ON invoices FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+
+-- Atomic Credit Deduction RPC
+CREATE OR REPLACE FUNCTION decrement_credits(user_id_param UUID)
+RETURNS INTEGER AS $$
+DECLARE
+  current_credits INTEGER;
+BEGIN
+  UPDATE profiles
+  SET credits = credits - 1
+  WHERE id = user_id_param AND credits > 0
+  RETURNING credits INTO current_credits;
+  
+  RETURN COALESCE(current_credits, -1);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- GSTR-2B Records Table
+CREATE TABLE gstr2b_records (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+  period TEXT NOT NULL,
+  supplier_gstin TEXT NOT NULL,
+  invoice_number TEXT,
+  invoice_date DATE,
+  taxable_value DECIMAL(12,2),
+  igst DECIMAL(12,2),
+  cgst DECIMAL(12,2),
+  sgst DECIMAL(12,2),
+  itc_available TEXT,
+  raw_json JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE gstr2b_records ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own gstr2b_records" ON gstr2b_records FOR ALL USING (auth.uid() = user_id);

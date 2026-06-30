@@ -8,10 +8,42 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
+import re
+
+def compute_confidence(extracted: dict, computed_total: float) -> dict:
+    score = 100.0
+    penalties = 0.0
+    
+    supplier_gstin = extracted.get("Supplier_GSTIN")
+    if supplier_gstin:
+        if not re.match(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$', supplier_gstin.upper()):
+            penalties += 25.0
+    else:
+        penalties += 15.0
+        
+    total_amount = extracted.get("Total_Amount") or 0.0
+    if abs(computed_total - total_amount) > 1.0:
+        penalties += 30.0
+        
+    required = ["Supplier_Name", "Invoice_Number", "Invoice_Date", "Total_Amount"]
+    missing = [f for f in required if not extracted.get(f)]
+    penalties += len(missing) * 10.0
+    
+    final_score = max(0.0, score - penalties)
+    
+    if final_score >= 95:
+        state = "auto_accepted"
+    elif final_score >= 85:
+        state = "needs_review"
+    else:
+        state = "needs_retry"
+        
+    return {"score": final_score, "state": state}
 
 load_dotenv()
 
 app = FastAPI(title="InvoiceScanner AI Backend")
+
 
 # Allow frontend to communicate with backend
 app.add_middleware(
@@ -60,7 +92,7 @@ class LineItem(BaseModel):
     Tax_Rate: float | None = Field(description="GST tax rate percentage for this item if specified")
 
 class InvoiceData(BaseModel):
-    Confidence_Score: float | None = Field(description="A score from 0.0 to 100.0 indicating how confident you are in the overall extraction accuracy. If the image is blurry, handwritten, or ambiguous, return a lower score. Return 95-100 for perfect digital invoices.")
+    Expense_Category: str | None = Field(description="Suggested accounting ledger category (e.g., Office Supplies, IT Software, Travel, Legal Fees, etc.) based on the line items.")
     Supplier_Name: str | None = Field(description="Name of the supplier")
     Supplier_Address: str | None = Field(description="Full address of the supplier")
     Supplier_Phone: str | None = Field(description="Phone number of the supplier")
@@ -142,27 +174,59 @@ async def scan_invoice(file: UploadFile = File(...), authorization: str = Header
     mime_type = file.content_type
     if mime_type == "application/pdf":
         try:
-            from pdf2image import convert_from_bytes
-            # Poppler needs to be installed on the system
-            pages = convert_from_bytes(content)
-            if not pages:
+            import fitz
+            doc = fitz.open(stream=content, filetype="pdf")
+            if not doc:
                 raise HTTPException(status_code=400, detail="Could not read PDF pages.")
-            # Take the first page for now
-            first_page = pages[0]
-            img_byte_arr = io.BytesIO()
-            first_page.save(img_byte_arr, format='JPEG')
-            content = img_byte_arr.getvalue()
+            
+            best_page_index = 0
+            best_score = 0
+            gst_keywords = ["gstin", "invoice", "taxable", "cgst", "sgst", "igst", "hsn", "total"]
+            
+            for i in range(len(doc)):
+                page = doc[i]
+                text = page.get_text().lower()
+                score = sum(text.count(kw) for kw in gst_keywords)
+                if score > best_score:
+                    best_score = score
+                    best_page_index = i
+            
+            best_page = doc[best_page_index]
+            pix = best_page.get_pixmap(dpi=200)
+            content = pix.tobytes("jpeg")
             mime_type = "image/jpeg"
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to process PDF. Make sure poppler is installed on the system. Error: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to process PDF. Error: {str(e)}")
 
+    base64_image = base64.b64encode(content).decode('utf-8')
+    image_url = f"data:{mime_type};base64,{base64_image}"
+
+    try:
+        data_dict = await run_ai_extraction(content, mime_type)
+        
+        # Deduct Credit (Atomic RPC)
+        async with httpx.AsyncClient() as http_client:
+            rpc_resp = await http_client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/decrement_credits",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={"user_id_param": user_id}
+            )
+            if rpc_resp.status_code != 200:
+                print(f"Failed to deduct credits. RPC response: {rpc_resp.text}")
+                
+        return {"status": "success", "data": data_dict}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def run_ai_extraction(content: bytes, mime_type: str):
     base64_image = base64.b64encode(content).decode('utf-8')
     image_url = f"data:{mime_type};base64,{base64_image}"
 
     prompt = """
     You are an expert Indian Chartered Accountant assistant. 
     Analyze the following invoice image and extract the requested fields perfectly, including all line items.
-    Pay close attention to image clarity and provide an accurate Confidence_Score between 0 and 100.
+    DO NOT hallucinate optional fields like PO_Number, E_Way_Bill_Number, Vehicle_Number, or Bank details. If they are not explicitly printed, return null.
+    For the Expense_Category field, suggest a standard accounting ledger category based on the line items.
     """
 
     try:
@@ -216,18 +280,15 @@ async def scan_invoice(file: UploadFile = File(...), authorization: str = Header
         data_dict["SGST_Amount"] = round(sgst, 2)
         data_dict["IGST_Amount"] = round(igst, 2)
         
+        computed_total = round(taxable + cgst + sgst + igst + (data_dict.get("Round_Off") or 0), 2)
         if not data_dict.get("Total_Amount"):
-            data_dict["Total_Amount"] = round(taxable + cgst + sgst + igst + (data_dict.get("Round_Off") or 0), 2)
+            data_dict["Total_Amount"] = computed_total
             
-        # Deduct Credit
-        async with httpx.AsyncClient() as http_client:
-            await http_client.patch(
-                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json={"credits": credits - 1}
-            )
-            
-        return {"status": "success", "data": data_dict}
+        confidence = compute_confidence(data_dict, computed_total)
+        data_dict["Confidence_Score"] = confidence["score"]
+        data_dict["Extraction_State"] = confidence["state"]
+        
+        return data_dict
         
     except Exception as e:
         print(f"Primary AI failed with error: {e}. Attempting fallback to Gemini...")
@@ -273,19 +334,22 @@ async def scan_invoice(file: UploadFile = File(...), authorization: str = Header
                 data_dict["CGST_Amount"] = round(cgst, 2)
                 data_dict["SGST_Amount"] = round(sgst, 2)
                 data_dict["IGST_Amount"] = round(igst, 2)
+                computed_total = round(taxable + cgst + sgst + igst + (data_dict.get("Round_Off") or 0), 2)
                 if not data_dict.get("Total_Amount"):
-                    data_dict["Total_Amount"] = round(taxable + cgst + sgst + igst + (data_dict.get("Round_Off") or 0), 2)
+                    data_dict["Total_Amount"] = computed_total
                     
-                # Deduct Credit
-                async with httpx.AsyncClient() as http_client:
-                    await http_client.patch(
-                        f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
-                        headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                        json={"credits": credits - 1}
-                    )
-                    
-                return {"status": "success", "data": data_dict, "source": "gemini"}
+                confidence = compute_confidence(data_dict, computed_total)
+                data_dict["Confidence_Score"] = confidence["score"]
+                data_dict["Extraction_State"] = confidence["state"]
+                
+                return data_dict
             except Exception as gemini_e:
                 raise HTTPException(status_code=500, detail=f"Both primary AI and Gemini fallback failed. Gemini Error: {str(gemini_e)}")
         else:
             raise HTTPException(status_code=500, detail=f"Error communicating with OpenAI (no fallback available): {str(e)}")
+
+from batch_routes import router as batch_router
+from reconcile_routes import router as reconcile_router
+
+app.include_router(batch_router)
+app.include_router(reconcile_router)

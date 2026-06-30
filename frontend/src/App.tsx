@@ -11,10 +11,13 @@ import SavedInvoicesPage from './pages/SavedInvoicesPage';
 import SettingsPage from './pages/SettingsPage';
 import ClientsPage from './pages/ClientsPage';
 import LandingPage from './pages/LandingPage';
+import ReconciliationPage from './pages/ReconciliationPage';
+import CollaborationPortal from './pages/CollaborationPortal';
 import { ScanProvider } from './lib/ScanContext';
 import { ClientProvider } from './lib/ClientContext';
 import { Toaster } from 'react-hot-toast';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -74,10 +77,12 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
     <ClientProvider>
     <ScanProvider>
+      <ErrorBoundary>
       <BrowserRouter>
         <Routes>
           {/* Public Routes */}
           <Route path="/" element={<LandingPage />} />
+          <Route path="/portal/:clientId" element={<CollaborationPortal />} />
           <Route path="/auth" element={session ? <Navigate to="/dashboard" replace /> : <AuthPage />} />
           
           {/* Protected Routes */}
@@ -85,9 +90,13 @@ export default function App() {
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="scan" element={<ScanPage />} />
             <Route path="invoices" element={<SavedInvoicesPage />} />
+            <Route path="reconcile" element={<ReconciliationPage />} />
             <Route path="clients" element={<ClientsPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
+          
+          {/* Catch-all 404 Route */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         <Toaster position="bottom-right" toastOptions={{
           style: {
@@ -97,6 +106,7 @@ export default function App() {
           }
         }} />
       </BrowserRouter>
+      </ErrorBoundary>
     </ScanProvider>
     </ClientProvider>
     </QueryClientProvider>

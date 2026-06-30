@@ -11,6 +11,10 @@ export default function ClientsPage() {
   const [formData, setFormData] = useState({ client_name: '', gstin: '', pan: '' });
   const [isSaving, setIsSaving] = useState(false);
 
+  const isBusiness = localStorage.getItem('accountType') === 'business';
+  const entityName = isBusiness ? 'Business' : 'Client';
+  const entityNamePlural = isBusiness ? 'Businesses' : 'Clients';
+
   const resetForm = () => {
     setFormData({ client_name: '', gstin: '', pan: '' });
     setIsAdding(false);
@@ -40,7 +44,7 @@ export default function ClientsPage() {
           .update(formData)
           .eq('id', editingId);
         if (error) throw error;
-        toast.success('Client updated successfully');
+        toast.success(`${entityName} updated successfully`);
       } else {
         const { error, data } = await supabase
           .from('clients')
@@ -54,12 +58,12 @@ export default function ClientsPage() {
           setActiveClientId(data.id);
         }
         
-        toast.success('Client added successfully');
+        toast.success(`${entityName} added successfully`);
       }
       await refreshClients();
       resetForm();
     } catch (error: any) {
-      toast.error(error.message || 'Failed to save client');
+      toast.error(error.message || `Failed to save ${entityName.toLowerCase()}`);
       console.error(error);
     } finally {
       setIsSaving(false);
@@ -74,13 +78,13 @@ export default function ClientsPage() {
     try {
       const { error } = await supabase.from('clients').delete().eq('id', id);
       if (error) throw error;
-      toast.success('Client deleted');
+      toast.success(`${entityName} deleted`);
       if (activeClientId === id) {
         setActiveClientId(null);
       }
       await refreshClients();
     } catch (error: any) {
-      toast.error('Failed to delete client');
+      toast.error(`Failed to delete ${entityName.toLowerCase()}`);
       console.error(error);
     }
   };
@@ -94,8 +98,8 @@ export default function ClientsPage() {
       
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary mb-2">Client Management</h1>
-          <p className="text-text-secondary">Manage your clients to keep their invoices strictly separated.</p>
+          <h1 className="text-2xl font-bold text-text-primary mb-2">{entityName} Management</h1>
+          <p className="text-text-secondary">Manage your {entityNamePlural.toLowerCase()} to keep their invoices strictly separated.</p>
         </div>
         
         {!isAdding && !editingId && (
@@ -103,7 +107,7 @@ export default function ClientsPage() {
             onClick={() => setIsAdding(true)}
             className="btn-primary"
           >
-            <Plus className="w-4 h-4" /> Add Client
+            <Plus className="w-4 h-4" /> Add {entityName}
           </button>
         )}
       </div>
@@ -111,11 +115,11 @@ export default function ClientsPage() {
       {(isAdding || editingId) && (
         <div className="card p-6 border-accent/20 bg-accent-subtle/5">
           <h2 className="text-lg font-semibold text-text-primary mb-4">
-            {editingId ? 'Edit Client' : 'Add New Client'}
+            {editingId ? `Edit ${entityName}` : `Add New ${entityName}`}
           </h2>
           <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-text-primary">Client / Business Name <span className="text-error">*</span></label>
+              <label className="text-sm font-medium text-text-primary">{entityName} Name <span className="text-error">*</span></label>
               <input
                 type="text"
                 required
@@ -152,7 +156,7 @@ export default function ClientsPage() {
               </button>
               <button type="submit" disabled={isSaving} className="btn-primary">
                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                {editingId ? 'Save Changes' : 'Create Client'}
+                {editingId ? 'Save Changes' : `Create ${entityName}`}
               </button>
             </div>
           </form>
@@ -164,12 +168,12 @@ export default function ClientsPage() {
           <div className="w-16 h-16 rounded-full bg-bg-sunken flex items-center justify-center mb-4">
             <Building2 className="w-8 h-8 text-text-disabled" />
           </div>
-          <h3 className="text-lg font-bold text-text-primary mb-2">No Clients Yet</h3>
+          <h3 className="text-lg font-bold text-text-primary mb-2">No {entityNamePlural} Yet</h3>
           <p className="text-text-secondary max-w-md mb-6">
-            Add your first client to start organizing invoices and managing their data securely.
+            Add your first {entityName.toLowerCase()} to start organizing invoices and managing their data securely.
           </p>
           <button onClick={() => setIsAdding(true)} className="btn-primary">
-            <Plus className="w-4 h-4" /> Add Your First Client
+            <Plus className="w-4 h-4" /> Add Your First {entityName}
           </button>
         </div>
       ) : (

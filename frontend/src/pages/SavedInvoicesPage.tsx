@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { Loader2, FileText, Search, Download, X, DollarSign, Filter, Building2, MapPin, Settings, CheckCircle2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -9,6 +9,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { AVAILABLE_COLUMNS, DEFAULT_COLUMNS } from '../lib/ScanContext';
 import { useClient } from '../lib/ClientContext';
+import { isValidGSTIN } from '../utils/gstin';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -23,6 +24,7 @@ const formatCurrency = (amount: number) => {
 
 export default function SavedInvoicesPage() {
   const { activeClientId } = useClient();
+  const queryClient = useQueryClient();
   
   const { data: rawInvoices, isLoading: invoicesLoading } = useQuery({
     queryKey: ['invoices', activeClientId],
@@ -183,6 +185,107 @@ export default function SavedInvoicesPage() {
     }
   };
 
+  const handleExportTallyXML = async () => {
+    if (filteredInvoices.length === 0) {
+      toast.error("No invoices to export.");
+      return;
+    }
+    
+    setIsExporting(true);
+    try {
+      const invoiceIds = filteredInvoices.map(inv => inv.id);
+      
+      const { data: allLineItems, error } = await supabase
+        .from('invoice_line_items')
+        .select('*')
+        .in('invoice_id', invoiceIds);
+        
+      if (error) throw error;
+
+      let xmlStr = `<ENVELOPE>\n  <HEADER>\n    <TALLYREQUEST>Import Data</TALLYREQUEST>\n  </HEADER>\n  <BODY>\n    <IMPORTDATA>\n      <REQUESTDESC>\n        <REPORTNAME>Vouchers</REPORTNAME>\n      </REQUESTDESC>\n      <REQUESTDATA>\n`;
+
+      filteredInvoices.forEach(inv => {
+        const items = allLineItems?.filter(li => li.invoice_id === inv.id) || [];
+        const invDate = inv.invoice_date ? inv.invoice_date.replace(/-/g, '') : '';
+        
+        xmlStr += `        <TALLYMESSAGE xmlns:UDF="TallyUDF">\n`;
+        xmlStr += `          <VOUCHER VCHTYPE="Purchase" ACTION="Create">\n`;
+        xmlStr += `            <DATE>${invDate}</DATE>\n`;
+        xmlStr += `            <VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>\n`;
+        xmlStr += `            <VOUCHERNUMBER>${inv.invoice_number || ''}</VOUCHERNUMBER>\n`;
+        xmlStr += `            <PARTYLEDGERNAME>${(inv.supplier_name || '').replace(/&/g, '&amp;')}</PARTYLEDGERNAME>\n`;
+        xmlStr += `            <PARTYNAME>${(inv.supplier_name || '').replace(/&/g, '&amp;')}</PARTYNAME>\n`;
+        
+        // Ledger entries
+        xmlStr += `            <ALLLEDGERENTRIES.LIST>\n`;
+        xmlStr += `              <LEDGERNAME>${(inv.supplier_name || '').replace(/&/g, '&amp;')}</LEDGERNAME>\n`;
+        xmlStr += `              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>\n`;
+        xmlStr += `              <AMOUNT>${inv.total_amount || 0}</AMOUNT>\n`;
+        xmlStr += `            </ALLLEDGERENTRIES.LIST>\n`;
+
+        items.forEach(item => {
+           xmlStr += `            <ALLLEDGERENTRIES.LIST>\n`;
+           xmlStr += `              <LEDGERNAME>${(inv.expense_category || 'Purchase').replace(/&/g, '&amp;')}</LEDGERNAME>\n`;
+           xmlStr += `              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>\n`;
+           xmlStr += `              <AMOUNT>-${item.amount || 0}</AMOUNT>\n`;
+           xmlStr += `            </ALLLEDGERENTRIES.LIST>\n`;
+        });
+        
+        if (inv.cgst_amount) {
+           xmlStr += `            <ALLLEDGERENTRIES.LIST>\n`;
+           xmlStr += `              <LEDGERNAME>CGST</LEDGERNAME>\n`;
+           xmlStr += `              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>\n`;
+           xmlStr += `              <AMOUNT>-${inv.cgst_amount}</AMOUNT>\n`;
+           xmlStr += `            </ALLLEDGERENTRIES.LIST>\n`;
+        }
+        if (inv.sgst_amount) {
+           xmlStr += `            <ALLLEDGERENTRIES.LIST>\n`;
+           xmlStr += `              <LEDGERNAME>SGST</LEDGERNAME>\n`;
+           xmlStr += `              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>\n`;
+           xmlStr += `              <AMOUNT>-${inv.sgst_amount}</AMOUNT>\n`;
+           xmlStr += `            </ALLLEDGERENTRIES.LIST>\n`;
+        }
+        if (inv.igst_amount) {
+           xmlStr += `            <ALLLEDGERENTRIES.LIST>\n`;
+           xmlStr += `              <LEDGERNAME>IGST</LEDGERNAME>\n`;
+           xmlStr += `              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>\n`;
+           xmlStr += `              <AMOUNT>-${inv.igst_amount}</AMOUNT>\n`;
+           xmlStr += `            </ALLLEDGERENTRIES.LIST>\n`;
+        }
+
+        xmlStr += `          </VOUCHER>\n`;
+        xmlStr += `        </TALLYMESSAGE>\n`;
+      });
+
+      xmlStr += `      </REQUESTDATA>\n    </IMPORTDATA>\n  </BODY>\n</ENVELOPE>`;
+
+      const blob = new Blob([xmlStr], { type: 'application/xml' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'Tally_Vouchers.xml';
+      a.click();
+      window.URL.revokeObjectURL(url);
+      toast.success("Exported to Tally XML successfully!");
+
+    } catch (err) {
+      console.error("XML Export failed:", err);
+      toast.error("Failed to export to Tally XML.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleUpdateCategory = async (invoiceId: string, category: string) => {
+    try {
+      const { error } = await supabase.from('invoices').update({ expense_category: category }).eq('id', invoiceId);
+      if (error) throw error;
+      toast.success("Category updated");
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    } catch (e) {
+      toast.error("Failed to update category");
+    }
+  };
 
 
   if (loading) {
@@ -213,6 +316,15 @@ export default function SavedInvoicesPage() {
           >
             {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             Excel
+          </button>
+          
+          <button 
+            onClick={handleExportTallyXML}
+            disabled={isExporting || filteredInvoices.length === 0}
+            className="btn-primary flex-1 md:flex-none disabled:opacity-50"
+          >
+            {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+            Tally XML
           </button>
 
           <div className="relative">
@@ -345,10 +457,12 @@ export default function SavedInvoicesPage() {
                     );
                   })}
                   <td className="p-4 text-center">
-                    {(inv.confidence_score || 0) > 80 ? (
-                      <span className="badge bg-success-subtle text-success border border-success/20">Processed</span>
-                    ) : (
+                    {inv.extraction_state === 'needs_retry' ? (
+                      <span className="badge bg-error-subtle text-error border border-error/20">Needs Retry</span>
+                    ) : inv.extraction_state === 'needs_review' ? (
                       <span className="badge bg-warning-subtle text-warning border border-warning/20">Review</span>
+                    ) : (
+                      <span className="badge bg-success-subtle text-success border border-success/20">Processed</span>
                     )}
                   </td>
                 </tr>
@@ -411,7 +525,28 @@ export default function SavedInvoicesPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <div className="text-xs text-text-secondary uppercase">GSTIN</div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs text-text-secondary uppercase">GSTIN</span>
+                            {selectedInvoice.supplier_gstin && (
+                                <div className="flex items-center gap-2">
+                                  {!isValidGSTIN(selectedInvoice.supplier_gstin) ? (
+                                    <span className="text-[9px] text-red-500 font-medium bg-red-500/10 px-1 rounded">Invalid</span>
+                                  ) : (
+                                    <span className="text-[9px] text-green-500 font-medium bg-green-500/10 px-1 rounded">Valid</span>
+                                  )}
+                                  <a 
+                                    href="https://services.gst.gov.in/services/searchtp" 
+                                    target="_blank" 
+                                    rel="noreferrer"
+                                    onClick={() => navigator.clipboard.writeText(selectedInvoice.supplier_gstin)}
+                                    title="Copy GSTIN and verify on Govt Portal"
+                                    className="text-[9px] bg-accent/10 text-accent px-1.5 py-0.5 rounded hover:bg-accent hover:text-white transition-colors cursor-pointer"
+                                  >
+                                    Verify
+                                  </a>
+                                </div>
+                            )}
+                          </div>
                           <div className="font-mono text-sm">{selectedInvoice.supplier_gstin || '-'}</div>
                         </div>
                         <div>
@@ -446,7 +581,28 @@ export default function SavedInvoicesPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <div className="text-xs text-text-secondary uppercase">GSTIN</div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs text-text-secondary uppercase">GSTIN</span>
+                            {selectedInvoice.buyer_gstin && (
+                                <div className="flex items-center gap-2">
+                                  {!isValidGSTIN(selectedInvoice.buyer_gstin) ? (
+                                    <span className="text-[9px] text-red-500 font-medium bg-red-500/10 px-1 rounded">Invalid</span>
+                                  ) : (
+                                    <span className="text-[9px] text-green-500 font-medium bg-green-500/10 px-1 rounded">Valid</span>
+                                  )}
+                                  <a 
+                                    href="https://services.gst.gov.in/services/searchtp" 
+                                    target="_blank" 
+                                    rel="noreferrer"
+                                    onClick={() => navigator.clipboard.writeText(selectedInvoice.buyer_gstin)}
+                                    title="Copy GSTIN and verify on Govt Portal"
+                                    className="text-[9px] bg-accent/10 text-accent px-1.5 py-0.5 rounded hover:bg-accent hover:text-white transition-colors cursor-pointer"
+                                  >
+                                    Verify
+                                  </a>
+                                </div>
+                            )}
+                          </div>
                           <div className="font-mono text-sm">{selectedInvoice.buyer_gstin || '-'}</div>
                         </div>
                         <div>
@@ -463,6 +619,33 @@ export default function SavedInvoicesPage() {
                         <div className="text-sm font-mono">{selectedInvoice.buyer_pin || '-'}</div>
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                {/* Categorization */}
+                <div className="card bg-bg-surface p-4 border border-border">
+                  <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2"><Settings className="w-4 h-4 text-primary" /> Categorization</h3>
+                  <div>
+                    <label className="text-xs text-text-secondary uppercase mb-2 block">Expense Category</label>
+                    <select 
+                      className="input-field w-full md:w-1/2"
+                      value={selectedInvoice.expense_category || ''}
+                      onChange={(e) => {
+                         const val = e.target.value;
+                         setSelectedInvoice({...selectedInvoice, expense_category: val});
+                         handleUpdateCategory(selectedInvoice.id, val);
+                      }}
+                    >
+                      <option value="">Select Category...</option>
+                      <option value="Purchase">Purchase</option>
+                      <option value="IT Software">IT Software</option>
+                      <option value="Office Supplies">Office Supplies</option>
+                      <option value="Travel">Travel</option>
+                      <option value="Legal & Professional Fees">Legal & Professional Fees</option>
+                      <option value="Advertising & Marketing">Advertising & Marketing</option>
+                      <option value="Rent & Lease">Rent & Lease</option>
+                      <option value="Utilities">Utilities</option>
+                    </select>
                   </div>
                 </div>
 

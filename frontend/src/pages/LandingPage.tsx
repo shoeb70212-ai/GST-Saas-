@@ -253,7 +253,7 @@ export default function LandingPage() {
                 </div>
                 <span className="px-3 py-1 bg-white/10 text-white/80 text-xs font-bold uppercase tracking-wider rounded-full">Coming Soon</span>
               </div>
-              <h3 className="text-xl font-semibold mb-2">Vendor KYC Verification</h3>
+              <h3 className="text-xl font-semibold mb-2">Vendor GSTIN Verification</h3>
               <p className="text-slate-400 leading-relaxed">Automated GSTIN portal pinging. If a client uploads a bill from a vendor with a cancelled GSTIN, the system flags it instantly to prevent penalties.</p>
             </div>
           </div>
