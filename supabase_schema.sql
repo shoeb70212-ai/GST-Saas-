@@ -222,3 +222,9 @@ CREATE TABLE gstr2b_records (
 );
 ALTER TABLE gstr2b_records ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can manage their own gstr2b_records" ON gstr2b_records FOR ALL USING (auth.uid() = user_id);
+
+-- Phase 15: Performance Indexes
+CREATE INDEX IF NOT EXISTS idx_invoices_client_date ON public.invoices(client_id, invoice_date DESC);
+CREATE INDEX IF NOT EXISTS idx_invoices_client_recon ON public.invoices(client_id, recon_status);
+CREATE INDEX IF NOT EXISTS idx_invoices_processing ON public.invoices(processing_status);
+CREATE INDEX IF NOT EXISTS idx_line_items_invoice ON public.invoice_line_items(invoice_id);

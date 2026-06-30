@@ -135,7 +135,9 @@ async def reconcile_gstr2b(
         
     def clean_str(s):
         if not s: return ""
-        return str(s).strip().upper().replace("-", "").replace("/", "").replace(" ", "")
+        import re
+        s = str(s).strip().upper().replace("-", "").replace("/", "").replace(" ", "")
+        return re.sub(r'(\D)0+(\d)', r'\1\2', s)
         
     two_b_dict = {f"{clean_str(r['supplier_gstin'])}_{clean_str(r['invoice_number'])}": r for r in records}
     updates = []

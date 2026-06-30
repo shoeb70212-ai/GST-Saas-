@@ -22,14 +22,33 @@ export default function CollaborationPortal() {
     }
   }, [clientId]);
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    const newFiles = acceptedFiles.map(file => ({
+  const onDrop = useCallback((acceptedFiles: File[], fileRejections: any[]) => {
+    let totalSize = files.reduce((acc, f) => acc + f.file.size, 0);
+    
+    if (fileRejections.length > 0) {
+       toast.error("Some files were rejected. Ensure they are under 10MB.");
+    }
+
+    const validFiles = acceptedFiles.filter(file => {
+       if (file.size > 10 * 1024 * 1024) {
+          toast.error(`${file.name} exceeds 10MB limit.`);
+          return false;
+       }
+       if (totalSize + file.size > 50 * 1024 * 1024) {
+          toast.error(`Session limit of 50MB exceeded.`);
+          return false;
+       }
+       totalSize += file.size;
+       return true;
+    });
+
+    const newFiles = validFiles.map(file => ({
       id: Math.random().toString(36).substring(7),
       file,
       preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : null
     }));
     setFiles(prev => [...prev, ...newFiles]);
-  }, []);
+  }, [files]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -39,6 +58,7 @@ export default function CollaborationPortal() {
       'application/zip': ['.zip']
     },
     maxFiles: 50,
+    maxSize: 10 * 1024 * 1024,
   });
 
   const removeFile = (id: string) => {

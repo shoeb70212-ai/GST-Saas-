@@ -45,15 +45,18 @@ export default function DashboardPage() {
       
       const { data, error } = await supabase
         .from('invoices')
-        .select('*')
+        .select('id, file_name, supplier_name, taxable_amount, cgst_amount, sgst_amount, igst_amount, total_amount, received_amount, recon_status, processing_status, invoice_date, created_at')
         .eq('user_id', session.user.id)
         .eq('client_id', activeClientId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(0, 199);
         
       if (error) throw error;
       return data || [];
     },
     enabled: !!activeClientId,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
   });
 
   const metrics = useMemo(() => {
@@ -137,14 +140,30 @@ export default function DashboardPage() {
         
         let totalSalesTax = 0;
         data.forEach((row: any) => {
-          // Look for common tax columns in sales register
-          const taxCols = ['tax', 'cgst', 'sgst', 'igst', 'total tax', 'tax amount'];
-          Object.keys(row).forEach(key => {
-            if (taxCols.some(t => key.toLowerCase().includes(t))) {
-              const val = parseFloat(row[key]);
-              if (!isNaN(val)) totalSalesTax += val;
+          let rowTax = 0;
+          const lowerKeys = Object.keys(row).map(k => k.toLowerCase());
+          
+          const hasSpecificTax = ['cgst', 'sgst', 'igst', 'utgst', 'cess'].some(t => lowerKeys.some(k => k.includes(t)));
+          
+          if (hasSpecificTax) {
+            Object.keys(row).forEach(key => {
+              const k = key.toLowerCase();
+              if (['cgst', 'sgst', 'igst', 'utgst', 'cess'].some(t => k.includes(t))) {
+                const val = parseFloat(row[key]);
+                if (!isNaN(val)) rowTax += val;
+              }
+            });
+          } else {
+            const totalTaxKey = Object.keys(row).find(k => {
+              const lower = k.toLowerCase();
+              return lower.includes('total tax') || lower.includes('tax amount') || lower.includes('gst amount') || lower === 'tax';
+            });
+            if (totalTaxKey) {
+              const val = parseFloat(row[totalTaxKey]);
+              if (!isNaN(val)) rowTax += val;
             }
-          });
+          }
+          totalSalesTax += rowTax;
         });
         
         setSalesTaxCollected(totalSalesTax);

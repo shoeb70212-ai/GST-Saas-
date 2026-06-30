@@ -202,6 +202,19 @@ export default function SavedInvoicesPage() {
         
       if (error) throw error;
 
+      const escapeXml = (unsafe: string) => {
+        return (unsafe || '').replace(/[<>&'"]/g, function (c) {
+          switch (c) {
+            case '<': return '&lt;';
+            case '>': return '&gt;';
+            case '&': return '&amp;';
+            case '\'': return '&apos;';
+            case '"': return '&quot;';
+            default: return c;
+          }
+        });
+      };
+
       let xmlStr = `<ENVELOPE>\n  <HEADER>\n    <TALLYREQUEST>Import Data</TALLYREQUEST>\n  </HEADER>\n  <BODY>\n    <IMPORTDATA>\n      <REQUESTDESC>\n        <REPORTNAME>Vouchers</REPORTNAME>\n      </REQUESTDESC>\n      <REQUESTDATA>\n`;
 
       filteredInvoices.forEach(inv => {
@@ -212,20 +225,20 @@ export default function SavedInvoicesPage() {
         xmlStr += `          <VOUCHER VCHTYPE="Purchase" ACTION="Create">\n`;
         xmlStr += `            <DATE>${invDate}</DATE>\n`;
         xmlStr += `            <VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>\n`;
-        xmlStr += `            <VOUCHERNUMBER>${inv.invoice_number || ''}</VOUCHERNUMBER>\n`;
-        xmlStr += `            <PARTYLEDGERNAME>${(inv.supplier_name || '').replace(/&/g, '&amp;')}</PARTYLEDGERNAME>\n`;
-        xmlStr += `            <PARTYNAME>${(inv.supplier_name || '').replace(/&/g, '&amp;')}</PARTYNAME>\n`;
+        xmlStr += `            <VOUCHERNUMBER>${escapeXml(inv.invoice_number || '')}</VOUCHERNUMBER>\n`;
+        xmlStr += `            <PARTYLEDGERNAME>${escapeXml(inv.supplier_name || '')}</PARTYLEDGERNAME>\n`;
+        xmlStr += `            <PARTYNAME>${escapeXml(inv.supplier_name || '')}</PARTYNAME>\n`;
         
         // Ledger entries
         xmlStr += `            <ALLLEDGERENTRIES.LIST>\n`;
-        xmlStr += `              <LEDGERNAME>${(inv.supplier_name || '').replace(/&/g, '&amp;')}</LEDGERNAME>\n`;
+        xmlStr += `              <LEDGERNAME>${escapeXml(inv.supplier_name || '')}</LEDGERNAME>\n`;
         xmlStr += `              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>\n`;
         xmlStr += `              <AMOUNT>${inv.total_amount || 0}</AMOUNT>\n`;
         xmlStr += `            </ALLLEDGERENTRIES.LIST>\n`;
 
         items.forEach(item => {
            xmlStr += `            <ALLLEDGERENTRIES.LIST>\n`;
-           xmlStr += `              <LEDGERNAME>${(inv.expense_category || 'Purchase').replace(/&/g, '&amp;')}</LEDGERNAME>\n`;
+           xmlStr += `              <LEDGERNAME>${escapeXml(inv.expense_category || 'Purchase')}</LEDGERNAME>\n`;
            xmlStr += `              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>\n`;
            xmlStr += `              <AMOUNT>-${item.amount || 0}</AMOUNT>\n`;
            xmlStr += `            </ALLLEDGERENTRIES.LIST>\n`;

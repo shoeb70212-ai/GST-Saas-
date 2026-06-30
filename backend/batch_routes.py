@@ -17,12 +17,23 @@ def format_date_to_iso(date_str):
         return f"{y}-{int(m):02d}-{int(d):02d}"
     return None
 
+import asyncio
+ai_semaphore = None
+
+async def get_semaphore():
+    global ai_semaphore
+    if ai_semaphore is None:
+        ai_semaphore = asyncio.Semaphore(5)
+    return ai_semaphore
+
 router = APIRouter()
 
 async def process_batch_worker(invoice_id: str, content: bytes, mime_type: str, user_id: str, token: str):
     try:
-        # Run AI
-        data_dict = await run_ai_extraction(content, mime_type)
+        # Rate limit concurrent AI calls to prevent 429s (OpenRouter/Gemini)
+        sem = await get_semaphore()
+        async with sem:
+            data_dict = await run_ai_extraction(content, mime_type)
         
         # Deduct Credit
         async with httpx.AsyncClient() as http_client:

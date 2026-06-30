@@ -231,11 +231,35 @@ async def scan_invoice(file: UploadFile = File(...), authorization: str = Header
                     best_page_index = i
             
             best_page = doc[best_page_index]
-            pix = best_page.get_pixmap(dpi=200)
+            pix = best_page.get_pixmap(dpi=150)
             content = pix.tobytes("jpeg")
             mime_type = "image/jpeg"
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to process PDF. Error: {str(e)}")
+            
+    else:
+        # Resize raw image uploads to save AI token costs
+        if mime_type.startswith("image/"):
+            try:
+                from PIL import Image
+                import io
+                img = Image.open(io.BytesIO(content))
+                if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+                    bg = Image.new('RGB', img.size, (255, 255, 255))
+                    if img.mode == 'RGBA':
+                        bg.paste(img, mask=img.split()[3])
+                    else:
+                        bg.paste(img.convert('RGBA'), mask=img.convert('RGBA').split()[3])
+                    img = bg
+                elif img.mode != 'RGB':
+                    img = img.convert('RGB')
+                img.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
+                output = io.BytesIO()
+                img.save(output, format="JPEG", quality=85)
+                content = output.getvalue()
+                mime_type = "image/jpeg"
+            except Exception as e:
+                print(f"Failed to resize image, continuing with original: {e}")
 
     base64_image = base64.b64encode(content).decode('utf-8')
     image_url = f"data:{mime_type};base64,{base64_image}"
