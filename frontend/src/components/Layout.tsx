@@ -118,7 +118,7 @@ export default function Layout() {
               <Building2 className="w-4 h-4 text-accent shrink-0" />
               <span className="text-sm font-medium text-text-primary truncate">
                 {activeClientId 
-                  ? clients.find(c => c.id === activeClientId)?.client_name || `Select ${isBusiness ? 'Business' : 'Client'}`
+                  ? clients.find((c: any) => c.id === activeClientId)?.client_name || `Select ${isBusiness ? 'Business' : 'Client'}`
                   : `Select ${isBusiness ? 'Business' : 'Client'}`}
               </span>
             </div>
@@ -137,7 +137,7 @@ export default function Layout() {
                   {clients.length === 0 ? (
                     <div className="p-3 text-xs text-text-secondary text-center">No {isBusiness ? 'businesses' : 'clients'} found</div>
                   ) : (
-                    clients.map(client => (
+                    clients.map((client: any) => (
                       <button
                         key={client.id}
                         onClick={() => {

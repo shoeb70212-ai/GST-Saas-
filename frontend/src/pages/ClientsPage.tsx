@@ -178,7 +178,7 @@ export default function ClientsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {clients.map(client => (
+          {clients.map((client: any) => (
             <div key={client.id} className={`card p-5 group transition-all ${activeClientId === client.id ? 'border-accent ring-1 ring-accent/20 bg-accent-subtle/5' : 'hover:border-border'}`}>
               <div className="flex justify-between items-start mb-4">
                 <div className="w-10 h-10 rounded-lg bg-bg-sunken flex items-center justify-center">
