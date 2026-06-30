@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom';
 import { useClient } from '../lib/ClientContext';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Skeleton } from '../components/ui/Skeleton';
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-IN', { 
@@ -234,7 +235,27 @@ export default function DashboardPage() {
   }
 
   if (isLoading) {
-    return <div className="min-h-[80vh] flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+    return (
+      <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8 pb-20">
+        <div className="flex justify-between items-end mb-8">
+          <div>
+            <Skeleton className="h-8 w-48 mb-2" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="card space-y-2 p-5">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-8 w-24" />
+            </div>
+          ))}
+        </div>
+        <div className="card h-48 w-full mt-8">
+          <Skeleton className="h-full w-full" />
+        </div>
+      </div>
+    );
   }
 
   return (

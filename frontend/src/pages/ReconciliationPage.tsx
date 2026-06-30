@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useClient } from '../lib/ClientContext';
-import { UploadCloud, CheckCircle2, AlertTriangle, AlertCircle, Loader2 } from 'lucide-react';
+import { UploadCloud, CheckCircle2, AlertTriangle, AlertCircle, Loader2, FileSearch } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function ReconciliationPage() {
@@ -19,6 +19,21 @@ export default function ReconciliationPage() {
         .select('*')
         .eq('client_id', activeClientId)
         .eq('recon_period', period);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!activeClientId,
+  });
+
+  const { data: gstr2bRecords } = useQuery({
+    queryKey: ['gstr2b', activeClientId, period],
+    queryFn: async () => {
+      if (!activeClientId) return [];
+      const { data, error } = await supabase
+        .from('gstr2b_records')
+        .select('*')
+        .eq('client_id', activeClientId)
+        .eq('period', period);
       if (error) throw error;
       return data || [];
     },
@@ -73,6 +88,35 @@ export default function ReconciliationPage() {
   const mismatched = invoices?.filter(i => i.recon_status === 'mismatch') || [];
   const missingIn2B = invoices?.filter(i => i.recon_status === 'missing_in_2b') || [];
 
+  const cleanStr = (s: string) => (s || '').toString().trim().toUpperCase().replace(/[-/\s]/g, '').replace(/(\D)0+(\d)/g, '$1$2');
+
+  const missingInPR = gstr2bRecords?.filter(g2b => {
+    const g2bKey = `${cleanStr(g2b.supplier_gstin)}_${cleanStr(g2b.invoice_number)}`;
+    return !invoices?.some(inv => {
+      const invKey = `${cleanStr(inv.supplier_gstin)}_${cleanStr(inv.invoice_number)}`;
+      return invKey === g2bKey;
+    });
+  }) || [];
+
+  const tableData = [
+    ...(invoices || []).map(inv => ({
+      id: inv.id,
+      supplier_gstin: inv.supplier_gstin,
+      invoice_number: inv.invoice_number,
+      invoice_date: inv.invoice_date,
+      taxable_amount: inv.taxable_amount,
+      status: inv.recon_status
+    })),
+    ...missingInPR.map(g2b => ({
+      id: g2b.id,
+      supplier_gstin: g2b.supplier_gstin,
+      invoice_number: g2b.invoice_number,
+      invoice_date: g2b.invoice_date,
+      taxable_amount: g2b.taxable_value,
+      status: 'missing_in_pr'
+    }))
+  ];
+
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8 pb-20">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
@@ -100,7 +144,7 @@ export default function ReconciliationPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="card border-t-4 border-t-success hover:border-border transition-colors">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-success flex items-center gap-2"><CheckCircle2 className="w-5 h-5"/> Matched</h3>
@@ -122,9 +166,16 @@ export default function ReconciliationPage() {
           </div>
           <p className="text-sm text-text-secondary">ITC at risk! Vendor didn't file.</p>
         </div>
+        <div className="card border-t-4 border-t-accent hover:border-border transition-colors">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-accent flex items-center gap-2"><FileSearch className="w-5 h-5"/> Missing in PR</h3>
+            <span className="text-3xl font-bold text-text-primary">{missingInPR.length}</span>
+          </div>
+          <p className="text-sm text-text-secondary">Vendor filed, but no scan</p>
+        </div>
       </div>
 
-      {invoices && invoices.length > 0 && (
+      {tableData.length > 0 && (
         <div className="card p-0 overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
@@ -138,17 +189,19 @@ export default function ReconciliationPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {invoices.map((inv) => (
-                  <tr key={inv.id} className="hover:bg-bg-subtle transition-colors group">
-                    <td className="p-4 font-medium text-text-primary">{inv.supplier_gstin || 'N/A'}</td>
-                    <td className="p-4 font-mono text-text-secondary">{inv.invoice_number || 'N/A'}</td>
-                    <td className="p-4 font-mono text-text-secondary">{inv.invoice_date || 'N/A'}</td>
-                    <td className="p-4 font-mono text-right font-medium">₹{inv.taxable_amount?.toFixed(2) || '0.00'}</td>
+                {tableData.map((row) => (
+                  <tr key={row.id} className="hover:bg-bg-subtle transition-colors group">
+                    <td className="p-4 font-medium text-text-primary">{row.supplier_gstin || 'N/A'}</td>
+                    <td className="p-4 font-mono text-text-secondary">{row.invoice_number || 'N/A'}</td>
+                    <td className="p-4 font-mono text-text-secondary">{row.invoice_date || 'N/A'}</td>
+                    <td className="p-4 font-mono text-right font-medium">₹{row.taxable_amount?.toFixed(2) || '0.00'}</td>
                     <td className="p-4 text-center">
-                      {inv.recon_status === 'matched' ? (
+                      {row.status === 'matched' ? (
                         <span className="badge bg-success-subtle text-success border border-success/20">Matched</span>
-                      ) : inv.recon_status === 'mismatch' ? (
+                      ) : row.status === 'mismatch' ? (
                         <span className="badge bg-warning-subtle text-warning border border-warning/20">Mismatch</span>
+                      ) : row.status === 'missing_in_pr' ? (
+                        <span className="badge bg-accent/10 text-accent border border-accent/20">Missing in PR</span>
                       ) : (
                         <span className="badge bg-error-subtle text-error border border-error/20">Missing in 2B</span>
                       )}

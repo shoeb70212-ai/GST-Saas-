@@ -2,6 +2,15 @@
 
 This document acts as a central record of the recent stabilization, feature additions, and optimization passes made to the LedgerLens platform.
 
+## 🚀 Phase 2 Features (Recent Updates)
+- **GSTR-2B Reconciliation Engine**: Implemented the deterministic matching UI on `ReconciliationPage.tsx`, allowing users to upload the government 2B JSON/Excel and instantly identify "Missing in PR" (Purchase Register) invoices where ITC is at risk.
+- **TallyPrime XML Export**: Added a native Tally XML exporter that groups line items into VOUCHER blocks with automated CGST/SGST/IGST ledger deductions, allowing 1-click import to Tally.
+- **Architecture Refactoring**: Extracted massive monoliths. Moved the 300-line invoice modal into a standalone `InvoiceDetailsModal.tsx` and moved all export logic into `exportService.ts`. Reduced `SavedInvoicesPage.tsx` from 821 lines to ~500 lines.
+- **Premium UI/UX Polish**: 
+  - Added modern animated `<Skeleton />` loaders across the Dashboard and Saved Invoices pages to vastly improve perceived performance.
+  - Implemented tactile micro-interactions (`active:scale-[0.98]`) globally for all buttons.
+  - Upgraded the Invoice Details Modal with a frosted-glass (`backdrop-blur`) overlay effect.
+
 ## 🚀 Performance & Scalability
 - **Aggressive Frontend Caching:** Implemented `@tanstack/react-query` across the frontend. Database queries for invoices and clients are now cached intelligently, eliminating loading spinners when switching between dashboard tabs. The app feels instantaneous.
 - **Database Indexing:** Created `migration_phase9.sql` to add B-Tree indexes on `client_id`, `user_id`, and `created_at` in the Supabase database. This guarantees `SELECT` speeds remain under 50ms even when scaling to 100,000+ invoices.

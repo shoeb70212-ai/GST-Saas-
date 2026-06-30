@@ -118,13 +118,13 @@
     @apply h-9 bg-bg-sunken border border-border rounded-md px-3 text-sm focus:border-text-primary focus:shadow-xs outline-none transition-colors placeholder:text-text-disabled text-text-primary;
   }
   .btn-primary {
-    @apply h-9 bg-accent hover:bg-accent-hover text-white font-medium text-sm rounded-md px-4 transition-colors inline-flex items-center justify-center gap-2;
+    @apply h-9 bg-accent hover:bg-accent-hover active:scale-[0.98] text-white font-medium text-sm rounded-md px-4 transition-all inline-flex items-center justify-center gap-2;
   }
   .btn-ghost {
-    @apply h-9 bg-transparent border border-border text-text-primary hover:bg-bg-sunken font-medium text-sm rounded-md px-4 transition-colors inline-flex items-center justify-center gap-2;
+    @apply h-9 bg-transparent border border-border text-text-primary hover:bg-bg-sunken active:scale-[0.98] font-medium text-sm rounded-md px-4 transition-all inline-flex items-center justify-center gap-2;
   }
   .btn-destructive {
-    @apply h-9 bg-error hover:bg-error/90 text-white font-medium text-sm rounded-md px-4 transition-colors inline-flex items-center justify-center gap-2;
+    @apply h-9 bg-error hover:bg-error/90 active:scale-[0.98] text-white font-medium text-sm rounded-md px-4 transition-all inline-flex items-center justify-center gap-2;
   }
   .badge {
     @apply h-5 rounded-sm px-1.5 text-[11px] font-medium inline-flex items-center justify-center;
