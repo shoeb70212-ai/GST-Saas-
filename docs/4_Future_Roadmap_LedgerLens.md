@@ -48,4 +48,9 @@ This document outlines the features that were discussed and brainstormed but exp
 *   We import their **Sales Tax Collected** (from the Excel).
 *   The frontend ($0 cost) instantly calculates: `(Total Sales Tax) - (Total Purchase ITC)`.
 *   We display a massive, beautiful dashboard widget: **"Estimated GST Cash Liability this Month: ₹14,500"**.
-*Why this works:* It provides immense financial value to the Business Owner (cashflow planning) and saves the Accountant time, without us having to build and maintain a complex, buggy billing system.
+*   This delivers massive value to the business owner, hooking them to the app, without forcing them to switch away from their primary billing software.
+
+## 8. Intentional Omissions (Out of Scope for MVP)
+**The Problem:** Auditors or new developers may flag the absence of **Section 43B(h) MSME Deduction-Loss Warnings** or **180-Day Rule 37 ITC Reversal Deadlines** as "missing features."
+**The Reality:** These are intentionally omitted. Both of these compliance rules require knowing the **exact date the invoice was paid**. Because LedgerLens MVP is an invoice data extraction and reconciliation tool—not a full ERP with live bank-feed integrations—we do not possess payment dates. 
+**The Solution:** These features are firmly parked until a future roadmap phase where LedgerLens integrates directly with banking APIs or ERP systems to sync live payment statuses.

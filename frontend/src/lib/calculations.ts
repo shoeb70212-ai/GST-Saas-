@@ -35,10 +35,14 @@ export function calculateMsmedInterest(principal: number, rbiBankRate: number, d
  * If they haven't paid within 180 days, this exact amount must be reversed
  * PLUS 18% interest on it. This is the number we threaten them with.
  */
-export function calculateRule37ItcAtRisk(gstAmount: number, amountPaid: number, totalInvoice: number): number {
-  if (totalInvoice <= 0) return 0;
+export function calculateRule37ItcAtRisk(gstAmount: number, amountPaid: number, totalInvoice: number, daysOverdue: number = 0): { principal: number, interest: number } {
+  if (totalInvoice <= 0) return { principal: 0, interest: 0 };
   const outstanding = totalInvoice - amountPaid;
   const proportionOutstanding = outstanding / totalInvoice;
-  const itcAtRisk = gstAmount * proportionOutstanding;
-  return Math.round(itcAtRisk * 100) / 100;
+  const principal = Math.round((gstAmount * proportionOutstanding) * 100) / 100;
+  
+  // Section 50 CGST Act: 18% p.a. interest on reversed ITC
+  const interest = Math.round((principal * 0.18 * (Math.max(0, daysOverdue) / 365)) * 100) / 100;
+  
+  return { principal, interest };
 }

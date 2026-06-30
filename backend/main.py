@@ -16,7 +16,7 @@ def compute_confidence(extracted: dict, computed_total: float) -> dict:
     
     supplier_gstin = extracted.get("Supplier_GSTIN")
     if supplier_gstin:
-        if not re.match(r'^[0-3][0-9][A-Z]{5}[0-9]{4}[A-Z][1-9A-Z][A-Z0-9][0-9A-Z]$', supplier_gstin.upper()):
+        if not re.match(r'^(0[1-9]|[1-2][0-9]|3[0-7])[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z][A-Z0-9][0-9A-Z]$', supplier_gstin.upper()):
             penalties += 25.0
     else:
         penalties += 15.0
@@ -40,6 +40,45 @@ def compute_confidence(extracted: dict, computed_total: float) -> dict:
         
     return {"score": final_score, "state": state}
 
+def apply_tax_calculations(data_dict: dict) -> dict:
+    taxable = sum((item.get("Amount") or 0) for item in data_dict.get("Line_Items", []))
+    cgst = 0
+    sgst = 0
+    igst = 0
+    
+    sup_gstin = data_dict.get("Supplier_GSTIN")
+    buy_gstin = data_dict.get("Buyer_GSTIN")
+    is_interstate = False
+    if sup_gstin and buy_gstin and len(sup_gstin) >= 2 and len(buy_gstin) >= 2:
+        if sup_gstin[:2] != buy_gstin[:2]:
+            is_interstate = True
+            
+    for item in data_dict.get("Line_Items", []):
+        amt = item.get("Amount") or 0
+        rate = item.get("Tax_Rate") or 0
+        tax_val = amt * (rate / 100)
+        
+        if is_interstate:
+            igst += tax_val
+        else:
+            cgst += tax_val / 2
+            sgst += tax_val / 2
+            
+    data_dict["Taxable_Amount"] = taxable
+    data_dict["CGST_Amount"] = round(cgst, 2)
+    data_dict["SGST_Amount"] = round(sgst, 2)
+    data_dict["IGST_Amount"] = round(igst, 2)
+    
+    computed_total = round(taxable + cgst + sgst + igst + (data_dict.get("Round_Off") or 0), 2)
+    if not data_dict.get("Total_Amount"):
+        data_dict["Total_Amount"] = computed_total
+        
+    confidence = compute_confidence(data_dict, computed_total)
+    data_dict["Confidence_Score"] = confidence["score"]
+    data_dict["Extraction_State"] = confidence["state"]
+    
+    return data_dict
+
 load_dotenv()
 
 app = FastAPI(title="InvoiceScanner AI Backend")
@@ -49,7 +88,7 @@ app = FastAPI(title="InvoiceScanner AI Backend")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -164,7 +203,7 @@ async def scan_invoice(file: UploadFile = File(...), authorization: str = Header
         if profile_resp.status_code == 200 and profile_resp.json():
             credits = profile_resp.json()[0].get("credits", 0)
         else:
-            credits = 100 # Fallback if profile row is missing
+            credits = 0 # Fallback if profile row is missing
         if credits <= 0:
             raise HTTPException(status_code=402, detail="Insufficient credits. Please recharge your wallet.")
 
@@ -250,43 +289,8 @@ async def run_ai_extraction(content: bytes, mime_type: str):
             
         data_dict = extracted_data.model_dump()
         
-        # --- STRATEGY 1: BACKEND MATH ---
-        # Calculate taxes and totals locally to save AI generation tokens & speed up processing
-        taxable = sum((item.get("Amount") or 0) for item in data_dict.get("Line_Items", []))
-        cgst = 0
-        sgst = 0
-        igst = 0
-        
-        sup_gstin = data_dict.get("Supplier_GSTIN")
-        buy_gstin = data_dict.get("Buyer_GSTIN")
-        is_interstate = False
-        if sup_gstin and buy_gstin and len(sup_gstin) >= 2 and len(buy_gstin) >= 2:
-            if sup_gstin[:2] != buy_gstin[:2]:
-                is_interstate = True
-                
-        for item in data_dict.get("Line_Items", []):
-            amt = item.get("Amount") or 0
-            rate = item.get("Tax_Rate") or 0
-            tax_val = amt * (rate / 100)
-            
-            if is_interstate:
-                igst += tax_val
-            else:
-                cgst += tax_val / 2
-                sgst += tax_val / 2
-                
-        data_dict["Taxable_Amount"] = taxable
-        data_dict["CGST_Amount"] = round(cgst, 2)
-        data_dict["SGST_Amount"] = round(sgst, 2)
-        data_dict["IGST_Amount"] = round(igst, 2)
-        
-        computed_total = round(taxable + cgst + sgst + igst + (data_dict.get("Round_Off") or 0), 2)
-        if not data_dict.get("Total_Amount"):
-            data_dict["Total_Amount"] = computed_total
-            
-        confidence = compute_confidence(data_dict, computed_total)
-        data_dict["Confidence_Score"] = confidence["score"]
-        data_dict["Extraction_State"] = confidence["state"]
+        # Apply refactored tax and confidence calculations
+        data_dict = apply_tax_calculations(data_dict)
         
         return data_dict
         
@@ -314,33 +318,8 @@ async def run_ai_extraction(content: bytes, mime_type: str):
                     
                 data_dict = extracted_data.model_dump()
                 
-                # --- STRATEGY 1: BACKEND MATH ---
-                taxable = sum((item.get("Amount") or 0) for item in data_dict.get("Line_Items", []))
-                cgst = 0; sgst = 0; igst = 0
-                sup_gstin = data_dict.get("Supplier_GSTIN")
-                buy_gstin = data_dict.get("Buyer_GSTIN")
-                is_interstate = False
-                if sup_gstin and buy_gstin and len(sup_gstin) >= 2 and len(buy_gstin) >= 2:
-                    if sup_gstin[:2] != buy_gstin[:2]:
-                        is_interstate = True
-                for item in data_dict.get("Line_Items", []):
-                    amt = item.get("Amount") or 0
-                    rate = item.get("Tax_Rate") or 0
-                    tax_val = amt * (rate / 100)
-                    if is_interstate: igst += tax_val
-                    else: cgst += tax_val / 2; sgst += tax_val / 2
-                        
-                data_dict["Taxable_Amount"] = taxable
-                data_dict["CGST_Amount"] = round(cgst, 2)
-                data_dict["SGST_Amount"] = round(sgst, 2)
-                data_dict["IGST_Amount"] = round(igst, 2)
-                computed_total = round(taxable + cgst + sgst + igst + (data_dict.get("Round_Off") or 0), 2)
-                if not data_dict.get("Total_Amount"):
-                    data_dict["Total_Amount"] = computed_total
-                    
-                confidence = compute_confidence(data_dict, computed_total)
-                data_dict["Confidence_Score"] = confidence["score"]
-                data_dict["Extraction_State"] = confidence["state"]
+                # Apply refactored tax and confidence calculations
+                data_dict = apply_tax_calculations(data_dict)
                 
                 return data_dict
             except Exception as gemini_e:

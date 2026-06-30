@@ -63,6 +63,10 @@ CREATE TABLE invoices (
   upi_id TEXT,
   recon_status TEXT CHECK (recon_status IN ('unreconciled', 'matched', 'mismatch', 'missing_in_2b', 'missing_in_pr')),
   recon_period TEXT,
+  processing_status TEXT DEFAULT 'completed',
+  error_message TEXT,
+  expense_category TEXT,
+  extraction_state TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

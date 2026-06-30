@@ -58,11 +58,15 @@ async def reconcile_gstr2b(
         
     records = []
     for _, row in df.iterrows():
-        if pd.isna(row.get(col_mapping.get('gstin'))):
+        gstin_col = col_mapping.get('gstin')
+        inv_col = col_mapping.get('invoice_num')
+        if not gstin_col or not inv_col: continue
+            
+        if pd.isna(row.get(gstin_col)):
             continue
             
-        gstin = str(row[col_mapping['gstin']]).strip()
-        inv_num = str(row[col_mapping['invoice_num']]).strip()
+        gstin = str(row.get(gstin_col, '')).strip()
+        inv_num = str(row.get(inv_col, '')).strip()
         if not gstin or gstin == 'nan': continue
         
         records.append({
@@ -81,19 +85,47 @@ async def reconcile_gstr2b(
         })
         
     async with httpx.AsyncClient() as http_client:
+        # 1. Fetch old records for rollback
+        fetch_resp = await http_client.get(
+            f"{SUPABASE_URL}/rest/v1/gstr2b_records?client_id=eq.{client_id}&period=eq.{period}",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        old_records = fetch_resp.json() if fetch_resp.status_code == 200 else []
+
+        # 2. Delete old records
         await http_client.delete(
             f"{SUPABASE_URL}/rest/v1/gstr2b_records?client_id=eq.{client_id}&period=eq.{period}",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
         )
         
+        # 3. Insert new records in chunks
         chunk_size = 500
+        insert_success = True
         for i in range(0, len(records), chunk_size):
             chunk = records[i:i+chunk_size]
-            await http_client.post(
+            resp = await http_client.post(
                 f"{SUPABASE_URL}/rest/v1/gstr2b_records",
                 headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                 json=chunk
             )
+            if resp.status_code not in (200, 201):
+                insert_success = False
+                break
+                
+        # 4. Rollback if insert failed
+        if not insert_success and old_records:
+            # Re-insert the old records (stripping IDs if auto-generated)
+            for r in old_records:
+                r.pop('id', None)
+                r.pop('created_at', None)
+            
+            for i in range(0, len(old_records), chunk_size):
+                await http_client.post(
+                    f"{SUPABASE_URL}/rest/v1/gstr2b_records",
+                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json=old_records[i:i+chunk_size]
+                )
+            raise HTTPException(status_code=500, detail="Failed to insert new reconciliation records. Original records were restored.")
             
         pr_resp = await http_client.get(
             f"{SUPABASE_URL}/rest/v1/invoices?client_id=eq.{client_id}&select=id,supplier_gstin,invoice_number,taxable_amount,total_amount,recon_status,recon_period",

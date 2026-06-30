@@ -83,7 +83,7 @@ function InvoiceRow({ fs, visibleColumns, onUpdate }: { fs: FileState, visibleCo
           <td key={col} className="p-4 text-sm text-text-primary whitespace-nowrap">
             <input 
               type="text" 
-              defaultValue={data[col] || ''} 
+              value={data[col] || ''} 
               onChange={(e) => onUpdate({ ...data, [col]: e.target.value })}
               className={cn(
                 "bg-transparent border-none focus:ring-1 focus:ring-accent rounded px-1 py-0.5 w-full min-w-[100px]",
@@ -148,7 +148,7 @@ function InvoiceRow({ fs, visibleColumns, onUpdate }: { fs: FileState, visibleCo
                          </div>
                        )}
                      </div>
-                     <input type="text" defaultValue={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-border focus:border-accent px-0 py-1 text-sm text-text-primary outline-none w-full" />
+                     <input type="text" value={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-border focus:border-accent px-0 py-1 text-sm text-text-primary outline-none w-full" />
                    </div>
                  ))}
                </div>
@@ -182,7 +182,7 @@ function InvoiceRow({ fs, visibleColumns, onUpdate }: { fs: FileState, visibleCo
                          </div>
                        )}
                      </div>
-                     <input type="text" defaultValue={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-border focus:border-accent px-0 py-1 text-sm text-text-primary outline-none w-full" />
+                     <input type="text" value={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-border focus:border-accent px-0 py-1 text-sm text-text-primary outline-none w-full" />
                    </div>
                  ))}
                </div>
@@ -195,7 +195,7 @@ function InvoiceRow({ fs, visibleColumns, onUpdate }: { fs: FileState, visibleCo
                  ].map(f => (
                    <div key={f.k} className="flex flex-col">
                      <label className="text-[10px] text-text-secondary uppercase tracking-wider">{f.l}</label>
-                     <input type="text" defaultValue={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-border focus:border-accent px-0 py-1 text-sm text-text-primary outline-none w-full" />
+                     <input type="text" value={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-border focus:border-accent px-0 py-1 text-sm text-text-primary outline-none w-full" />
                    </div>
                  ))}
                </div>
@@ -208,7 +208,7 @@ function InvoiceRow({ fs, visibleColumns, onUpdate }: { fs: FileState, visibleCo
                  ].map(f => (
                    <div key={f.k} className="flex flex-col">
                      <label className="text-[10px] text-text-secondary uppercase tracking-wider">{f.l}</label>
-                     <input type="text" defaultValue={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-border focus:border-accent px-0 py-1 text-sm text-text-primary outline-none w-full" />
+                     <input type="text" value={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-border focus:border-accent px-0 py-1 text-sm text-text-primary outline-none w-full" />
                    </div>
                  ))}
                </div>
@@ -373,7 +373,7 @@ export default function ScanPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [activeClientId, fileStates]);
+  }, [activeClientId]);
 
   const handleZipUpload = async (file: File) => {
     if (!activeClientId) {
