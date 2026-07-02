@@ -8,7 +8,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { AVAILABLE_COLUMNS, DEFAULT_COLUMNS } from '../lib/ScanContext';
 import { useClient } from '../lib/ClientContext';
-import { exportToExcel, exportToTallyXML } from '../lib/exportService';
+import { exportToExcelMultiSheet, exportToTallyXML } from '../lib/exportService';
 import { InvoiceDetailsModal } from '../components/InvoiceDetailsModal';
 import { Skeleton } from '../components/ui/Skeleton';
 
@@ -149,7 +149,7 @@ export default function SavedInvoicesPage() {
         
       if (error) throw error;
       
-      exportToExcel(filteredInvoices, allLineItems || [], visibleColumns);
+      exportToExcelMultiSheet(filteredInvoices, allLineItems || [], visibleColumns);
     } catch (err) {
       console.error("Export failed:", err);
       toast.error("Failed to export invoices.");

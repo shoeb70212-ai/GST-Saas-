@@ -50,6 +50,12 @@ export type InvoiceData = {
   Branch_Name?: string;
   IFSC_Code?: string;
   UPI_ID?: string;
+  Invoice_Type?: string;
+  Reverse_Charge_Applicable?: boolean;
+  Cess_Amount?: number;
+  IRN?: string;
+  Original_Invoice_Number?: string;
+  Original_Invoice_Date?: string;
   Line_Items?: LineItem[];
   [key: string]: any; 
 };
@@ -104,9 +110,16 @@ export const AVAILABLE_COLUMNS = [
   { key: 'Branch_Name', label: 'Branch Name' },
   { key: 'IFSC_Code', label: 'IFSC Code' },
   { key: 'UPI_ID', label: 'UPI ID' },
+  { key: 'Invoice_Type', label: 'Invoice Type' },
+  { key: 'Reverse_Charge_Applicable', label: 'Reverse Charge' },
+  { key: 'Cess_Amount', label: 'Cess' },
+  { key: 'IRN', label: 'IRN' },
+  { key: 'Original_Invoice_Number', label: 'Orig. Invoice #' },
+  { key: 'Original_Invoice_Date', label: 'Orig. Invoice Date' },
 ];
 
 export const DEFAULT_COLUMNS = [
+  'Invoice_Type',
   'Expense_Category',
   'Confidence_Score',
   'Supplier_Name',

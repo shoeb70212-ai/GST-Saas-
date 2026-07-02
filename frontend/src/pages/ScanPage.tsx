@@ -578,7 +578,13 @@ export default function ScanPage() {
       branch_name: data.Branch_Name,
       ifsc_code: data.IFSC_Code,
       upi_id: data.UPI_ID,
-      expense_category: data.Expense_Category
+      expense_category: data.Expense_Category,
+      invoice_type: data.Invoice_Type,
+      reverse_charge_applicable: data.Reverse_Charge_Applicable,
+      cess_amount: safeNum(data.Cess_Amount),
+      irn: data.IRN,
+      original_invoice_number: data.Original_Invoice_Number,
+      original_invoice_date: formatDateToIso(data.Original_Invoice_Date)
     };
 
     const lineItems = (data.Line_Items || []).map((item: any) => ({
@@ -671,46 +677,34 @@ export default function ScanPage() {
   const handleExportExcel = async () => {
     setIsExporting(true);
     try {
-      const dataToExport: any[] = [];
-      
-      fileStates.filter(fs => fs.extractedData).forEach(fs => {
-        const baseData: any = { 'Filename': fs.file.name };
-        
-        visibleColumns.forEach(key => {
-          const colDef = AVAILABLE_COLUMNS.find(c => c.key === key);
-          if (colDef && fs.extractedData) {
-            baseData[colDef.label] = fs.extractedData[key] || '';
-          }
-        });
-        
-        const items = fs.extractedData?.Line_Items || [];
-        if (items.length > 0) {
-          items.forEach((item: LineItem) => {
-            dataToExport.push({
-              ...baseData,
-              'Item Description': item.Description || '',
-              'Item HSN/SAC': item.HSN_SAC || '',
-              'Item Qty': item.Quantity || '',
-              'Item Rate': item.Unit_Price || '',
-              'Item Tax %': item.Tax_Rate || '',
-              'Item Amount': item.Amount || '',
-            });
-          });
-        } else {
-          dataToExport.push(baseData);
-        }
-      });
-        
-      if (dataToExport.length === 0) {
+      const validStates = fileStates.filter(fs => fs.extractedData);
+      if (validStates.length === 0) {
         alert("No extracted data available to export.");
         return;
       }
 
-      const XLSX = await import('xlsx');
-      const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Invoices");
-      XLSX.writeFile(workbook, "Extracted_Invoices.xlsx");
+      const invoices = validStates.map(fs => {
+        const lowerData: any = { id: fs.id, filename: fs.file.name };
+        Object.keys(fs.extractedData!).forEach(k => {
+          lowerData[k.toLowerCase()] = fs.extractedData![k];
+        });
+        return lowerData;
+      });
+      
+      const allLineItems: any[] = [];
+      validStates.forEach(fs => {
+        const items = fs.extractedData?.Line_Items || [];
+        items.forEach(item => {
+          const lowerItem: any = { invoice_id: fs.id };
+          Object.keys(item).forEach(k => {
+            lowerItem[k.toLowerCase()] = (item as any)[k];
+          });
+          allLineItems.push(lowerItem);
+        });
+      });
+
+      const { exportToExcelMultiSheet } = await import('../lib/exportService');
+      exportToExcelMultiSheet(invoices, allLineItems, visibleColumns);
     } finally {
       setIsExporting(false);
     }

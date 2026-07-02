@@ -69,7 +69,7 @@ def apply_tax_calculations(data_dict: dict) -> dict:
     data_dict["SGST_Amount"] = round(sgst, 2)
     data_dict["IGST_Amount"] = round(igst, 2)
     
-    computed_total = round(taxable + cgst + sgst + igst + (data_dict.get("Round_Off") or 0), 2)
+    computed_total = round(taxable + cgst + sgst + igst + (data_dict.get("Cess_Amount") or 0) + (data_dict.get("Round_Off") or 0), 2)
     if not data_dict.get("Total_Amount"):
         data_dict["Total_Amount"] = computed_total
         
@@ -164,6 +164,12 @@ class InvoiceData(BaseModel):
     Branch_Name: str | None = Field(description="Bank branch name")
     IFSC_Code: str | None = Field(description="Bank IFSC code")
     UPI_ID: str | None = Field(description="UPI ID for payment")
+    Invoice_Type: str | None = Field(description="One of: 'Tax Invoice', 'Bill of Supply', 'Credit Note', 'Debit Note', 'Export Invoice' - read from heading only. Default 'Tax Invoice' if no other type is legible; otherwise null.")
+    Reverse_Charge_Applicable: bool | None = Field(description="Only from an explicit printed line such as 'Reverse Charge: Yes/No'. Do not infer.")
+    Cess_Amount: float | None = Field(description="Read directly from a printed 'Cess' line/total. Do not calculate.")
+    IRN: str | None = Field(description="64-character Invoice Reference Number. Null if absent.")
+    Original_Invoice_Number: str | None = Field(description="Only populate when Invoice_Type is Credit Note or Debit Note - the invoice number being adjusted.")
+    Original_Invoice_Date: str | None = Field(description="Paired with Original_Invoice_Number, same format as Invoice_Date.")
     Line_Items: list[LineItem] = Field(default_factory=list, description="List of all items or services in the invoice")
 
 @app.get("/")
@@ -295,6 +301,8 @@ async def run_ai_extraction(content: bytes, mime_type: str):
     Analyze the following invoice image and extract the requested fields perfectly, including all line items.
     DO NOT hallucinate optional fields like PO_Number, E_Way_Bill_Number, Vehicle_Number, or Bank details. If they are not explicitly printed, return null.
     For the Expense_Category field, suggest a standard accounting ledger category based on the line items.
+    Only extract what is literally printed on the document for Invoice_Type, Reverse_Charge_Applicable, Cess_Amount, and IRN. Do not infer them.
+    Only populate Original_Invoice_Number and Original_Invoice_Date for Credit/Debit Notes.
     """
 
     try:
