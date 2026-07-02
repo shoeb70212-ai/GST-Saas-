@@ -476,8 +476,8 @@ export default function ScanPage() {
           canvas.toBlob(
             (blob) => {
               if (blob) {
-                const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpeg", {
-                  type: 'image/jpeg',
+                const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", {
+                  type: 'image/webp',
                   lastModified: Date.now(),
                 });
                 resolve(newFile);
@@ -485,7 +485,7 @@ export default function ScanPage() {
                 resolve(file);
               }
             },
-            'image/jpeg',
+            'image/webp',
             0.8
           );
         };

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 import re
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 def compute_confidence(extracted: dict, computed_total: float) -> dict:
     score = 100.0
@@ -292,6 +293,7 @@ async def scan_invoice(file: UploadFile = File(...), authorization: str = Header
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
 async def run_ai_extraction(content: bytes, mime_type: str):
     base64_image = base64.b64encode(content).decode('utf-8')
     image_url = f"data:{mime_type};base64,{base64_image}"

@@ -10,5 +10,17 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/setupTests.ts'
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          query: ['@tanstack/react-query'],
+          ui: ['lucide-react', 'framer-motion'],
+          excel: ['xlsx']
+        }
+      }
+    }
   }
 })
