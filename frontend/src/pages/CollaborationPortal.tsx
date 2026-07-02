@@ -15,9 +15,9 @@ export default function CollaborationPortal() {
   useEffect(() => {
     if (clientId) {
       // Try to fetch client name to personalize the portal
-      supabase.from('clients').select('name').eq('id', clientId).single()
+      supabase.from('clients').select('client_name').eq('id', clientId).single()
         .then(({data}) => {
-          if (data) setClientName(data.name);
+          if (data) setClientName(data.client_name);
         });
     }
   }, [clientId]);

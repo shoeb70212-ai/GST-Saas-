@@ -90,12 +90,13 @@ export default function ReconciliationPage() {
 
   const cleanStr = (s: string) => (s || '').toString().trim().toUpperCase().replace(/[-/\s]/g, '').replace(/(\D)0+(\d)/g, '$1$2');
 
+  const invoiceKeys = new Set(
+    (invoices || []).map(inv => `${cleanStr(inv.supplier_gstin)}_${cleanStr(inv.invoice_number)}`)
+  );
+
   const missingInPR = gstr2bRecords?.filter(g2b => {
     const g2bKey = `${cleanStr(g2b.supplier_gstin)}_${cleanStr(g2b.invoice_number)}`;
-    return !invoices?.some(inv => {
-      const invKey = `${cleanStr(inv.supplier_gstin)}_${cleanStr(inv.invoice_number)}`;
-      return invKey === g2bKey;
-    });
+    return !invoiceKeys.has(g2bKey);
   }) || [];
 
   const tableData = [
@@ -117,6 +118,44 @@ export default function ReconciliationPage() {
     }))
   ];
 
+  const [isDeepMatching, setIsDeepMatching] = useState(false);
+
+  const handleDeepMatch = async () => {
+    if (!activeClientId) return;
+    setIsDeepMatching(true);
+    toast.loading("Running AI Deep Match...", { id: 'deep-match' });
+    try {
+      const formData = new FormData();
+      formData.append('client_id', activeClientId);
+      formData.append('period', period);
+      
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Authentication required.");
+
+      const response = await fetch(`${apiUrl}/api/reconcile/deep-match`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        if (response.status === 402) {
+          throw new Error("Insufficient credits for AI Deep Match. Please recharge.");
+        }
+        throw new Error("Deep match failed");
+      }
+      
+      const data = await response.json();
+      toast.success(data.message, { id: 'deep-match' });
+      refetch();
+    } catch (err: any) {
+      toast.error(err.message || "AI Deep Match failed", { id: 'deep-match' });
+    } finally {
+      setIsDeepMatching(false);
+    }
+  };
+
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8 pb-20">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
@@ -124,7 +163,7 @@ export default function ReconciliationPage() {
           <h1 className="text-2xl font-bold text-text-primary mb-2">GSTR-2B Reconciliation</h1>
           <p className="text-text-secondary">Upload government GSTR-2B Excel to instantly match Purchase ITC.</p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
           <input 
             type="month" 
             value={period.split('-').reverse().join('-')} 
@@ -135,12 +174,20 @@ export default function ReconciliationPage() {
             className="px-4 py-2 bg-bg-surface border border-border rounded-lg text-sm text-text-primary focus:border-accent outline-none" 
           />
           <div className="relative">
-            <input type="file" accept=".xlsx,.xls" onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={isUploading} />
-            <button className="btn-primary flex items-center gap-2" disabled={isUploading}>
+            <input type="file" accept=".xlsx,.xls" onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={isUploading || isDeepMatching} />
+            <button className="btn-primary flex items-center gap-2" disabled={isUploading || isDeepMatching}>
               {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
               Upload GSTR-2B
             </button>
           </div>
+          <button 
+            onClick={handleDeepMatch} 
+            disabled={isDeepMatching || isUploading || (missingIn2B.length === 0 || missingInPR.length === 0)}
+            className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white rounded-lg text-sm font-medium transition-all shadow-md shadow-purple-500/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isDeepMatching ? <Loader2 className="w-4 h-4 animate-spin" /> : <span className="text-base leading-none">✨</span>}
+            AI Deep Match (1 Credit)
+          </button>
         </div>
       </div>
 

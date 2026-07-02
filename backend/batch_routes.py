@@ -1,10 +1,10 @@
 import io
 import zipfile
 import base64
-import httpx
 from fastapi import APIRouter, File, UploadFile, HTTPException, Header, BackgroundTasks, Form
 import os
 import re
+from supabase import create_async_client
 from main import run_ai_extraction, SUPABASE_URL, SUPABASE_ANON_KEY
 
 def format_date_to_iso(date_str):
@@ -36,62 +36,49 @@ async def process_batch_worker(invoice_id: str, content: bytes, mime_type: str, 
             data_dict = await run_ai_extraction(content, mime_type)
         
         # Deduct Credit
-        async with httpx.AsyncClient() as http_client:
-            await http_client.post(
-                f"{SUPABASE_URL}/rest/v1/rpc/decrement_credits",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json={"user_id_param": user_id}
-            )
+        supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        supabase_client.postgrest.auth(token)
+        
+        await supabase_client.rpc("decrement_credits", {"user_id_param": user_id}).execute()
             
-            # Prepare update payload
-            db_update = {k.lower(): v for k, v in data_dict.items() if k != "Line_Items"}
+        # Prepare update payload
+        db_update = {k.lower(): v for k, v in data_dict.items() if k != "Line_Items"}
+        
+        # Format Dates safely
+        if "invoice_date" in db_update:
+            db_update["invoice_date"] = format_date_to_iso(db_update["invoice_date"])
+        if "due_date" in db_update:
+            db_update["due_date"] = format_date_to_iso(db_update["due_date"])
             
-            # Format Dates safely
-            if "invoice_date" in db_update:
-                db_update["invoice_date"] = format_date_to_iso(db_update["invoice_date"])
-            if "due_date" in db_update:
-                db_update["due_date"] = format_date_to_iso(db_update["due_date"])
-                
-            db_update["processing_status"] = "completed"
-            db_update["error_message"] = None
-            
-            # Update Invoice Record
-            await http_client.patch(
-                f"{SUPABASE_URL}/rest/v1/invoices?id=eq.{invoice_id}",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json=db_update
-            )
-            
-            # Insert Line Items
-            line_items = data_dict.get("Line_Items", [])
-            if line_items:
-                items_payload = []
-                for li in line_items:
-                    items_payload.append({
-                        "invoice_id": invoice_id,
-                        "description": li.get("Description"),
-                        "hsn_sac": li.get("HSN_SAC"),
-                        "quantity": li.get("Quantity"),
-                        "unit_price": li.get("Unit_Price"),
-                        "tax_rate": li.get("Tax_Rate"),
-                        "amount": li.get("Amount")
-                    })
-                resp = await http_client.post(
-                    f"{SUPABASE_URL}/rest/v1/invoice_line_items",
-                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                    json=items_payload
-                )
-                if resp.status_code not in [200, 201]:
-                    raise Exception(f"Failed to insert line items: {resp.text}")
+        db_update["processing_status"] = "completed"
+        db_update["error_message"] = None
+        
+        # Update Invoice Record
+        await supabase_client.table("invoices").update(db_update).eq("id", invoice_id).execute()
+        
+        # Insert Line Items
+        line_items = data_dict.get("Line_Items", [])
+        if line_items:
+            items_payload = []
+            for li in line_items:
+                items_payload.append({
+                    "invoice_id": invoice_id,
+                    "description": li.get("Description"),
+                    "hsn_sac": li.get("HSN_SAC"),
+                    "quantity": li.get("Quantity"),
+                    "unit_price": li.get("Unit_Price"),
+                    "tax_rate": li.get("Tax_Rate"),
+                    "amount": li.get("Amount")
+                })
+            resp = await supabase_client.table("invoice_line_items").insert(items_payload).execute()
+            if not resp.data:
+                print(f"Failed to insert line items")
                 
     except Exception as e:
         # Mark as failed
-        async with httpx.AsyncClient() as http_client:
-            await http_client.patch(
-                f"{SUPABASE_URL}/rest/v1/invoices?id=eq.{invoice_id}",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json={"processing_status": "failed", "error_message": str(e)}
-            )
+        supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        supabase_client.postgrest.auth(token)
+        await supabase_client.table("invoices").update({"processing_status": "failed", "error_message": str(e)}).eq("id", invoice_id).execute()
 
 @router.post("/api/upload-batch")
 async def upload_batch(
@@ -106,14 +93,14 @@ async def upload_batch(
     token = authorization.split(" ")[1]
     
     # 1. Verify User and Get Profile
-    async with httpx.AsyncClient() as http_client:
-        user_resp = await http_client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_resp.status_code != 200:
-            raise HTTPException(status_code=401, detail="Invalid session token")
-        user_id = user_resp.json().get("id")
+    supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+    
+    try:
+        user_resp = await supabase_client.auth.get_user(token)
+        user_id = user_resp.user.id
+        supabase_client.postgrest.auth(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid session token")
         
     # Read Zip
     content = await file.read()
@@ -128,46 +115,45 @@ async def upload_batch(
             
             batch_ids = []
             
-            # Create a pending record for each valid file
-            async with httpx.AsyncClient() as http_client:
-                for fname in valid_files:
-                    file_bytes = z.read(fname)
-                    # We can store raw bytes in memory since BackgroundTasks run in the same process
-                    # But ideally we'd store in Supabase Storage. For simplicity, we pass bytes to memory task.
-                    
-                    mime_type = "image/jpeg"
-                    if fname.lower().endswith('.png'): mime_type = "image/png"
-                    if fname.lower().endswith('.webp'): mime_type = "image/webp"
-                    if fname.lower().endswith('.pdf'): mime_type = "application/pdf"
-                    
-                    # Insert pending row
-                    ins_resp = await http_client.post(
-                        f"{SUPABASE_URL}/rest/v1/invoices",
-                        headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json", "Prefer": "return=representation"},
-                        json={
-                            "user_id": user_id,
-                            "client_id": client_id,
-                            "file_name": fname.split('/')[-1],
-                            "processing_status": "pending"
-                        }
-                    )
-                    
-                    if ins_resp.status_code in [200, 201]:
-                        row_data = ins_resp.json()
-                        invoice_id = row_data[0]["id"]
+            # Prepare batch for bulk insert
+            pending_records = []
+            file_details = []
+            
+            for fname in valid_files:
+                file_bytes = z.read(fname)
+                mime_type = "image/jpeg"
+                if fname.lower().endswith('.png'): mime_type = "image/png"
+                if fname.lower().endswith('.webp'): mime_type = "image/webp"
+                if fname.lower().endswith('.pdf'): mime_type = "application/pdf"
+                
+                pending_records.append({
+                    "user_id": user_id,
+                    "client_id": client_id,
+                    "file_name": fname.split('/')[-1],
+                    "processing_status": "pending"
+                })
+                file_details.append({
+                    "bytes": file_bytes,
+                    "mime": mime_type
+                })
+                
+            if pending_records:
+                ins_resp = await supabase_client.table("invoices").insert(pending_records).execute()
+                if ins_resp.data:
+                    for i, row in enumerate(ins_resp.data):
+                        invoice_id = row["id"]
                         batch_ids.append(invoice_id)
                         
-                        # Queue background task
                         background_tasks.add_task(
                             process_batch_worker, 
                             invoice_id=invoice_id, 
-                            content=file_bytes, 
-                            mime_type=mime_type, 
+                            content=file_details[i]["bytes"], 
+                            mime_type=file_details[i]["mime"], 
                             user_id=user_id, 
                             token=token
                         )
-                    else:
-                        print(f"Failed to create pending invoice record: {ins_resp.text}")
+                else:
+                    print("Failed to bulk insert pending invoices")
                         
             return {"status": "success", "message": f"Queued {len(batch_ids)} files for processing.", "queued_ids": batch_ids}
             

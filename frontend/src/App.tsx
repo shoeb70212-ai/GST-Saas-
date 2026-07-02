@@ -1,18 +1,23 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { Loader2 } from 'lucide-react';
 import Layout from './components/Layout';
-import DashboardPage from './pages/DashboardPage';
-import ScanPage from './pages/ScanPage';
-import AuthPage from './pages/AuthPage';
-import SavedInvoicesPage from './pages/SavedInvoicesPage';
-import SettingsPage from './pages/SettingsPage';
-import ClientsPage from './pages/ClientsPage';
-import LandingPage from './pages/LandingPage';
-import ReconciliationPage from './pages/ReconciliationPage';
-import CollaborationPortal from './pages/CollaborationPortal';
+
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const ScanPage = lazy(() => import('./pages/ScanPage'));
+const AuthPage = lazy(() => import('./pages/AuthPage'));
+const SavedInvoicesPage = lazy(() => import('./pages/SavedInvoicesPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const ClientsPage = lazy(() => import('./pages/ClientsPage'));
+const LandingPage = lazy(() => import('./pages/LandingPage'));
+const ReconciliationPage = lazy(() => import('./pages/ReconciliationPage'));
+const CollaborationPortal = lazy(() => import('./pages/CollaborationPortal'));
+const SnapPage = lazy(() => import('./pages/SnapPage'));
+const PlatformAdminPage = lazy(() => import('./pages/PlatformAdminPage'));
+const WalletPage = lazy(() => import('./pages/WalletPage'));
+import PlatformAdminLayout from './components/PlatformAdminLayout';
 import { ScanProvider } from './lib/ScanContext';
 import { ClientProvider } from './lib/ClientContext';
 import { Toaster } from 'react-hot-toast';
@@ -79,25 +84,35 @@ export default function App() {
     <ScanProvider>
       <ErrorBoundary>
       <BrowserRouter>
-        <Routes>
-          {/* Public Routes */}
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/portal/:clientId" element={<CollaborationPortal />} />
-          <Route path="/auth" element={session ? <Navigate to="/dashboard" replace /> : <AuthPage />} />
-          
-          {/* Protected Routes */}
-          <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-            <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="scan" element={<ScanPage />} />
-            <Route path="invoices" element={<SavedInvoicesPage />} />
-            <Route path="reconcile" element={<ReconciliationPage />} />
-            <Route path="clients" element={<ClientsPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-          </Route>
-          
-          {/* Catch-all 404 Route */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
+          <Routes>
+            {/* Public Routes */}
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/portal/:clientId" element={<CollaborationPortal />} />
+            <Route path="/auth" element={session ? <Navigate to="/dashboard" replace /> : <AuthPage />} />
+            <Route path="/register" element={<AuthPage />} />
+            <Route path="/snap/:clientId" element={<SnapPage />} />
+            
+            {/* Protected Routes */}
+
+            <Route path="/admin" element={<ProtectedRoute><PlatformAdminLayout /></ProtectedRoute>}>
+              <Route index element={<PlatformAdminPage />} />
+            </Route>
+
+            <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+              <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="scan" element={<ScanPage />} />
+              <Route path="invoices" element={<SavedInvoicesPage />} />
+              <Route path="reconcile" element={<ReconciliationPage />} />
+              <Route path="clients" element={<ClientsPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+              <Route path="wallet" element={<WalletPage />} />
+            </Route>
+            
+            {/* Catch-all 404 Route */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
         <Toaster position="bottom-right" toastOptions={{
           style: {
             background: '#FFFFFF',

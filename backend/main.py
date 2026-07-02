@@ -244,20 +244,25 @@ async def scan_invoice(file: UploadFile = File(...), authorization: str = Header
                 from PIL import Image
                 import io
                 img = Image.open(io.BytesIO(content))
-                if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
-                    bg = Image.new('RGB', img.size, (255, 255, 255))
-                    if img.mode == 'RGBA':
-                        bg.paste(img, mask=img.split()[3])
-                    else:
-                        bg.paste(img.convert('RGBA'), mask=img.convert('RGBA').split()[3])
-                    img = bg
-                elif img.mode != 'RGB':
-                    img = img.convert('RGB')
-                img.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
-                output = io.BytesIO()
-                img.save(output, format="JPEG", quality=85)
-                content = output.getvalue()
-                mime_type = "image/jpeg"
+                
+                # Skip secondary resize if already optimized by frontend (e.g., < 2048x2048 and already JPEG)
+                if img.width <= 2048 and img.height <= 2048 and img.format == 'JPEG':
+                    pass # Image is already small enough, no need to re-encode
+                else:
+                    if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+                        bg = Image.new('RGB', img.size, (255, 255, 255))
+                        if img.mode == 'RGBA':
+                            bg.paste(img, mask=img.split()[3])
+                        else:
+                            bg.paste(img.convert('RGBA'), mask=img.convert('RGBA').split()[3])
+                        img = bg
+                    elif img.mode != 'RGB':
+                        img = img.convert('RGB')
+                    img.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
+                    output = io.BytesIO()
+                    img.save(output, format="JPEG", quality=85)
+                    content = output.getvalue()
+                    mime_type = "image/jpeg"
             except Exception as e:
                 print(f"Failed to resize image, continuing with original: {e}")
 
@@ -351,8 +356,16 @@ async def run_ai_extraction(content: bytes, mime_type: str):
         else:
             raise HTTPException(status_code=500, detail=f"Error communicating with OpenAI (no fallback available): {str(e)}")
 
+from auth_routes import router as auth_router
+from admin_routes import router as admin_router
 from batch_routes import router as batch_router
 from reconcile_routes import router as reconcile_router
+from payment_routes import router as payment_router
+from public_routes import router as public_router
 
-app.include_router(batch_router)
-app.include_router(reconcile_router)
+app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
+app.include_router(batch_router, prefix="/api/batch", tags=["batch"])
+app.include_router(reconcile_router, prefix="/api/reconcile", tags=["reconcile"])
+app.include_router(payment_router, prefix="/api", tags=["payments"])
+app.include_router(public_router, prefix="/api/public", tags=["public"])

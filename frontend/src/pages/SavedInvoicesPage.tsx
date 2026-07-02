@@ -1,15 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import { Loader2, FileText, Search, Download, X, DollarSign, Filter, Building2, MapPin, Settings, CheckCircle2 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { Loader2, FileText, Search, Download, Filter, Settings, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { AVAILABLE_COLUMNS, DEFAULT_COLUMNS } from '../lib/ScanContext';
 import { useClient } from '../lib/ClientContext';
-import { isValidGSTIN } from '../utils/gstin';
 import { exportToExcel, exportToTallyXML } from '../lib/exportService';
 import { InvoiceDetailsModal } from '../components/InvoiceDetailsModal';
 import { Skeleton } from '../components/ui/Skeleton';
@@ -29,27 +27,33 @@ export default function SavedInvoicesPage() {
   const { activeClientId } = useClient();
   const queryClient = useQueryClient();
   
-  const { data: rawInvoices, isLoading: invoicesLoading } = useQuery({
-    queryKey: ['invoices', activeClientId],
-    queryFn: async () => {
-      if (!activeClientId) return [];
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return [];
+  const [currentPage, setCurrentPage] = useState(0);
+  const pageSize = 50;
 
-      const { data: queryData, error: queryError } = await supabase
+  const { data: rawInvoicesData, isLoading: invoicesLoading } = useQuery({
+    queryKey: ['invoices', 'list', activeClientId, currentPage],
+    queryFn: async () => {
+      if (!activeClientId) return { data: [], count: 0 };
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return { data: [], count: 0 };
+
+      const { data: queryData, error: queryError, count } = await supabase
         .from('invoices')
-        .select('*')
+        .select('*', { count: 'exact' })
         .eq('user_id', session.user.id)
         .eq('client_id', activeClientId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(currentPage * pageSize, (currentPage + 1) * pageSize - 1);
 
       if (queryError) throw queryError;
-      return queryData || [];
+      return { data: queryData || [], count: count || 0 };
     },
     enabled: !!activeClientId,
   });
 
-  const invoices = rawInvoices || [];
+  const invoices = rawInvoicesData?.data || [];
+  const totalCount = rawInvoicesData?.count || 0;
+  const totalPages = Math.ceil(totalCount / pageSize);
   const loading = invoicesLoading;
 
   const [isExporting, setIsExporting] = useState(false);
@@ -68,7 +72,9 @@ export default function SavedInvoicesPage() {
         const parsed = JSON.parse(saved);
         const allColumns = Array.from(new Set([...parsed, ...DEFAULT_COLUMNS]));
         setVisibleColumns(allColumns as string[]);
-      } catch (e) {}
+      } catch (e) {
+        console.error("Failed to parse saved columns", e);
+      }
     }
   }, []);
 
@@ -185,6 +191,7 @@ export default function SavedInvoicesPage() {
       toast.success("Category updated");
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
     } catch (e) {
+      console.error("Failed to update category", e);
       toast.error("Failed to update category");
     }
   };
@@ -406,6 +413,31 @@ export default function SavedInvoicesPage() {
             </tbody>
           </table>
         </div>
+        
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between p-4 border-t border-border bg-bg-surface">
+            <span className="text-sm text-text-secondary">
+              Showing {currentPage * pageSize + 1} to {Math.min((currentPage + 1) * pageSize, totalCount)} of {totalCount} entries
+            </span>
+            <div className="flex gap-2">
+              <button 
+                disabled={currentPage === 0} 
+                onClick={() => setCurrentPage(p => p - 1)}
+                className="px-3 py-1 text-sm bg-bg-sunken border border-border rounded disabled:opacity-50 text-text-primary hover:bg-bg-base transition-colors"
+              >
+                Previous
+              </button>
+              <button 
+                disabled={currentPage >= totalPages - 1} 
+                onClick={() => setCurrentPage(p => p + 1)}
+                className="px-3 py-1 text-sm bg-bg-sunken border border-border rounded disabled:opacity-50 text-text-primary hover:bg-bg-base transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <InvoiceDetailsModal 

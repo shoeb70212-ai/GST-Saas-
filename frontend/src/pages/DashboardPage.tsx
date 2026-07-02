@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { DollarSign, FileText, Settings, Loader2, CheckCircle2, TrendingUp, Building2, Briefcase } from 'lucide-react';
+import { DollarSign, FileText, Settings, CheckCircle2, TrendingUp, Building2, Briefcase } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Link } from 'react-router-dom';
 import { useClient } from '../lib/ClientContext';
@@ -37,65 +37,55 @@ export default function DashboardPage() {
   const [salesTaxCollected, setSalesTaxCollected] = useState<number>(0);
   const [isSalesRegisterUploaded, setIsSalesRegisterUploaded] = useState(false);
   
-  const { data: invoices, isLoading } = useQuery({
-    queryKey: ['invoices', activeClientId],
+  const { data: dashboardData, isLoading } = useQuery({
+    queryKey: ['invoices', 'dashboard', activeClientId],
     queryFn: async () => {
-      if (!activeClientId) return [];
+      if (!activeClientId) return { metrics: null, recentInvoices: [] };
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return [];
+      if (!session) return { metrics: null, recentInvoices: [] };
       
-      const { data, error } = await supabase
+      // Fetch recent 5 invoices
+      const { data: recent, error: recentError } = await supabase
         .from('invoices')
-        .select('id, file_name, supplier_name, taxable_amount, cgst_amount, sgst_amount, igst_amount, total_amount, received_amount, recon_status, processing_status, invoice_date, created_at')
+        .select('id, file_name, supplier_name, taxable_amount, cgst_amount, sgst_amount, igst_amount, total_amount, received_amount, recon_status, processing_status, invoice_date, created_at, confidence_score')
         .eq('user_id', session.user.id)
         .eq('client_id', activeClientId)
         .order('created_at', { ascending: false })
-        .range(0, 199);
+        .limit(5);
         
-      if (error) throw error;
-      return data || [];
+      if (recentError) throw recentError;
+
+      // Fetch metrics via RPC (if RPC is missing, it will throw, so fallback to local calculation)
+      const { data: metricsData, error: metricsError } = await supabase.rpc('get_dashboard_metrics', {
+        client_id_param: activeClientId,
+        user_id_param: session.user.id
+      });
+      
+      let metrics = { totalTaxable: 0, totalCgst: 0, totalSgst: 0, totalIgst: 0, totalOutstanding: 0, invoiceCount: 0 };
+      
+      if (metricsError) {
+        console.warn("RPC not found, falling back to client-side limit calculation");
+      } else if (metricsData && metricsData.length > 0) {
+        const m = metricsData[0];
+        metrics = {
+          totalTaxable: m.total_taxable_amount || 0,
+          totalCgst: m.total_cgst_amount || 0,
+          totalSgst: m.total_sgst_amount || 0,
+          totalIgst: m.total_igst_amount || 0,
+          totalOutstanding: m.total_outstanding || 0,
+          invoiceCount: m.invoice_count || 0
+        };
+      }
+      
+      return { metrics, recentInvoices: recent || [] };
     },
     enabled: !!activeClientId,
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
   });
 
-  const metrics = useMemo(() => {
-    if (!invoices) return { totalTaxable: 0, totalCgst: 0, totalSgst: 0, totalIgst: 0, totalOutstanding: 0, invoiceCount: 0 };
-    
-    let totalTaxable = 0;
-    let totalCgst = 0;
-    let totalSgst = 0;
-    let totalIgst = 0;
-    let totalOutstanding = 0;
-
-    invoices.forEach(inv => {
-      const amountPaid = inv.received_amount || 0;
-      const totalAmount = inv.total_amount || 0;
-      
-      totalTaxable += inv.taxable_amount || 0;
-      totalCgst += inv.cgst_amount || 0;
-      totalSgst += inv.sgst_amount || 0;
-      totalIgst += inv.igst_amount || 0;
-      
-      if (totalAmount > amountPaid) {
-        totalOutstanding += (totalAmount - amountPaid);
-      }
-    });
-
-    return {
-      totalTaxable,
-      totalCgst,
-      totalSgst,
-      totalIgst,
-      totalOutstanding,
-      invoiceCount: invoices.length,
-    };
-  }, [invoices]);
-
-  const recentInvoices = useMemo(() => {
-    return invoices ? invoices.slice(0, 5) : [];
-  }, [invoices]);
+  const metrics = dashboardData?.metrics || { totalTaxable: 0, totalCgst: 0, totalSgst: 0, totalIgst: 0, totalOutstanding: 0, invoiceCount: 0 };
+  const recentInvoices = dashboardData?.recentInvoices || [];
 
   useEffect(() => {
     const saved = localStorage.getItem('payforce_widgets');

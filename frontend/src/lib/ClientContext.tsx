@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { supabase } from './supabase';
 
 export interface Client {
@@ -16,6 +16,8 @@ interface ClientContextType {
   setActiveClientId: (id: string | null) => void;
   loading: boolean;
   refreshClients: () => Promise<void>;
+  credits: number | null;
+  refreshCredits: () => Promise<void>;
 }
 
 const ClientContext = createContext<ClientContextType | undefined>(undefined);
@@ -24,8 +26,22 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   const [clients, setClients] = useState<Client[]>([]);
   const [activeClientId, setActiveClientId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [credits, setCredits] = useState<number | null>(null);
 
-  const fetchClients = async () => {
+  const fetchCredits = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const { data } = await supabase.from('profiles').select('credits').eq('id', session.user.id).single();
+      if (data) {
+        setCredits(data.credits);
+      }
+    } catch (e) {
+      console.error("Failed to fetch credits", e);
+    }
+  }, []);
+
+  const fetchClients = useCallback(async () => {
     try {
       setLoading(true);
       const { data: { session } } = await supabase.auth.getSession();
@@ -57,11 +73,12 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeClientId]);
 
   useEffect(() => {
     fetchClients();
-  }, []);
+    fetchCredits();
+  }, [fetchClients, fetchCredits]);
 
   // Persist active client selection
   useEffect(() => {
@@ -71,7 +88,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   }, [activeClientId]);
 
   return (
-    <ClientContext.Provider value={{ clients, activeClientId, setActiveClientId, loading, refreshClients: fetchClients }}>
+    <ClientContext.Provider value={{ clients, activeClientId, setActiveClientId, loading, refreshClients: fetchClients, credits, refreshCredits: fetchCredits }}>
       {children}
     </ClientContext.Provider>
   );

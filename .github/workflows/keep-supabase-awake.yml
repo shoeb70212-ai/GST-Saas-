@@ -1,13 +1,13 @@
-name: Keep Supabase Awake
+name: Keep Services Awake
 
 on:
   schedule:
-    # Runs at 00:00 UTC every day
-    - cron: '0 0 * * *'
+    # Runs every 14 minutes to prevent Render's 15-minute sleep timer
+    - cron: '*/14 * * * *'
   workflow_dispatch: # Allows manual triggering from the GitHub Actions tab
 
 jobs:
-  ping-supabase:
+  ping-services:
     runs-on: ubuntu-latest
     steps:
       - name: Ping Supabase REST API
@@ -16,3 +16,9 @@ jobs:
           --request GET '${{ secrets.VITE_SUPABASE_URL }}/rest/v1/clients?limit=1' \
           --header 'apikey: ${{ secrets.VITE_SUPABASE_ANON_KEY }}' \
           --header 'Authorization: Bearer ${{ secrets.VITE_SUPABASE_ANON_KEY }}'
+
+      - name: Ping Render Backend
+        run: |
+          # Pings the root health check endpoint on the FastAPI backend
+          curl -s -o /dev/null -w "%{http_code}" \
+          --request GET '${{ secrets.RENDER_BACKEND_URL }}'

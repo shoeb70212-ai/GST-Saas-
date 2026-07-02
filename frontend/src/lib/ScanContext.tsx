@@ -107,6 +107,7 @@ export const AVAILABLE_COLUMNS = [
 ];
 
 export const DEFAULT_COLUMNS = [
+  'Expense_Category',
   'Confidence_Score',
   'Supplier_Name',
   'Invoice_Date',

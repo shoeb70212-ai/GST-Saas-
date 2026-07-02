@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ScanLine, FileText, Settings, LogOut, Sparkles, Menu, X, Sun, Moon, Building2, ChevronDown } from 'lucide-react';
+import { LayoutDashboard, ScanLine, FileText, Settings, LogOut, Sparkles, Menu, X, Sun, Moon, Building2, ChevronDown, CreditCard } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -65,6 +65,7 @@ export default function Layout() {
     { name: 'Saved Invoices', path: '/invoices', icon: FileText },
     { name: 'GSTR-2B Recon', path: '/reconcile', icon: FileText },
     { name: isBusiness ? 'Businesses' : 'Clients', path: '/clients', icon: Building2 },
+    { name: 'Wallet & Billing', path: '/wallet', icon: CreditCard },
   ];
 
   return (

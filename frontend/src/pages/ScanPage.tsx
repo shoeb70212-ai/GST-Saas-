@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { UploadCloud, CheckCircle2, FileText, Loader2, Sparkles, Download, Settings, X, File as FileIcon, ChevronDown, ChevronUp, Cloud, LogOut, RefreshCw, AlertCircle, AlertTriangle } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import * as XLSX from 'xlsx';
+import React from 'react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 // Session import removed
@@ -46,7 +46,7 @@ function formatDateToIso(dateStr: string | null | undefined): string | null {
 
 // Auth logic moved to App.tsx
 
-function InvoiceRow({ fs, visibleColumns, onUpdate }: { fs: FileState, visibleColumns: string[], onUpdate: (data: InvoiceData) => void }) {
+const InvoiceRow = React.memo(function InvoiceRow({ fs, visibleColumns, onUpdate }: { fs: FileState, visibleColumns: string[], onUpdate: (data: InvoiceData) => void }) {
   const [expanded, setExpanded] = useState(false);
   const data = fs.extractedData || {};
   const hasItems = data.Line_Items && data.Line_Items.length > 0;
@@ -252,35 +252,19 @@ function InvoiceRow({ fs, visibleColumns, onUpdate }: { fs: FileState, visibleCo
       )}
     </>
   );
-}
+});
 
 export default function ScanPage() {
   const { fileStates, setFileStates, visibleColumns, setVisibleColumns } = useScanContext();
-  const { activeClientId } = useClient();
+  const { activeClientId, credits, refreshCredits } = useClient();
 
   const [isExporting, setIsExporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [credits, setCredits] = useState<number | null>(null);
   
   const [showSettings, setShowSettings] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const fetchCredits = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        const { data } = await supabase
-          .from('profiles')
-          .select('credits')
-          .eq('id', session.user.id)
-          .maybeSingle();
-        if (data) {
-          setCredits(data.credits);
-        }
-      }
-    };
-    fetchCredits();
-    
     function handleClickOutside(event: MouseEvent) {
       if (settingsRef.current && !settingsRef.current.contains(event.target as Node)) {
         setShowSettings(false);
@@ -542,7 +526,7 @@ export default function ScanPage() {
         f.id === item.id ? { ...f, extractedData: result.data, isScanning: false } : f
       ));
       
-      setCredits(prev => (prev !== null && prev > 0) ? prev - 1 : prev);
+      refreshCredits();
       
       await autoSaveInvoice(item.id, result.data);
     } catch (err: any) {
@@ -552,78 +536,77 @@ export default function ScanPage() {
     }
   };
 
+  const saveSingleInvoiceToDb = async (fileId: string, fs: FileState, data: any, userId: string) => {
+    const invoiceData = {
+      user_id: userId,
+      client_id: activeClientId,
+      file_name: fs.file.name || 'Unknown',
+      supplier_name: data.Supplier_Name,
+      supplier_address: data.Supplier_Address,
+      supplier_phone: data.Supplier_Phone,
+      supplier_email: data.Supplier_Email,
+      supplier_gstin: data.Supplier_GSTIN,
+      supplier_pan: data.Supplier_PAN,
+      buyer_name: data.Buyer_Name,
+      buyer_address: data.Buyer_Address,
+      buyer_pin: data.Buyer_PIN,
+      buyer_gstin: data.Buyer_GSTIN,
+      buyer_pan: data.Buyer_PAN,
+      place_of_supply: data.Place_Of_Supply,
+      invoice_date: formatDateToIso(data.Invoice_Date),
+      due_date: formatDateToIso(data.Due_Date),
+      invoice_number: data.Invoice_Number,
+      po_number: data.PO_Number,
+      e_way_bill_number: data.E_Way_Bill_Number,
+      vehicle_number: data.Vehicle_Number,
+      taxable_amount: safeNum(data.Taxable_Amount),
+      cgst_amount: safeNum(data.CGST_Amount),
+      sgst_amount: safeNum(data.SGST_Amount),
+      igst_amount: safeNum(data.IGST_Amount),
+      round_off: safeNum(data.Round_Off),
+      total_amount: safeNum(data.Total_Amount),
+      gst_amount: safeNum(data.GST_Amount),
+      confidence_score: safeNum(data.Confidence_Score),
+      amount_in_words: data.Amount_In_Words,
+      received_amount: safeNum(data.Received_Amount),
+      balance_amount: safeNum(data.Balance_Amount),
+      previous_balance: safeNum(data.Previous_Balance),
+      current_balance: safeNum(data.Current_Balance),
+      account_holder: data.Account_Holder,
+      account_number: data.Account_Number,
+      bank_name: data.Bank_Name,
+      branch_name: data.Branch_Name,
+      ifsc_code: data.IFSC_Code,
+      upi_id: data.UPI_ID,
+      expense_category: data.Expense_Category
+    };
+
+    const lineItems = (data.Line_Items || []).map((item: any) => ({
+      description: item.Description,
+      hsn_sac: item.HSN_SAC,
+      quantity: safeNum(item.Quantity),
+      unit_price: safeNum(item.Unit_Price),
+      tax_rate: safeNum(item.Tax_Rate),
+      amount: safeNum(item.Amount)
+    }));
+
+    const { data: rpcData, error: rpcError } = await supabase.rpc('save_invoice_atomic', {
+      invoice_data: invoiceData,
+      line_items: lineItems
+    });
+
+    if (rpcError) throw rpcError;
+    return rpcData;
+  };
+
   const autoSaveInvoice = async (fileId: string, data: any) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
-
-      const { data: invoiceRes, error: invoiceError } = await supabase
-        .from('invoices')
-        .insert({
-          user_id: session.user.id,
-          client_id: activeClientId,
-          file_name: fileStates.find(f => f.id === fileId)?.file.name || 'Unknown',
-          supplier_name: data.Supplier_Name,
-          supplier_address: data.Supplier_Address,
-          supplier_phone: data.Supplier_Phone,
-          supplier_email: data.Supplier_Email,
-          supplier_gstin: data.Supplier_GSTIN,
-          supplier_pan: data.Supplier_PAN,
-          buyer_name: data.Buyer_Name,
-          buyer_address: data.Buyer_Address,
-          buyer_pin: data.Buyer_PIN,
-          buyer_gstin: data.Buyer_GSTIN,
-          buyer_pan: data.Buyer_PAN,
-          place_of_supply: data.Place_Of_Supply,
-          invoice_date: formatDateToIso(data.Invoice_Date),
-          due_date: formatDateToIso(data.Due_Date),
-          invoice_number: data.Invoice_Number,
-          po_number: data.PO_Number,
-          e_way_bill_number: data.E_Way_Bill_Number,
-          vehicle_number: data.Vehicle_Number,
-          taxable_amount: safeNum(data.Taxable_Amount),
-          cgst_amount: safeNum(data.CGST_Amount),
-          sgst_amount: safeNum(data.SGST_Amount),
-          igst_amount: safeNum(data.IGST_Amount),
-          round_off: safeNum(data.Round_Off),
-          total_amount: safeNum(data.Total_Amount),
-          gst_amount: safeNum(data.GST_Amount),
-          confidence_score: safeNum(data.Confidence_Score),
-          amount_in_words: data.Amount_In_Words,
-          received_amount: safeNum(data.Received_Amount),
-          balance_amount: safeNum(data.Balance_Amount),
-          previous_balance: safeNum(data.Previous_Balance),
-          current_balance: safeNum(data.Current_Balance),
-          account_holder: data.Account_Holder,
-          account_number: data.Account_Number,
-          bank_name: data.Bank_Name,
-          branch_name: data.Branch_Name,
-          ifsc_code: data.IFSC_Code,
-          upi_id: data.UPI_ID,
-        })
-        .select('id')
-        .single();
-        
-      if (invoiceError) throw invoiceError;
+      const fs = fileStates.find(f => f.id === fileId);
+      if (!fs) return;
       
-      if (data.Line_Items && data.Line_Items.length > 0) {
-        const itemsToInsert = data.Line_Items.map((item: any) => ({
-          invoice_id: invoiceRes.id,
-          description: item.Description,
-          hsn_sac: item.HSN_SAC,
-          quantity: safeNum(item.Quantity),
-          unit_price: safeNum(item.Unit_Price),
-          tax_rate: safeNum(item.Tax_Rate),
-          amount: safeNum(item.Amount)
-        }));
-        
-        const { error: itemsError } = await supabase
-          .from('invoice_line_items')
-          .insert(itemsToInsert);
-          
-        if (itemsError) throw itemsError;
-      }
-
+      await saveSingleInvoiceToDb(fileId, fs, data, session.user.id);
       setFileStates(prev => prev.map(f => f.id === fileId ? { ...f, savedToCloud: true } : f));
     } catch (err) {
       console.error("Auto-save failed:", err);
@@ -638,7 +621,11 @@ export default function ScanPage() {
       toScan.some(ts => ts.id === f.id) ? { ...f, isScanning: true, error: null } : f
     ));
 
-    await Promise.all(toScan.map(scanFile));
+    const CHUNK_SIZE = 5;
+    for (let i = 0; i < toScan.length; i += CHUNK_SIZE) {
+      const chunk = toScan.slice(i, i + CHUNK_SIZE);
+      await Promise.all(chunk.map(scanFile));
+    }
   };
 
   const retryScan = async (id: string) => {
@@ -664,88 +651,24 @@ export default function ScanPage() {
       const userId = session.user.id;
 
       for (const fs of toSave) {
-        const data = fs.extractedData!;
-        
-        const { data: invoiceRes, error: invoiceError } = await supabase
-          .from('invoices')
-          .insert({
-            user_id: userId,
-            client_id: activeClientId,
-            file_name: fs.file.name,
-            supplier_name: data.Supplier_Name,
-            supplier_address: data.Supplier_Address,
-            supplier_phone: data.Supplier_Phone,
-            supplier_email: data.Supplier_Email,
-            supplier_gstin: data.Supplier_GSTIN,
-            supplier_pan: data.Supplier_PAN,
-            buyer_name: data.Buyer_Name,
-            buyer_address: data.Buyer_Address,
-            buyer_pin: data.Buyer_PIN,
-            buyer_gstin: data.Buyer_GSTIN,
-            buyer_pan: data.Buyer_PAN,
-            place_of_supply: data.Place_Of_Supply,
-            invoice_date: formatDateToIso(data.Invoice_Date),
-            due_date: formatDateToIso(data.Due_Date),
-            invoice_number: data.Invoice_Number,
-            po_number: data.PO_Number,
-            e_way_bill_number: data.E_Way_Bill_Number,
-            vehicle_number: data.Vehicle_Number,
-            taxable_amount: safeNum(data.Taxable_Amount),
-            cgst_amount: safeNum(data.CGST_Amount),
-            sgst_amount: safeNum(data.SGST_Amount),
-            igst_amount: safeNum(data.IGST_Amount),
-            round_off: safeNum(data.Round_Off),
-            total_amount: safeNum(data.Total_Amount),
-            gst_amount: safeNum(data.GST_Amount),
-            confidence_score: safeNum(data.Confidence_Score),
-            amount_in_words: data.Amount_In_Words,
-            received_amount: safeNum(data.Received_Amount),
-            balance_amount: safeNum(data.Balance_Amount),
-            previous_balance: safeNum(data.Previous_Balance),
-            current_balance: safeNum(data.Current_Balance),
-            account_holder: data.Account_Holder,
-            account_number: data.Account_Number,
-            bank_name: data.Bank_Name,
-            branch_name: data.Branch_Name,
-            ifsc_code: data.IFSC_Code,
-            upi_id: data.UPI_ID,
-          })
-          .select('id')
-          .single();
-          
-        if (invoiceError) throw invoiceError;
-        
-        if (data.Line_Items && data.Line_Items.length > 0) {
-          const itemsToInsert = data.Line_Items.map(item => ({
-            invoice_id: invoiceRes.id,
-            description: item.Description,
-            hsn_sac: item.HSN_SAC,
-            quantity: safeNum(item.Quantity),
-            unit_price: safeNum(item.Unit_Price),
-            tax_rate: safeNum(item.Tax_Rate),
-            amount: safeNum(item.Amount)
-          }));
-          
-          const { error: itemsError } = await supabase
-            .from('invoice_line_items')
-            .insert(itemsToInsert);
-            
-          if (itemsError) throw itemsError;
+        try {
+          await saveSingleInvoiceToDb(fs.id, fs, fs.extractedData, userId);
+          setFileStates(prev => prev.map(f => f.id === fs.id ? { ...f, savedToCloud: true } : f));
+        } catch (err: any) {
+          console.error("Failed to save manually:", err);
+          toast.error(`Failed to save ${fs.file.name}`);
         }
-
-        setFileStates(prev => prev.map(f => f.id === fs.id ? { ...f, savedToCloud: true } : f));
       }
       
-      toast.success('Successfully saved to cloud database!');
+      toast.success("Successfully saved pending invoices.");
     } catch (err: any) {
-      console.error(err);
-      toast.error('Error saving to cloud: ' + (err.message || 'Unknown error'));
+      toast.error(err.message || 'Failed to save to cloud.');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     setIsExporting(true);
     try {
       const dataToExport: any[] = [];
@@ -783,6 +706,7 @@ export default function ScanPage() {
         return;
       }
 
+      const XLSX = await import('xlsx');
       const worksheet = XLSX.utils.json_to_sheet(dataToExport);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Invoices");
