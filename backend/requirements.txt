@@ -12,3 +12,4 @@ pyjwt
 pandas
 openpyxl
 tenacity
+razorpay
