@@ -460,7 +460,15 @@ export default function SavedInvoicesPage() {
                     const val = inv[col.toLowerCase()] || '';
                     return (
                       <td key={col} className={cn("p-4 text-sm text-text-secondary whitespace-nowrap", isAmount ? "text-right font-mono" : "")}>
-                        {isAmount && val ? formatCurrency(Number(val)) : val || '-'}
+                        {col === 'Supplier_GSTIN_Status' ? (
+                          val === 'Active' ? (
+                            <span className="badge bg-success-subtle text-success border border-success/20 px-2 py-0.5 rounded-full text-xs">Active</span>
+                          ) : val === 'Cancelled' ? (
+                            <span className="badge bg-error-subtle text-error border border-error/20 px-2 py-0.5 rounded-full text-xs">Cancelled</span>
+                          ) : val ? (
+                            <span className="badge bg-bg-sunken text-text-secondary border border-border px-2 py-0.5 rounded-full text-xs">{val}</span>
+                          ) : '-'
+                        ) : isAmount && val ? formatCurrency(Number(val)) : val || '-'}
                       </td>
                     );
                   })}

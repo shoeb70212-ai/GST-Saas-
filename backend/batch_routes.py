@@ -42,6 +42,12 @@ async def process_batch_worker(invoice_id: str, content: bytes, mime_type: str, 
         
         await supabase_client.rpc("decrement_credits", {"user_id_param": user_id}).execute()
             
+        # Verify GSTIN
+        from gstin_service import verify_gstin
+        gstin = data_dict.get("Supplier_GSTIN")
+        if gstin:
+            data_dict["Supplier_GSTIN_Status"] = await verify_gstin(supabase_client, gstin)
+
         # Prepare update payload
         db_update = {k.lower(): v for k, v in data_dict.items() if k != "Line_Items"}
         
@@ -135,12 +141,13 @@ async def upload_batch(
                     continue # Skip invalid files
                 
                 safe_fname = sanitize_filename(fname.split('/')[-1])
-                
+                import uuid
                 pending_records.append({
                     "user_id": user_id,
                     "client_id": client_id,
                     "file_name": safe_fname,
-                    "processing_status": "pending"
+                    "processing_status": "pending",
+                    "invoice_number": f"PENDING-{uuid.uuid4().hex[:8]}"
                 })
                 file_details.append({
                     "bytes": file_bytes,
@@ -148,6 +155,7 @@ async def upload_batch(
                 })
                 
             if pending_records:
+                print("DEBUG pending_records:", pending_records)
                 ins_resp = await supabase_client.table("invoices").insert(pending_records).execute()
                 if ins_resp.data:
                     for i, row in enumerate(ins_resp.data):

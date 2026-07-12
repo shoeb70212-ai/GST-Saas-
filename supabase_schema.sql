@@ -57,6 +57,7 @@ CREATE TABLE invoices (
   current_balance DECIMAL(12,2),
   account_holder TEXT,
   account_number TEXT,
+  supplier_gstin_status TEXT,
   bank_name TEXT,
   branch_name TEXT,
   ifsc_code TEXT,

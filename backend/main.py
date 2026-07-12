@@ -162,6 +162,7 @@ class InvoiceData(BaseModel):
     Current_Balance: float | None = Field(description="Current balance")
     Account_Holder: str | None = Field(description="Bank account holder name")
     Account_Number: str | None = Field(description="Bank account number")
+    Expense_Category: str | None = Field(description="One of: 'Travel', 'Office Supplies', 'IT Software', 'Professional Fees', 'Raw Materials', 'Rent', 'Utilities', 'Meals & Entertainment', 'Marketing', 'Other'. Infer from the line items.")
     Bank_Name: str | None = Field(description="Bank name")
     Branch_Name: str | None = Field(description="Bank branch name")
     IFSC_Code: str | None = Field(description="Bank IFSC code")
@@ -358,6 +359,15 @@ async def run_ai_extraction(content: bytes, mime_type: str):
         # Apply refactored tax and confidence calculations
         data_dict = apply_tax_calculations(data_dict)
         
+        # Verify GSTIN if it exists
+        gstin = data_dict.get("Supplier_GSTIN")
+        if gstin:
+            from supabase import create_async_client
+            sc = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+            sc.postgrest.auth(token)
+            from gstin_service import verify_gstin
+            data_dict["Supplier_GSTIN_Status"] = await verify_gstin(sc, gstin)
+        
         return data_dict
         
     except Exception as e:
@@ -387,22 +397,31 @@ async def run_ai_extraction(content: bytes, mime_type: str):
                 # Apply refactored tax and confidence calculations
                 data_dict = apply_tax_calculations(data_dict)
                 
+                # Verify GSTIN if it exists
+                gstin = data_dict.get("Supplier_GSTIN")
+                if gstin:
+                    from supabase import create_async_client
+                    sc = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+                    sc.postgrest.auth(token)
+                    from gstin_service import verify_gstin
+                    data_dict["Supplier_GSTIN_Status"] = await verify_gstin(sc, gstin)
+                
                 return data_dict
             except Exception as gemini_e:
                 raise HTTPException(status_code=500, detail=f"Both primary AI and Gemini fallback failed. Gemini Error: {str(gemini_e)}")
         else:
             raise HTTPException(status_code=500, detail=f"Error communicating with OpenAI (no fallback available): {str(e)}")
 
-from auth_routes import router as auth_router
+# from auth_routes import router as auth_router
 from admin_routes import router as admin_router
 from batch_routes import router as batch_router
 from reconcile_routes import router as reconcile_router
 from payment_routes import router as payment_router
 from public_routes import router as public_router
 
-app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
-app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
-app.include_router(batch_router, prefix="/api/batch", tags=["batch"])
-app.include_router(reconcile_router, prefix="/api/reconcile", tags=["reconcile"])
-app.include_router(payment_router, prefix="/api", tags=["payments"])
+# app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(admin_router, tags=["admin"])
+app.include_router(batch_router, tags=["batch"])
+app.include_router(reconcile_router, tags=["reconcile"])
+app.include_router(payment_router, tags=["payments"])
 app.include_router(public_router, prefix="/api/public", tags=["public"])
