@@ -536,7 +536,7 @@ export default function ScanPage() {
     }
   };
 
-  const saveSingleInvoiceToDb = async (fileId: string, fs: FileState, data: any, userId: string) => {
+  const saveSingleInvoiceToDb = async (_fileId: string, fs: FileState, data: any, userId: string) => {
     const invoiceData = {
       user_id: userId,
       client_id: activeClientId,

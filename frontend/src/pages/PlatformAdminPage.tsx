@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ShieldAlert, Activity, Users, FileText, IndianRupee, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { Navigate } from 'react-router-dom';
+
 
 const PlatformAdminPage: React.FC = () => {
   const [session, setSession] = useState<any>(null);

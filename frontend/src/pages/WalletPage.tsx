@@ -130,7 +130,7 @@ export default function WalletPage() {
       };
 
       const rzp = new window.Razorpay(options);
-      rzp.on('payment.failed', function (response: any){
+      rzp.on('payment.failed', function (_response: any){
         toast.error("Payment failed or cancelled.", { id: 'payment' });
       });
       rzp.open();

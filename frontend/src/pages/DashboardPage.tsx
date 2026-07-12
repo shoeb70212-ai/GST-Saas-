@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { DollarSign, FileText, Settings, CheckCircle2, TrendingUp, Building2, Briefcase } from 'lucide-react';
 import { supabase } from '../lib/supabase';

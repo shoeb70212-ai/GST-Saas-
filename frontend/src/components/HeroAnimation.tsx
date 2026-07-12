@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect } from 'react';
-import { FileText, Table, FileSpreadsheet } from 'lucide-react';
+import { FileText, FileSpreadsheet } from 'lucide-react';
 
 export default function HeroAnimation() {
   const [activeId, setActiveId] = useState(0);
