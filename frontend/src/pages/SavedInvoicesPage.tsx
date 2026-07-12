@@ -44,7 +44,7 @@ export default function SavedInvoicesPage() {
     setCurrentPage(0);
   }, [debouncedSearchTerm, sortField, sortDirection]);
 
-  const { data: rawInvoicesData, isLoading: invoicesLoading, isFetching } = useQuery({
+  const { data: rawInvoicesData, isLoading: invoicesLoading } = useQuery({
     queryKey: ['invoices', 'list', activeClientId, currentPage, debouncedSearchTerm, sortField, sortDirection],
     queryFn: async () => {
       if (!activeClientId) return { data: [], count: 0 };
