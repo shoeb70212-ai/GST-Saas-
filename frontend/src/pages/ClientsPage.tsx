@@ -10,6 +10,21 @@ export default function ClientsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({ client_name: '', gstin: '', pan: '' });
   const [isSaving, setIsSaving] = useState(false);
+  const [invoiceCounts, setInvoiceCounts] = useState<Record<string, number>>({});
+
+  React.useEffect(() => {
+    const fetchCounts = async () => {
+      const { data } = await supabase.from('invoices').select('client_id');
+      if (data) {
+        const counts = data.reduce((acc: any, curr: any) => {
+          acc[curr.client_id] = (acc[curr.client_id] || 0) + 1;
+          return acc;
+        }, {});
+        setInvoiceCounts(counts);
+      }
+    };
+    if (clients.length > 0) fetchCounts();
+  }, [clients]);
 
   const isBusiness = localStorage.getItem('accountType') === 'business';
   const entityName = isBusiness ? 'Business' : 'Client';
@@ -195,11 +210,16 @@ export default function ClientsPage() {
               </div>
               
               <h3 className="font-semibold text-text-primary text-lg truncate mb-1">{client.client_name}</h3>
-              <div className="space-y-1 text-sm text-text-secondary">
-                <p>GSTIN: <span className="font-mono">{client.gstin || 'N/A'}</span></p>
-                <p>PAN: <span className="font-mono">{client.pan || 'N/A'}</span></p>
+              <div className="space-y-1 text-sm text-text-secondary mt-2">
+                <p className="flex justify-between"><span>GSTIN:</span> <span className="font-mono">{client.gstin || 'N/A'}</span></p>
+                <p className="flex justify-between"><span>PAN:</span> <span className="font-mono">{client.pan || 'N/A'}</span></p>
               </div>
-              
+              <div className="mt-4 pt-4 border-t border-border flex justify-between items-center">
+                <span className="text-xs text-text-disabled">Total Invoices</span>
+                <span className="text-sm font-bold text-accent bg-accent-subtle px-2 py-0.5 rounded">
+                  {invoiceCounts[client.id] || 0}
+                </span>
+              </div>
               <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
                 <span className="text-xs text-textMuted flex items-center gap-1">
                   Added {new Date(client.created_at).toLocaleDateString()}

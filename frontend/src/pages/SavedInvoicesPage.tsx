@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import { Loader2, FileText, Search, Download, Filter, Settings, CheckCircle2 } from 'lucide-react';
+import { Loader2, FileText, Search, Download, Filter, Settings, CheckCircle2, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { clsx, type ClassValue } from 'clsx';
@@ -30,19 +30,39 @@ export default function SavedInvoicesPage() {
   const [currentPage, setCurrentPage] = useState(0);
   const pageSize = 50;
 
-  const { data: rawInvoicesData, isLoading: invoicesLoading } = useQuery({
-    queryKey: ['invoices', 'list', activeClientId, currentPage],
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [sortField, setSortField] = useState('created_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [debouncedSearchTerm, sortField, sortDirection]);
+
+  const { data: rawInvoicesData, isLoading: invoicesLoading, isFetching } = useQuery({
+    queryKey: ['invoices', 'list', activeClientId, currentPage, debouncedSearchTerm, sortField, sortDirection],
     queryFn: async () => {
       if (!activeClientId) return { data: [], count: 0 };
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return { data: [], count: 0 };
 
-      const { data: queryData, error: queryError, count } = await supabase
+      let query = supabase
         .from('invoices')
         .select('*', { count: 'exact' })
         .eq('user_id', session.user.id)
-        .eq('client_id', activeClientId)
-        .order('created_at', { ascending: false })
+        .eq('client_id', activeClientId);
+
+      if (debouncedSearchTerm) {
+        query = query.or(`supplier_name.ilike.%${debouncedSearchTerm}%,buyer_name.ilike.%${debouncedSearchTerm}%,invoice_number.ilike.%${debouncedSearchTerm}%`);
+      }
+
+      const { data: queryData, error: queryError, count } = await query
+        .order(sortField, { ascending: sortDirection === 'asc' })
         .range(currentPage * pageSize, (currentPage + 1) * pageSize - 1);
 
       if (queryError) throw queryError;
@@ -60,7 +80,6 @@ export default function SavedInvoicesPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   
   // Filters
-  const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULT_COLUMNS);
@@ -117,31 +136,26 @@ export default function SavedInvoicesPage() {
 
 
 
-  // Apply filters
-  const filteredInvoices = invoices.filter(inv => {
-    let matches = true;
+  // Invoices array directly from server
+  const filteredInvoices = invoices;
 
-    // Search
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
-      const matchesSearch = (inv.supplier_name && inv.supplier_name.toLowerCase().includes(searchLower)) ||
-                            (inv.buyer_name && inv.buyer_name.toLowerCase().includes(searchLower)) ||
-                            (inv.invoice_number && inv.invoice_number.toLowerCase().includes(searchLower));
-      if (!matchesSearch) matches = false;
+  const getInvoicesToExport = () => {
+    if (selectedIds.size > 0) {
+      return filteredInvoices.filter(inv => selectedIds.has(inv.id));
     }
-
-    return matches;
-  });
+    return filteredInvoices;
+  };
 
   const handleExportExcel = async () => {
-    if (filteredInvoices.length === 0) {
+    const toExport = getInvoicesToExport();
+    if (toExport.length === 0) {
       toast.error("No invoices to export.");
       return;
     }
     
     setIsExporting(true);
     try {
-      const invoiceIds = filteredInvoices.map(inv => inv.id);
+      const invoiceIds = toExport.map(inv => inv.id);
       const { data: allLineItems, error } = await supabase
         .from('invoice_line_items')
         .select('*')
@@ -149,7 +163,7 @@ export default function SavedInvoicesPage() {
         
       if (error) throw error;
       
-      exportToExcelMultiSheet(filteredInvoices, allLineItems || []);
+      exportToExcelMultiSheet(toExport, allLineItems || []);
     } catch (err) {
       console.error("Export failed:", err);
       toast.error("Failed to export invoices.");
@@ -159,14 +173,15 @@ export default function SavedInvoicesPage() {
   };
 
   const handleExportTallyXML = async () => {
-    if (filteredInvoices.length === 0) {
+    const toExport = getInvoicesToExport();
+    if (toExport.length === 0) {
       toast.error("No invoices to export.");
       return;
     }
     
     setIsExporting(true);
     try {
-      const invoiceIds = filteredInvoices.map(inv => inv.id);
+      const invoiceIds = toExport.map(inv => inv.id);
       const { data: allLineItems, error } = await supabase
         .from('invoice_line_items')
         .select('*')
@@ -174,13 +189,36 @@ export default function SavedInvoicesPage() {
         
       if (error) throw error;
       
-      exportToTallyXML(filteredInvoices, allLineItems || []);
+      exportToTallyXML(toExport, allLineItems || []);
       toast.success("Exported to Tally XML successfully!");
     } catch (err) {
       console.error("XML Export failed:", err);
       toast.error("Failed to export to Tally XML.");
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const [isDeleting, setIsDeleting] = useState(false);
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    const confirmStr = `Are you sure you want to delete ${selectedIds.size} invoice(s)? This action cannot be undone.`;
+    if (!window.confirm(confirmStr)) return;
+
+    setIsDeleting(true);
+    try {
+      const idsToDelete = Array.from(selectedIds);
+      const { error } = await supabase.from('invoices').delete().in('id', idsToDelete);
+      if (error) throw error;
+      
+      toast.success(`Successfully deleted ${idsToDelete.length} invoice(s)`);
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    } catch (e) {
+      console.error("Delete failed:", e);
+      toast.error("Failed to delete invoices.");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -241,13 +279,24 @@ export default function SavedInvoicesPage() {
             <Filter className="w-4 h-4" /> Filters
           </button>
           
+          {selectedIds.size > 0 && (
+            <button 
+              onClick={handleDeleteSelected}
+              disabled={isDeleting}
+              className="btn-ghost text-error hover:bg-error-subtle hover:border-error/20 flex-1 md:flex-none disabled:opacity-50"
+            >
+              {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              Delete ({selectedIds.size})
+            </button>
+          )}
+
           <button 
             onClick={handleExportExcel}
             disabled={isExporting || filteredInvoices.length === 0}
             className="btn-ghost flex-1 md:flex-none disabled:opacity-50"
           >
             {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            Excel
+            {selectedIds.size > 0 ? `Excel (${selectedIds.size})` : 'Excel'}
           </button>
           
           <button 
@@ -256,7 +305,7 @@ export default function SavedInvoicesPage() {
             className="btn-primary flex-1 md:flex-none disabled:opacity-50"
           >
             {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-            Tally XML
+            {selectedIds.size > 0 ? `Tally XML (${selectedIds.size})` : 'Tally XML'}
           </button>
 
           <div className="relative">
@@ -329,8 +378,8 @@ export default function SavedInvoicesPage() {
       </AnimatePresence>
 
       <div className="card p-0 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
+        <div className="overflow-x-auto overflow-y-auto max-h-[65vh] custom-scrollbar relative">
+          <table className="w-full text-sm text-left relative">
             <thead className="table-header">
               <tr>
                 <th className="p-4 w-10">
@@ -347,17 +396,44 @@ export default function SavedInvoicesPage() {
                     checked={selectedIds.size === filteredInvoices.length && filteredInvoices.length > 0}
                   />
                 </th>
-                <th className="p-4 text-xs font-semibold text-text-secondary uppercase tracking-wider">Filename</th>
+                <th 
+                  className="p-4 text-xs font-semibold text-text-secondary uppercase tracking-wider cursor-pointer hover:text-accent"
+                  onClick={() => {
+                    if (sortField === 'file_name') setSortDirection(d => d === 'asc' ? 'desc' : 'asc');
+                    else { setSortField('file_name'); setSortDirection('asc'); }
+                  }}
+                >
+                  <div className="flex items-center gap-1">
+                    Filename {sortField === 'file_name' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </div>
+                </th>
                 {visibleColumns.map(col => {
                   const colDef = AVAILABLE_COLUMNS.find(c => c.key === col);
                   const isAmount = col.includes('Amount') || col === 'Round_Off';
+                  const dbField = col.toLowerCase();
                   return (
-                    <th key={col} className={cn("p-4 text-xs font-semibold text-text-secondary uppercase tracking-wider whitespace-nowrap", isAmount ? "text-right" : "")}>
-                      {colDef?.label}
+                    <th 
+                      key={col} 
+                      className={cn("p-4 text-xs font-semibold text-text-secondary uppercase tracking-wider whitespace-nowrap cursor-pointer hover:text-accent transition-colors", isAmount ? "text-right" : "")}
+                      onClick={() => {
+                        if (sortField === dbField) {
+                          setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+                        } else {
+                          setSortField(dbField);
+                          setSortDirection('asc');
+                        }
+                      }}
+                    >
+                      <div className={cn("flex items-center gap-1", isAmount ? "justify-end" : "")}>
+                        {colDef?.label}
+                        {sortField === dbField && (
+                          <span className="text-accent">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                        )}
+                      </div>
                     </th>
                   );
                 })}
-                <th className="p-4 text-center">Status</th>
+                <th className="p-4 text-center text-xs font-semibold text-text-secondary uppercase tracking-wider">Status</th>
               </tr>
             </thead>
             <tbody>

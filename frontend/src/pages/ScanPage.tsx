@@ -262,6 +262,7 @@ export default function ScanPage() {
   const [isSaving, setIsSaving] = useState(false);
   
   const [showSettings, setShowSettings] = useState(false);
+  const [uploadMode, setUploadMode] = useState<'single' | 'zip'>('single');
   const settingsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -421,11 +422,12 @@ export default function ScanPage() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
+    accept: uploadMode === 'single' ? {
       'image/jpeg': ['.jpg', '.jpeg'],
       'image/png': ['.png'],
       'image/webp': ['.webp'],
-      'application/pdf': ['.pdf'],
+      'application/pdf': ['.pdf']
+    } : {
       'application/zip': ['.zip', '.x-zip-compressed']
     },
     maxFiles: 50,
@@ -805,12 +807,30 @@ export default function ScanPage() {
                     isDragActive ? "border-accent bg-accent-subtle" : "border-border hover:border-accent hover:bg-bg-sunken bg-bg-base"
                   )}
                 >
+              <div className="flex bg-bg-sunken p-1 rounded-lg mb-4 w-full max-w-xs mx-auto">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setUploadMode('single'); }}
+                  className={cn("flex-1 text-xs py-1.5 rounded-md font-medium transition-colors", uploadMode === 'single' ? "bg-bg-surface text-text-primary shadow-sm" : "text-text-secondary hover:text-text-primary")}
+                >
+                  Images / PDFs
+                </button>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setUploadMode('zip'); }}
+                  className={cn("flex-1 text-xs py-1.5 rounded-md font-medium transition-colors", uploadMode === 'zip' ? "bg-bg-surface text-text-primary shadow-sm" : "text-text-secondary hover:text-text-primary")}
+                >
+                  ZIP Batch
+                </button>
+              </div>
               <input {...getInputProps()} />
               <div className="w-14 h-14 rounded-full bg-bg-sunken flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <UploadCloud className={cn("w-6 h-6", isDragActive ? "text-accent" : "text-text-secondary")} />
               </div>
-              <p className="font-medium text-text-primary mb-1">Drag & drop invoices or ZIP folder</p>
-              <p className="text-xs text-text-secondary">JPG, PNG, PDF, ZIP (Max 50 files)</p>
+              <p className="font-medium text-text-primary mb-1">
+                {uploadMode === 'single' ? "Drag & drop invoices" : "Drag & drop a ZIP folder"}
+              </p>
+              <p className="text-xs text-text-secondary">
+                {uploadMode === 'single' ? "JPG, PNG, PDF (Max 50 files)" : "ZIP (Unlimited invoices processed in background)"}
+              </p>
             </div>
           </motion.div>
 

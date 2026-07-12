@@ -130,7 +130,7 @@
     @apply h-5 rounded-sm px-1.5 text-[11px] font-medium inline-flex items-center justify-center;
   }
   .table-header {
-    @apply bg-bg-sunken text-[11px] uppercase tracking-[0.06em] text-text-secondary py-3 px-4 text-left font-medium border-b border-border;
+    @apply sticky top-0 z-10 bg-bg-sunken text-[11px] uppercase tracking-[0.06em] text-text-secondary py-3 px-4 text-left font-medium border-b border-border;
   }
   .table-row {
     @apply border-b border-border hover:bg-bg-sunken transition-colors bg-bg-surface;

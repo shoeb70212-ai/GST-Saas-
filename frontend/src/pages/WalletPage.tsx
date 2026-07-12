@@ -144,7 +144,7 @@ export default function WalletPage() {
   };
 
   if (isLoading) {
-    return <div className="p-8 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+    return <div className="p-8 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>;
   }
 
   return (
@@ -158,9 +158,9 @@ export default function WalletPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="col-span-1 md:col-span-1">
-          <div className="card bg-gradient-to-br from-primary/10 to-accent/10 border-primary/20 p-6 flex flex-col items-center text-center h-full justify-center">
-            <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-4">
-              <Zap className="w-8 h-8 text-primary" />
+          <div className="card bg-gradient-to-br from-accent/10 to-accent/20 border-accent/20 p-6 flex flex-col items-center text-center h-full justify-center">
+            <div className="w-16 h-16 rounded-full bg-accent/20 flex items-center justify-center mb-4">
+              <Zap className="w-8 h-8 text-accent" />
             </div>
             <h2 className="text-text-secondary font-medium mb-2">Available Credits</h2>
             <div className="text-5xl font-bold text-text-primary mb-4">{profile?.credits || 0}</div>
@@ -171,13 +171,13 @@ export default function WalletPage() {
         <div className="col-span-1 md:col-span-2">
           <div className="card p-0 overflow-hidden h-full">
             <div className="p-6 border-b border-border">
-              <h2 className="text-lg font-bold text-text-primary flex items-center gap-2"><CreditCard className="w-5 h-5 text-primary" /> Recharge Credits</h2>
+              <h2 className="text-lg font-bold text-text-primary flex items-center gap-2"><CreditCard className="w-5 h-5 text-accent" /> Recharge Credits</h2>
               <p className="text-sm text-text-secondary mt-1">Purchase a bundle to continue scanning. Secure payments via Razorpay.</p>
             </div>
             <div className="p-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
               {plans.map(plan => (
-                <div key={plan.id} className={`border rounded-xl p-4 flex flex-col relative transition-all ${plan.popular ? 'border-primary bg-primary/5 shadow-lg shadow-primary/10 scale-[1.02]' : 'border-border hover:border-text-disabled'}`}>
-                  {plan.popular && <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider">Most Popular</span>}
+                <div key={plan.id} className={`border rounded-xl p-4 flex flex-col relative transition-all ${plan.popular ? 'border-accent bg-accent/5 shadow-lg shadow-accent/10 scale-[1.02]' : 'border-border hover:border-text-disabled'}`}>
+                  {plan.popular && <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-accent text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider">Most Popular</span>}
                   
                   <div className="text-sm font-medium text-text-secondary mb-2 mt-2">{plan.name}</div>
                   <div className="text-2xl font-bold text-text-primary mb-1">{plan.credits}</div>
@@ -188,7 +188,7 @@ export default function WalletPage() {
                     <button 
                       onClick={() => handlePurchase(plan)}
                       disabled={isProcessing}
-                      className={`w-full py-2 rounded-lg font-medium transition-all flex justify-center items-center gap-2 ${plan.popular ? 'bg-primary text-white hover:bg-primary/90' : 'bg-bg-sunken text-text-primary border border-border hover:bg-bg-surface hover:border-text-secondary'}`}
+                      className={`w-full py-2 rounded-lg font-medium transition-all flex justify-center items-center gap-2 ${plan.popular ? 'bg-accent text-white hover:bg-accent-hover' : 'bg-bg-sunken text-text-primary border border-border hover:bg-bg-surface hover:border-text-secondary'}`}
                     >
                       {isProcessing && selectedPlan === plan.id ? <Loader2 className="w-4 h-4 animate-spin" /> : "Purchase"}
                     </button>
