@@ -5,6 +5,16 @@ import { useClient } from '../lib/ClientContext';
 import { UploadCloud, CheckCircle2, AlertTriangle, AlertCircle, Loader2, FileSearch } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+/**
+ * ReconciliationPage compares local AI-extracted invoices against government GSTR-2B data.
+ * 
+ * Flow:
+ * 1. User uploads a GSTR-2B Excel file downloaded from the GST Portal.
+ * 2. It is sent to the backend (`/api/reconcile`) where it is parsed and fuzzy-matched against 
+ *    the Purchase Register (PR) invoices already in Supabase.
+ * 3. The React Query hooks below automatically fetch the updated statuses (Matched, Mismatch, Missing).
+ * 4. We calculate aggregate summary cards (Total PR vs Total 2B vs Matched) purely client-side.
+ */
 export default function ReconciliationPage() {
   const { activeClientId } = useClient();
   const [period, setPeriod] = useState('03-2024'); // Example default
@@ -224,7 +234,46 @@ export default function ReconciliationPage() {
 
       {tableData.length > 0 && (
         <div className="card p-0 overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
+          
+          {/* Mobile Card View */}
+          <div className="md:hidden flex flex-col p-4 gap-3 max-h-[65vh] overflow-y-auto custom-scrollbar">
+            {tableData.map(row => (
+              <div key={row.id} className="bg-bg-surface border border-border rounded-xl p-4 flex flex-col gap-3 shadow-sm">
+                <div className="flex justify-between items-start gap-2">
+                  <div className="flex flex-col min-w-0 flex-1">
+                    <h3 className="font-semibold text-text-primary text-sm truncate">
+                      {row.supplier_gstin || 'No GSTIN'}
+                    </h3>
+                    <p className="text-xs text-text-secondary truncate mt-0.5">
+                      {row.invoice_number || 'No Inv#'} • {row.invoice_date || '-'}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end shrink-0">
+                    <span className="font-mono font-bold text-text-primary text-sm">
+                      ₹{row.taxable_amount?.toFixed(2) || '0.00'}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-between pt-3 border-t border-border mt-1">
+                  <div>
+                    {row.status === 'matched' ? (
+                      <span className="badge bg-success-subtle text-success border border-success/20 text-[10px]">Matched</span>
+                    ) : row.status === 'mismatch' ? (
+                      <span className="badge bg-warning-subtle text-warning border border-warning/20 text-[10px]">Mismatch</span>
+                    ) : row.status === 'missing_in_pr' ? (
+                      <span className="badge bg-accent/10 text-accent border border-accent/20 text-[10px]">Missing in PR</span>
+                    ) : (
+                      <span className="badge bg-error-subtle text-error border border-error/20 text-[10px]">Missing in 2B</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead className="table-header">
                 <tr>

@@ -162,14 +162,23 @@ async def reconcile_gstr2b(
         pr_invoices = pr_resp.json()
         
     def clean_str(s):
+        """
+        Normalizes invoice numbers and GSTINs by stripping whitespace, hyphens, 
+        slashes, and stripping leading zeros from numeric sequences. 
+        This is necessary because vendors often write 'INV-001' on paper, 
+        but file it as 'INV/1' in the government GSTR-2B portal.
+        """
         if not s: return ""
         import re
         s = str(s).strip().upper().replace("-", "").replace("/", "").replace(" ", "")
         return re.sub(r'(\D)0+(\d)', r'\1\2', s)
         
+    # Dictionary of GSTR-2B records keyed by a normalized string: "GSTIN_INVOICENUMBER"
     two_b_dict = {f"{clean_str(r['supplier_gstin'])}_{clean_str(r['invoice_number'])}": r for r in records}
     updates = []
     
+    # We use RapidFuzz for fuzzy string matching on the invoice numbers.
+    # This catches typos or slight OCR mistakes (e.g. '0' vs 'O').
     import rapidfuzz
     
     for inv in pr_invoices:

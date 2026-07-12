@@ -1,16 +1,28 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ScanLine, FileText, Settings, LogOut, Sparkles, Menu, X, Sun, Moon, Building2, ChevronDown, CreditCard } from 'lucide-react';
+import { LayoutDashboard, ScanLine, FileText, Settings, LogOut, Sparkles, Sun, Moon, Building2, ChevronDown, CreditCard, MoreHorizontal } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useClient } from '../lib/ClientContext';
+import { cn } from '../lib/utils';
 
+/**
+ * Layout Component
+ * 
+ * This is the root structural component for all authenticated pages.
+ * 
+ * Responsibilities:
+ * 1. Responsive Navigation: Renders the Desktop Sidebar and the Mobile Bottom Navigation bar.
+ * 2. Theming: Manages Light/Dark mode via localStorage and Tailwind's `dark` class.
+ * 3. Client Context: Allows the user to switch between different "Clients/Businesses" they manage.
+ *    Changing the active client globally affects what invoices/reconciliations are shown in the `<Outlet />`.
+ */
 export default function Layout() {
   const location = useLocation();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [credits, setCredits] = useState<number | null>(null);
   const [clientMenuOpen, setClientMenuOpen] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const { clients, activeClientId, setActiveClientId } = useClient();
 
   useEffect(() => {
@@ -61,59 +73,58 @@ export default function Layout() {
   
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'Scan Invoices', path: '/scan', icon: ScanLine },
-    { name: 'Saved Invoices', path: '/invoices', icon: FileText },
-    { name: 'GSTR-2B Recon', path: '/reconcile', icon: FileText },
+    { name: 'Scan', path: '/scan', icon: ScanLine },
+    { name: 'Invoices', path: '/invoices', icon: FileText },
+    { name: 'GSTR-2B', path: '/reconcile', icon: FileText },
+  ];
+  
+  const moreNavItems = [
     { name: isBusiness ? 'Businesses' : 'Clients', path: '/clients', icon: Building2 },
     { name: 'Wallet & Billing', path: '/wallet', icon: CreditCard },
+    { name: 'Settings', path: '/settings', icon: Settings },
   ];
 
   return (
-    <div className="flex h-screen bg-bg-base overflow-hidden flex-col md:flex-row">
+    <div className="flex h-[100dvh] bg-bg-base overflow-hidden flex-col md:flex-row pb-safe md:pb-0">
       
-      {/* Mobile Top Header */}
-      <div className="md:hidden flex items-center justify-between p-4 bg-bg-surface border-b border-border z-50">
+      {/* Mobile Top Header (Sticky) */}
+      <div className="md:hidden glass-header flex items-center justify-between p-3 z-50 pt-safe">
         <div className="flex items-center gap-2">
-          <img src="/favicon.png" alt="KhataLens Logo" className="w-8 h-8 drop-shadow-sm" />
-          <span className="text-lg font-bold text-text-primary">KhataLens</span>
+          <img src="/favicon.png" alt="KhataLens Logo" className="w-7 h-7 drop-shadow-sm" />
+          <span className="text-lg font-bold text-text-primary tracking-tight">KhataLens</span>
         </div>
-        <div className="flex items-center gap-3">
+        
+        <div className="flex items-center gap-2">
           {credits !== null && (
-            <div className="flex px-2 py-1 bg-accent/10 text-accent text-xs font-medium rounded-full border border-accent/20 items-center gap-1">
+            <div className="flex px-2 py-1 bg-accent-subtle text-accent text-xs font-medium rounded-full border border-accent/20 items-center gap-1">
               <Sparkles className="w-3 h-3" />
               {credits}
             </div>
           )}
-          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 text-text-secondary hover:text-text-primary transition-colors">
-            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          <button onClick={toggleTheme} className="p-1.5 text-text-secondary hover:text-text-primary bg-bg-sunken rounded-full">
+            {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
         </div>
       </div>
 
-      {/* Sidebar Overlay (Mobile) */}
-      {mobileMenuOpen && (
-        <div 
-          className="fixed inset-0 bg-bg-overlay/50 z-40 md:hidden backdrop-blur-sm" 
-          onClick={() => setMobileMenuOpen(false)} 
-        />
-      )}
-
-      {/* Sidebar */}
-      <div className={`fixed md:static inset-y-0 left-0 z-50 w-[220px] bg-bg-surface border-r border-border flex flex-col transition-transform duration-300 ease-in-out ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
-        <div className="p-5 border-b border-border hidden md:flex items-center gap-3 h-[60px]">
+      {/* Desktop Sidebar */}
+      <div className="hidden md:flex inset-y-0 left-0 z-50 w-[240px] bg-bg-surface border-r border-border flex-col transition-transform duration-300 ease-in-out">
+        <div className="p-5 flex items-center gap-3 h-[70px]">
           <img src="/favicon.png" alt="KhataLens Logo" className="w-8 h-8 drop-shadow-sm" />
-          <span className="text-lg font-bold text-text-primary tracking-tight">KhataLens</span>
+          <span className="text-xl font-bold text-text-primary tracking-tight">KhataLens</span>
         </div>
         
-        {/* Client Switcher */}
-        <div className="p-3 border-b border-border relative">
+        {/* Client Switcher (Desktop) */}
+        <div className="px-4 pb-4 relative">
           <button 
             onClick={() => setClientMenuOpen(!clientMenuOpen)}
-            className="w-full flex items-center justify-between p-2 rounded-md hover:bg-bg-sunken transition-colors border border-transparent hover:border-border"
+            className="w-full flex items-center justify-between p-2.5 rounded-lg bg-bg-sunken border border-border hover:border-border-focus transition-colors shadow-sm"
           >
             <div className="flex items-center gap-2 overflow-hidden">
-              <Building2 className="w-4 h-4 text-accent shrink-0" />
-              <span className="text-sm font-medium text-text-primary truncate">
+              <div className="w-6 h-6 rounded-md bg-accent-subtle text-accent flex items-center justify-center shrink-0">
+                <Building2 className="w-3.5 h-3.5" />
+              </div>
+              <span className="text-sm font-semibold text-text-primary truncate">
                 {activeClientId 
                   ? clients.find((c: any) => c.id === activeClientId)?.client_name || `Select ${isBusiness ? 'Business' : 'Client'}`
                   : `Select ${isBusiness ? 'Business' : 'Client'}`}
@@ -125,12 +136,12 @@ export default function Layout() {
           <AnimatePresence>
             {clientMenuOpen && (
               <motion.div 
-                initial={{ opacity: 0, y: -10 }}
+                initial={{ opacity: 0, y: -5 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="absolute left-3 right-3 top-[calc(100%+4px)] bg-bg-surface border border-border rounded-lg shadow-xl z-[60] overflow-hidden"
+                exit={{ opacity: 0, y: -5 }}
+                className="absolute left-4 right-4 top-[calc(100%+4px)] bg-bg-surface border border-border rounded-xl shadow-lg z-[60] overflow-hidden"
               >
-                <div className="max-h-48 overflow-y-auto custom-scrollbar p-1">
+                <div className="max-h-48 overflow-y-auto custom-scrollbar p-1.5">
                   {clients.length === 0 ? (
                     <div className="p-3 text-xs text-text-secondary text-center">No {isBusiness ? 'businesses' : 'clients'} found</div>
                   ) : (
@@ -140,22 +151,24 @@ export default function Layout() {
                         onClick={() => {
                           setActiveClientId(client.id);
                           setClientMenuOpen(false);
-                          setMobileMenuOpen(false);
                         }}
-                        className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
-                          activeClientId === client.id ? 'bg-accent/10 text-accent font-medium' : 'text-text-primary hover:bg-bg-sunken'
-                        }`}
+                        className={cn(
+                          "w-full text-left px-3 py-2 text-sm rounded-md transition-colors",
+                          activeClientId === client.id 
+                            ? "bg-accent-subtle text-accent font-semibold" 
+                            : "text-text-primary hover:bg-bg-sunken font-medium"
+                        )}
                       >
                         {client.client_name}
                       </button>
                     ))
                   )}
                 </div>
-                <div className="p-1 border-t border-border">
+                <div className="p-1.5 border-t border-border bg-bg-sunken/50">
                   <Link 
                     to="/clients" 
-                    onClick={() => { setClientMenuOpen(false); setMobileMenuOpen(false); }}
-                    className="w-full text-left px-3 py-2 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-sunken rounded-md transition-colors flex items-center gap-2"
+                    onClick={() => setClientMenuOpen(false)}
+                    className="w-full text-left px-3 py-2 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-surface rounded-md transition-colors flex items-center gap-2"
                   >
                     <Settings className="w-3 h-3" /> Manage {isBusiness ? 'Businesses' : 'Clients'}
                   </Link>
@@ -165,20 +178,21 @@ export default function Layout() {
           </AnimatePresence>
         </div>
 
-        <nav className="flex-1 p-3 space-y-1">
-          {navItems.map((item) => {
+        <div className="px-4 text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Menu</div>
+        <nav className="flex-1 px-3 space-y-1 overflow-y-auto">
+          {[...navItems, ...moreNavItems].map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
             return (
               <Link
                 key={item.path}
                 to={item.path}
-                onClick={() => setMobileMenuOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all font-medium",
                   isActive
-                    ? 'bg-accent-subtle text-accent font-medium'
-                    : 'text-text-secondary hover:bg-bg-sunken hover:text-text-primary'
-                }`}
+                    ? "bg-accent text-white shadow-sm"
+                    : "text-text-secondary hover:bg-bg-sunken hover:text-text-primary"
+                )}
               >
                 <Icon className="w-4 h-4" />
                 {item.name}
@@ -187,22 +201,10 @@ export default function Layout() {
           })}
         </nav>
 
-        <div className="p-3 border-t border-border space-y-1">
-          <Link 
-            to="/settings"
-            onClick={() => setMobileMenuOpen(false)}
-            className={`flex w-full items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
-              location.pathname === '/settings' 
-                ? 'bg-accent-subtle text-accent font-medium' 
-                : 'text-text-secondary hover:bg-bg-sunken hover:text-text-primary'
-            }`}
-          >
-            <Settings className="w-4 h-4" />
-            Settings
-          </Link>
+        <div className="p-4 border-t border-border">
           <button 
             onClick={handleSignOut}
-            className="flex w-full items-center gap-3 px-3 py-2 rounded-md text-sm text-text-secondary hover:bg-bg-sunken hover:text-text-primary transition-colors"
+            className="flex w-full items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-text-secondary bg-bg-sunken border border-border hover:bg-bg-surface hover:text-text-primary transition-colors"
           >
             <LogOut className="w-4 h-4" />
             Sign Out
@@ -211,50 +213,200 @@ export default function Layout() {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden relative">
+      <div className="flex-1 flex flex-col overflow-hidden relative w-full">
         
         {/* Desktop Topbar */}
-        <div className="hidden md:flex h-[60px] items-center justify-between px-6 bg-bg-surface border-b border-border z-40">
+        <div className="hidden md:flex h-[70px] items-center justify-between px-8 bg-bg-surface/80 backdrop-blur-md border-b border-border z-40 sticky top-0">
           <div className="flex items-center gap-4">
-            <h1 className="text-lg font-semibold text-text-primary capitalize">
+            <h1 className="text-xl font-bold text-text-primary capitalize tracking-tight">
               {location.pathname.replace('/', '') || 'Dashboard'}
             </h1>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-5">
             {credits !== null && (
-              <div className="hidden sm:flex px-3 py-1 bg-accent/10 text-accent text-sm font-medium rounded-full border border-accent/20 items-center gap-1">
-                <Sparkles className="w-3 h-3" />
+              <div className="flex px-3 py-1.5 bg-accent-subtle text-accent text-sm font-semibold rounded-full border border-accent/20 items-center gap-1.5 shadow-sm">
+                <Sparkles className="w-4 h-4" />
                 {credits} Credits
               </div>
             )}
             <button
               onClick={toggleTheme}
-              className="p-2 text-text-secondary hover:text-text-primary hover:bg-bg-sunken rounded-md transition-colors"
+              className="p-2 text-text-secondary hover:text-text-primary hover:bg-bg-sunken rounded-full transition-colors border border-transparent hover:border-border"
               title="Toggle Theme"
             >
               {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
-            <div className="w-8 h-8 rounded-full bg-accent-subtle border border-accent/20 flex items-center justify-center text-accent font-medium text-sm">
-              LL
+            <div className="w-9 h-9 rounded-full bg-accent text-white flex items-center justify-center font-bold text-sm shadow-sm cursor-pointer hover:opacity-90 transition-opacity">
+              ME
             </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={location.pathname}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-            className="min-h-full"
+        {/* Mobile Client Switcher */}
+        <div className="md:hidden px-4 py-2 bg-bg-surface border-b border-border flex items-center justify-between z-40">
+           <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">{isBusiness ? 'Business' : 'Client'}</span>
+           <button 
+            onClick={() => setClientMenuOpen(!clientMenuOpen)}
+            className="flex items-center gap-1 text-sm font-semibold text-accent active:opacity-70"
           >
-            <Outlet />
-          </motion.div>
+            {activeClientId 
+              ? clients.find((c: any) => c.id === activeClientId)?.client_name || 'Select'
+              : 'Select'}
+            <ChevronDown className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Mobile Client Switcher Modal */}
+        <AnimatePresence>
+          {clientMenuOpen && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="md:hidden fixed inset-0 z-[100] bg-bg-overlay/60 backdrop-blur-sm flex items-end justify-center"
+              onClick={() => setClientMenuOpen(false)}
+            >
+              <motion.div 
+                initial={{ y: '100%' }}
+                animate={{ y: 0 }}
+                exit={{ y: '100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                className="w-full bg-bg-surface rounded-t-2xl max-h-[80vh] flex flex-col shadow-2xl"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="p-4 border-b border-border flex items-center justify-between">
+                  <h3 className="font-bold text-lg">Select {isBusiness ? 'Business' : 'Client'}</h3>
+                  <button onClick={() => setClientMenuOpen(false)} className="p-2 rounded-full bg-bg-sunken text-text-secondary">
+                    <ChevronDown className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="overflow-y-auto p-4 space-y-2 flex-1 pb-8">
+                  {clients.length === 0 ? (
+                    <div className="p-4 text-center text-text-secondary">No {isBusiness ? 'businesses' : 'clients'} found</div>
+                  ) : (
+                    clients.map((client: any) => (
+                      <button
+                        key={client.id}
+                        onClick={() => {
+                          setActiveClientId(client.id);
+                          setClientMenuOpen(false);
+                        }}
+                        className={cn(
+                          "w-full text-left p-4 rounded-xl border transition-all flex items-center justify-between",
+                          activeClientId === client.id 
+                            ? "border-accent bg-accent-subtle text-accent shadow-sm" 
+                            : "border-border bg-bg-surface text-text-primary active:bg-bg-sunken"
+                        )}
+                      >
+                        <span className="font-semibold">{client.client_name}</span>
+                        {activeClientId === client.id && <Sparkles className="w-5 h-5" />}
+                      </button>
+                    ))
+                  )}
+                  <Link 
+                    to="/clients" 
+                    onClick={() => setClientMenuOpen(false)}
+                    className="w-full mt-4 flex items-center justify-center gap-2 p-4 rounded-xl border border-dashed border-border text-text-secondary font-medium active:bg-bg-sunken"
+                  >
+                    <Settings className="w-4 h-4" /> Manage {isBusiness ? 'Businesses' : 'Clients'}
+                  </Link>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
         </AnimatePresence>
+
+        <div className="flex-1 overflow-auto md:pb-0 pb-16 relative">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="min-h-full"
+            >
+              <Outlet />
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
+
+      {/* Mobile Bottom Navigation Bar */}
+      <div className="bottom-nav">
+        {navItems.map(item => {
+          const Icon = item.icon;
+          const isActive = location.pathname === item.path;
+          return (
+            <Link key={item.path} to={item.path} className={cn("bottom-nav-item", isActive && "active")}>
+              <Icon className={cn("w-6 h-6", isActive ? "stroke-[2.5px]" : "stroke-[2px]")} />
+              <span className="text-[10px] font-semibold">{item.name}</span>
+            </Link>
+          );
+        })}
+        <button 
+          onClick={() => setMobileMoreOpen(!mobileMoreOpen)}
+          className={cn("bottom-nav-item", mobileMoreOpen && "active")}
+        >
+          <MoreHorizontal className="w-6 h-6 stroke-[2.5px]" />
+          <span className="text-[10px] font-semibold">More</span>
+        </button>
+      </div>
+
+      {/* Mobile 'More' Menu Drawer */}
+      <AnimatePresence>
+        {mobileMoreOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="md:hidden fixed inset-0 z-[40] bg-bg-overlay/60 backdrop-blur-sm"
+            onClick={() => setMobileMoreOpen(false)}
+          >
+            <motion.div 
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="absolute bottom-[calc(env(safe-area-inset-bottom,16px)+64px)] left-2 right-2 bg-bg-surface rounded-2xl shadow-2xl border border-border overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="p-2 space-y-1">
+                {moreNavItems.map(item => {
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setMobileMoreOpen(false)}
+                      className="flex items-center gap-3 p-3 rounded-xl text-text-primary font-medium hover:bg-bg-sunken active:bg-bg-sunken transition-colors"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-accent-subtle text-accent flex items-center justify-center">
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      {item.name}
+                    </Link>
+                  );
+                })}
+                <div className="h-[1px] bg-border my-2 mx-2" />
+                <button
+                  onClick={() => {
+                    setMobileMoreOpen(false);
+                    handleSignOut();
+                  }}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl text-error font-medium hover:bg-error-subtle active:bg-error-subtle transition-colors"
+                >
+                  <div className="w-8 h-8 rounded-full bg-error-subtle text-error flex items-center justify-center">
+                    <LogOut className="w-4 h-4" />
+                  </div>
+                  Sign Out
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }

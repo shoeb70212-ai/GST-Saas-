@@ -10,7 +10,15 @@ GSTIN_API_URL = os.getenv("GSTIN_API_URL", "https://api.mockgstin.com/verify")
 
 async def verify_gstin(supabase_client, gstin: str) -> str:
     """
-    Verifies a GSTIN.
+    Verifies a GSTIN's active status.
+    
+    Architecture:
+    This function implements a caching layer to avoid paying per-verification 
+    API costs for repeat vendors. It first checks the `gstin_cache` Supabase table.
+    If a cache miss occurs, it hits the external API (like AppyFlow), retrieves 
+    the Live status (Active/Cancelled), and caches it for future invoices from 
+    that same vendor.
+    
     Returns: 'Active', 'Cancelled', 'Invalid', or 'Unknown'
     """
     if not gstin or len(gstin) != 15:

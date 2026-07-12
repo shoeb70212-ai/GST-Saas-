@@ -30,6 +30,16 @@ async def get_semaphore():
 router = APIRouter()
 
 async def process_batch_worker(invoice_id: str, content: bytes, mime_type: str, user_id: str, token: str):
+    """
+    Background task for processing invoices submitted via a ZIP batch.
+    
+    To prevent HTTP 429 Rate Limiting from OpenAI/OpenRouter when parsing 
+    dozens of invoices at once, we use a global asyncio.Semaphore to limit
+    concurrent AI extractions to 5 at a time.
+    
+    After extraction, this worker updates the database, deducts credits,
+    and runs the GSTIN KYC verification on the vendor.
+    """
     try:
         # Rate limit concurrent AI calls to prevent 429s (OpenRouter/Gemini)
         sem = await get_semaphore()

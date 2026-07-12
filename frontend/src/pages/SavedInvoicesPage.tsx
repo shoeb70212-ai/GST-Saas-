@@ -378,7 +378,64 @@ export default function SavedInvoicesPage() {
       </AnimatePresence>
 
       <div className="card p-0 overflow-hidden">
-        <div className="overflow-x-auto overflow-y-auto max-h-[65vh] custom-scrollbar relative">
+        
+        {/* Mobile Card View */}
+        <div className="md:hidden flex flex-col p-4 gap-3 overflow-y-auto max-h-[70vh] custom-scrollbar">
+          {filteredInvoices.map(inv => (
+            <div 
+              key={inv.id} 
+              className="bg-bg-surface border border-border rounded-xl p-4 flex flex-col gap-3 shadow-sm active:scale-[0.98] transition-transform"
+              onClick={() => handleRowClick(inv)}
+            >
+              <div className="flex justify-between items-start gap-2">
+                <div className="flex flex-col min-w-0 flex-1">
+                  <h3 className="font-semibold text-text-primary text-sm truncate">
+                    {inv.supplier_name || 'Unknown Supplier'}
+                  </h3>
+                  <p className="text-xs text-text-secondary truncate mt-0.5">
+                    {inv.invoice_number || 'No Inv#'} • {inv.invoice_date || '-'}
+                  </p>
+                </div>
+                <div className="flex flex-col items-end shrink-0">
+                  <span className="font-mono font-bold text-text-primary text-sm">
+                    {inv.total_invoice_amount ? formatCurrency(Number(inv.total_invoice_amount)) : '-'}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-between pt-3 border-t border-border mt-1">
+                <div className="flex items-center gap-2">
+                  {inv.supplier_gstin_status === 'Active' ? (
+                    <span className="badge bg-success-subtle text-success border border-success/20 px-2 py-0.5 rounded-full text-[10px]">Active</span>
+                  ) : inv.supplier_gstin_status === 'Cancelled' ? (
+                    <span className="badge bg-error-subtle text-error border border-error/20 px-2 py-0.5 rounded-full text-[10px]">Cancelled</span>
+                  ) : inv.supplier_gstin_status ? (
+                    <span className="badge bg-bg-sunken text-text-secondary border border-border px-2 py-0.5 rounded-full text-[10px]">{inv.supplier_gstin_status}</span>
+                  ) : null}
+                </div>
+                
+                <div>
+                  {inv.extraction_state === 'needs_retry' ? (
+                    <span className="badge bg-error-subtle text-error border border-error/20 text-[10px]">Needs Retry</span>
+                  ) : inv.extraction_state === 'needs_review' ? (
+                    <span className="badge bg-warning-subtle text-warning border border-warning/20 text-[10px]">Review</span>
+                  ) : (
+                    <span className="badge bg-success-subtle text-success border border-success/20 text-[10px]">Processed</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+          {filteredInvoices.length === 0 && (
+            <div className="py-8 text-center text-text-secondary flex flex-col items-center gap-2">
+              <FileText className="w-8 h-8 opacity-50" />
+              <p className="text-sm">No invoices found.</p>
+            </div>
+          )}
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto overflow-y-auto max-h-[65vh] custom-scrollbar relative">
           <table className="w-full text-sm text-left relative">
             <thead className="table-header">
               <tr>

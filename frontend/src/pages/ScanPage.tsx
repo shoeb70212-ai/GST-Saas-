@@ -254,6 +254,16 @@ const InvoiceRow = React.memo(function InvoiceRow({ fs, visibleColumns, onUpdate
   );
 });
 
+/**
+ * The ScanPage is the core operational hub of KhataLens.
+ * 
+ * Responsibilities:
+ * 1. Handles both Single-File Drag-and-Drop and Bulk ZIP Batch uploads.
+ * 2. Pre-validates PDFs using pdf.js to count pages before uploading to the backend,
+ *    providing the user with a preview of how many credits will be consumed.
+ * 3. Manages a complex state machine for each file (Queued -> Uploading -> Extracting -> Success/Failed).
+ * 4. Renders the 'Verification Grid' where users can edit AI-extracted data before saving to Supabase.
+ */
 export default function ScanPage() {
   const { fileStates, setFileStates, visibleColumns, setVisibleColumns } = useScanContext();
   const { activeClientId, credits, refreshCredits } = useClient();
@@ -716,74 +726,9 @@ export default function ScanPage() {
   const unsavedCount = fileStates.filter(f => f.extractedData && !f.savedToCloud).length;
 
   return (
-    <div className="min-h-screen bg-bg-base relative font-sans text-text-primary selection:bg-accent-subtle pb-20">
-      
-      {/* Navbar */}
-      <nav className="fixed top-0 w-full z-50 px-6 py-4 flex justify-between items-center border-b border-border bg-bg-surface/90 backdrop-blur-md">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-md bg-accent flex items-center justify-center shadow-sm">
-            <Sparkles className="w-5 h-5 text-white" />
-          </div>
-          <span className="text-xl font-bold text-text-primary">
-            KhataLens
-          </span>
-        </div>
-        <div className="flex items-center gap-4">
-          {credits !== null && (
-            <div className="badge border border-accent/20 text-accent bg-accent-subtle py-1 px-3">
-              <span className="w-2 h-2 rounded-full bg-accent animate-pulse mr-2" />
-              <span>{credits} Credits</span>
-            </div>
-          )}
-          <div className="relative" ref={settingsRef}>
-            <button 
-              onClick={() => setShowSettings(!showSettings)} 
-              className={cn("p-2 hover:bg-bg-sunken rounded-md transition-colors", showSettings && "bg-bg-sunken")}
-              title="Column Settings"
-            >
-              <Settings className="w-5 h-5 text-text-secondary" />
-            </button>
-            
-            <AnimatePresence>
-              {showSettings && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
-                  className="absolute right-0 mt-2 w-64 card p-3 z-50 shadow-lg"
-                >
-                  <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Visible Columns</h4>
-                  <div className="space-y-1.5 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
-                    {AVAILABLE_COLUMNS.map(col => (
-                      <label key={col.key} className="flex items-center gap-3 px-2 py-1.5 hover:bg-bg-sunken rounded cursor-pointer group">
-                        <div className="relative flex items-center justify-center w-4 h-4">
-                          <input 
-                            type="checkbox" 
-                            checked={visibleColumns.includes(col.key)} 
-                            onChange={() => toggleColumn(col.key)}
-                            className="peer appearance-none w-4 h-4 border border-border rounded bg-transparent checked:bg-accent checked:border-accent transition-all cursor-pointer"
-                          />
-                          <CheckCircle2 className="w-3 h-3 text-white absolute opacity-0 peer-checked:opacity-100 pointer-events-none" />
-                        </div>
-                        <span className="text-sm text-text-secondary group-hover:text-text-primary transition-colors">{col.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-          
-            <button 
-              onClick={() => supabase.auth.signOut()} 
-              className="p-2 hover:bg-error-subtle hover:text-error text-text-secondary rounded-md transition-colors"
-              title="Sign Out"
-            >
-              <LogOut className="w-5 h-5" />
-            </button>
-        </div>
-      </nav>
-
+    <div className="h-full bg-bg-base relative font-sans text-text-primary selection:bg-accent-subtle">
       {/* Main Content */}
-      <main className="pt-24 lg:pt-28 px-4 lg:px-6 max-w-7xl mx-auto relative z-10 lg:h-[calc(100vh-60px)] min-h-[calc(100vh-60px)] flex flex-col pb-8">
+      <main className="p-4 lg:p-6 max-w-[1600px] mx-auto h-full flex flex-col">
         
         <div className="card flex-1 flex flex-col lg:flex-row p-0 overflow-hidden shadow-lg border-border">
           
@@ -916,6 +861,42 @@ export default function ScanPage() {
               </div>
               
               <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                  <div className="relative" ref={settingsRef}>
+                    <button 
+                      onClick={() => setShowSettings(!showSettings)} 
+                      className={cn("btn-ghost px-2", showSettings && "bg-bg-sunken")}
+                      title="Column Settings"
+                    >
+                      <Settings className="w-4 h-4" />
+                    </button>
+                    
+                    <AnimatePresence>
+                      {showSettings && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
+                          className="absolute right-0 mt-2 w-64 card p-3 z-50 shadow-lg"
+                        >
+                          <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Visible Columns</h4>
+                          <div className="space-y-1.5 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+                            {AVAILABLE_COLUMNS.map(col => (
+                              <label key={col.key} className="flex items-center gap-3 px-2 py-1.5 hover:bg-bg-sunken rounded cursor-pointer group">
+                                <div className="relative flex items-center justify-center w-4 h-4">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={visibleColumns.includes(col.key)} 
+                                    onChange={() => toggleColumn(col.key)}
+                                    className="peer appearance-none w-4 h-4 border border-border rounded bg-transparent checked:bg-accent checked:border-accent transition-all cursor-pointer"
+                                  />
+                                  <CheckCircle2 className="w-3 h-3 text-white absolute opacity-0 peer-checked:opacity-100 pointer-events-none" />
+                                </div>
+                                <span className="text-sm text-text-secondary group-hover:text-text-primary transition-colors">{col.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                   <button 
                     onClick={handleSaveToCloud}
                     disabled={unsavedCount === 0 || isSaving || !activeClientId}

@@ -13,6 +13,20 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from utils import validate_file_content
 
 def compute_confidence(extracted: dict, computed_total: float) -> dict:
+    """
+    Evaluates the reliability of the AI-extracted invoice data.
+    
+    Starts with a perfect score of 100 and applies penalties based on missing 
+    or malformed critical fields. This score determines whether an invoice 
+    is auto-accepted, needs manual review, or completely failed.
+    
+    Args:
+        extracted (dict): The raw data dictionary returned by the LLM.
+        computed_total (float): The mathematically verified total amount.
+        
+    Returns:
+        dict: A dictionary containing the numeric 'score' and string 'state'.
+    """
     score = 100.0
     penalties = 0.0
     
@@ -43,6 +57,20 @@ def compute_confidence(extracted: dict, computed_total: float) -> dict:
     return {"score": final_score, "state": state}
 
 def apply_tax_calculations(data_dict: dict) -> dict:
+    """
+    Calculates and structures the GST tax components based on line items.
+    
+    Instead of relying on the AI to perfectly read the CGST/SGST/IGST breakdown,
+    this function calculates it deterministically based on the Supplier and Buyer GSTINs.
+    If the first 2 characters (State Code) of the GSTINs match, it applies CGST + SGST.
+    If they differ, it applies IGST (Interstate).
+    
+    Args:
+        data_dict (dict): The partially populated invoice data.
+        
+    Returns:
+        dict: The updated data dictionary with precise tax amounts and confidence scores.
+    """
     taxable = sum((item.get("Amount") or 0) for item in data_dict.get("Line_Items", []))
     cgst = 0
     sgst = 0
@@ -51,10 +79,13 @@ def apply_tax_calculations(data_dict: dict) -> dict:
     sup_gstin = data_dict.get("Supplier_GSTIN")
     buy_gstin = data_dict.get("Buyer_GSTIN")
     is_interstate = False
+    
+    # Check GSTIN state codes (first 2 digits) to determine intra-state vs inter-state
     if sup_gstin and buy_gstin and len(sup_gstin) >= 2 and len(buy_gstin) >= 2:
         if sup_gstin[:2] != buy_gstin[:2]:
             is_interstate = True
             
+    # Distribute the tax percentage from line items into the correct GST buckets
     for item in data_dict.get("Line_Items", []):
         amt = item.get("Amount") or 0
         rate = item.get("Tax_Rate") or 0
@@ -181,6 +212,17 @@ def read_root():
 
 @app.post("/api/scan-invoice")
 async def scan_invoice(file: UploadFile = File(...), authorization: str = Header(None)):
+    """
+    Primary endpoint for processing single invoice files (PDF/Images).
+    
+    Workflow:
+    1. Authenticates the user via Supabase JWT.
+    2. Checks if the user has sufficient credits in their profile.
+    3. Validates the file (magic bytes & size).
+    4. Runs AI extraction (`run_ai_extraction`) to parse data.
+    5. Checks the vendor GSTIN against the KYC Cache (Supabase RPC).
+    6. Deducts 1 credit from the user's account.
+    """
     if not SUPABASE_URL or not SUPABASE_ANON_KEY:
         raise HTTPException(status_code=500, detail="Missing Supabase configuration in .env.")
         
