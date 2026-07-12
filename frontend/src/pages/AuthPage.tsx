@@ -4,7 +4,7 @@ import { Loader2, Sparkles, Mail, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function AuthPage() {
-  const [email, setEmail] = useState(import.meta.env.DEV ? 'dev@payforce.com' : '');
+  const [email, setEmail] = useState(import.meta.env.DEV ? 'dev@khatalens.com' : '');
   const [password, setPassword] = useState(import.meta.env.DEV ? 'DevPass123!' : '');
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -35,10 +35,8 @@ export default function AuthPage() {
       
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 rounded-lg bg-accent flex items-center justify-center mb-4 shadow-sm">
-            <Sparkles className="w-6 h-6 text-white" />
-          </div>
-          <h1 className="text-3xl font-bold text-text-primary mb-2">LedgerLens</h1>
+          <img src="/favicon.png" alt="KhataLens Logo" className="w-12 h-12 mb-4 drop-shadow-sm" />
+          <h1 className="text-3xl font-bold text-text-primary mb-2">KhataLens</h1>
           <p className="text-text-secondary">Smart GST Invoice Processing</p>
         </div>
 

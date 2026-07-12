@@ -82,7 +82,7 @@ const SnapPage: React.FC = () => {
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl overflow-hidden max-w-sm w-full">
         <div className="bg-blue-600 p-6 text-center">
-          <h1 className="text-2xl font-bold text-white mb-1">Payforce Snap</h1>
+          <h1 className="text-2xl font-bold text-white mb-1">KhataLens Snap</h1>
           <p className="text-blue-100 text-sm">Secure Document Submission</p>
         </div>
 
@@ -151,7 +151,7 @@ const SnapPage: React.FC = () => {
           />
         </div>
       </div>
-      <p className="text-gray-400 text-xs mt-6">Powered by Payforce AI</p>
+      <p className="text-gray-400 text-xs mt-6">Powered by KhataLens AI</p>
     </div>
   );
 };

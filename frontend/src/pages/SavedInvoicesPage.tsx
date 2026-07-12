@@ -66,7 +66,7 @@ export default function SavedInvoicesPage() {
   const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULT_COLUMNS);
   
   useEffect(() => {
-    const saved = localStorage.getItem('payforce_columns');
+    const saved = localStorage.getItem('khatalens_columns');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -81,7 +81,7 @@ export default function SavedInvoicesPage() {
   const toggleColumn = (key: string) => {
     setVisibleColumns(prev => {
       const next = prev.includes(key) ? prev.filter(c => c !== key) : [...prev, key];
-      localStorage.setItem('payforce_columns', JSON.stringify(next));
+      localStorage.setItem('khatalens_columns', JSON.stringify(next));
       return next;
     });
   };
@@ -149,7 +149,7 @@ export default function SavedInvoicesPage() {
         
       if (error) throw error;
       
-      exportToExcelMultiSheet(filteredInvoices, allLineItems || [], visibleColumns);
+      exportToExcelMultiSheet(filteredInvoices, allLineItems || []);
     } catch (err) {
       console.error("Export failed:", err);
       toast.error("Failed to export invoices.");

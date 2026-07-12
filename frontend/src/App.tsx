@@ -40,11 +40,11 @@ export default function App() {
     const initSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       
-      if (!session && import.meta.env.DEV) {
+      if (!session && import.meta.env.DEV && import.meta.env.VITE_DEV_EMAIL && import.meta.env.VITE_DEV_PASSWORD) {
         // Try auto-login in DEV mode
         const { data: signInData } = await supabase.auth.signInWithPassword({
-          email: 'dev@payforce.com',
-          password: 'DevPass123!'
+          email: import.meta.env.VITE_DEV_EMAIL,
+          password: import.meta.env.VITE_DEV_PASSWORD
         });
         
         if (signInData?.session) {

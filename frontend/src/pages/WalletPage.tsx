@@ -89,7 +89,7 @@ export default function WalletPage() {
         key: orderData.key_id, 
         amount: orderData.amount,
         currency: orderData.currency,
-        name: "LedgerLens Pro",
+        name: "KhataLens Pro",
         description: `${plan.name} - ${plan.credits} Credits`,
         order_id: orderData.order_id,
         handler: async function (response: any) {

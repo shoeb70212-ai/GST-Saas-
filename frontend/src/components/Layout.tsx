@@ -74,10 +74,8 @@ export default function Layout() {
       {/* Mobile Top Header */}
       <div className="md:hidden flex items-center justify-between p-4 bg-bg-surface border-b border-border z-50">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-md bg-accent flex items-center justify-center shadow-sm">
-            <Sparkles className="w-4 h-4 text-white" />
-          </div>
-          <span className="text-lg font-bold text-text-primary">LedgerLens</span>
+          <img src="/favicon.png" alt="KhataLens Logo" className="w-8 h-8 drop-shadow-sm" />
+          <span className="text-lg font-bold text-text-primary">KhataLens</span>
         </div>
         <div className="flex items-center gap-3">
           {credits !== null && (
@@ -103,10 +101,8 @@ export default function Layout() {
       {/* Sidebar */}
       <div className={`fixed md:static inset-y-0 left-0 z-50 w-[220px] bg-bg-surface border-r border-border flex flex-col transition-transform duration-300 ease-in-out ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
         <div className="p-5 border-b border-border hidden md:flex items-center gap-3 h-[60px]">
-          <div className="w-8 h-8 rounded-md bg-accent flex items-center justify-center shadow-sm">
-            <Sparkles className="w-4 h-4 text-white" />
-          </div>
-          <span className="text-lg font-bold text-text-primary tracking-tight">LedgerLens</span>
+          <img src="/favicon.png" alt="KhataLens Logo" className="w-8 h-8 drop-shadow-sm" />
+          <span className="text-lg font-bold text-text-primary tracking-tight">KhataLens</span>
         </div>
         
         {/* Client Switcher */}

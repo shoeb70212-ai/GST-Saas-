@@ -1,4 +1,4 @@
-# LedgerLens — Target Audience Feature Matrix
+# KhataLens — Target Audience Feature Matrix
 
 To build the right product, we must clearly separate the needs of **Direct Users (Business Owners)** and **Accountants (CAs/Tax Pros)**. They use the software for completely different reasons.
 
@@ -25,7 +25,7 @@ To build the right product, we must clearly separate the needs of **Direct Users
 * **Smart Anomaly & Math Detection:** Flagging GSTIN state mismatches and math errors before filing.
 
 ### 💼 2. Features EXCLUSIVELY for Direct Users (Business Owners)
-*These features were part of the original "PayForce" concept and cater to business operations.*
+*These features were part of the original "KhataLens" concept and cater to business operations.*
 * **Sunk GST & MSMED Interest Analytics:** Seeing exactly how much cash is stuck in unpaid invoices and the interest accruing.
 * **Rule 37 Dunning Generator:** Sending legal threat messages (WhatsApp/Email) to buyers who haven't paid.
 * **Samadhaan Export:** Generating legal files for government arbitration.

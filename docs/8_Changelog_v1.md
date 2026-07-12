@@ -1,6 +1,6 @@
-# Changelog & Updates - LedgerLens v1.1
+# Changelog & Updates - KhataLens v1.1
 
-This document acts as a central record of the recent stabilization, feature additions, and optimization passes made to the LedgerLens platform.
+This document acts as a central record of the recent stabilization, feature additions, and optimization passes made to the KhataLens platform.
 
 ## 🚀 Phase 2 Features (Recent Updates)
 - **GSTR-2B Reconciliation Engine**: Implemented the deterministic matching UI on `ReconciliationPage.tsx`, allowing users to upload the government 2B JSON/Excel and instantly identify "Missing in PR" (Purchase Register) invoices where ITC is at risk.

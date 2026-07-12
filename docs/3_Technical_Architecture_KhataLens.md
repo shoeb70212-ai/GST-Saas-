@@ -1,4 +1,4 @@
-# LedgerLens — Technical Architecture
+# KhataLens — Technical Architecture
 
 ## Stack Overview
 - **Frontend:** React 19 + Vite + Tailwind CSS + Lucide Icons + React Query (PWA Optimized)

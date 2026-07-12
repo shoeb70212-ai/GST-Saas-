@@ -92,7 +92,7 @@ def test_reconcile(token):
 
 if __name__ == "__main__":
     print("==========================================")
-    print(" LedgerLens E2E API Test Suite ")
+    print(" KhataLens E2E API Test Suite ")
     print("==========================================\n")
     token, user_id = get_token()
     if token:

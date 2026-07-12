@@ -1,8 +1,8 @@
-# LedgerLens — Collaboration Workflow Specification
+# KhataLens — Collaboration Workflow Specification
 
 ## The "Viral Loop" Concept
 The most successful B2B SaaS products grow through **Network Effects**. If a software requires multiple stakeholders to use it to work properly, every user becomes a free salesperson.
-By creating a "Business Owner -> Accountant" data handoff pipeline, an Accountant who signs up for LedgerLens will organically invite all their business clients to use the app, driving user acquisition costs to zero.
+By creating a "Business Owner -> Accountant" data handoff pipeline, an Accountant who signs up for KhataLens will organically invite all their business clients to use the app, driving user acquisition costs to zero.
 
 ---
 
@@ -10,13 +10,13 @@ By creating a "Business Owner -> Accountant" data handoff pipeline, an Accountan
 
 ### 1. The Business Owner (Direct User)
 *   **Context:** Runs a shop, factory, or agency. Receives physical bills daily. Usually stuffs them in a drawer and hands them to the accountant at the end of the month, or sends blurry photos on WhatsApp.
-*   **App Experience:** Uses the LedgerLens mobile web app. 
+*   **App Experience:** Uses the KhataLens mobile web app. 
 *   **Action:** Scans the invoice with their phone camera. The AI extracts the data. 
 *   **Handoff:** They click a button: **"Send to Accountant"**. 
 
 ### 2. The Accountant
 *   **Context:** Sits at a desk processing data for 50+ clients.
-*   **App Experience:** Uses the LedgerLens desktop dashboard.
+*   **App Experience:** Uses the KhataLens desktop dashboard.
 *   **Action:** Opens the "Client Inbox" for a specific business. Sees a queue of digitized invoices sent by the Business Owner.
 *   **Handoff:** Verifies the AI data, makes any small corrections, and clicks **"Approve & Export"** (to Tally/Zoho).
 

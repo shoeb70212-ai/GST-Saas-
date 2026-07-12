@@ -143,7 +143,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULT_COLUMNS);
 
   useEffect(() => {
-    const saved = localStorage.getItem('payforce_columns');
+    const saved = localStorage.getItem('khatalens_columns');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);

@@ -1,11 +1,27 @@
 import pandas as pd
 import io
 import asyncio
+import calendar
+from datetime import date
 from fastapi import APIRouter, File, UploadFile, HTTPException, Header, Form
-from supabase import create_async_client
+import httpx
 from main import SUPABASE_URL, SUPABASE_ANON_KEY
 
 router = APIRouter()
+
+def period_to_date_range(period: str):
+    """
+    period is 'MM-YYYY' (as sent by the Reconciliation page's month picker).
+    Returns (first_day, last_day) as ISO date strings, or (None, None) if it doesn't parse.
+    """
+    try:
+        month_str, year_str = period.split('-')
+        month, year = int(month_str), int(year_str)
+        first_day = date(year, month, 1)
+        last_day = date(year, month, calendar.monthrange(year, month)[1])
+        return first_day.isoformat(), last_day.isoformat()
+    except Exception:
+        return None, None
 
 @router.post("/api/reconcile")
 async def reconcile_gstr2b(
@@ -19,13 +35,14 @@ async def reconcile_gstr2b(
         
     token = authorization.split(" ")[1]
     
-    supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-    try:
-        user_resp = await supabase_client.auth.get_user(token)
-        user_id = user_resp.user.id
-        supabase_client.postgrest.auth(token)
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid session token")
+    async with httpx.AsyncClient() as http_client:
+        user_resp = await http_client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_resp.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid session token")
+        user_id = user_resp.json().get("id")
         
     content = await file.read()
     
@@ -83,32 +100,67 @@ async def reconcile_gstr2b(
             "raw_json": {str(k): str(v) for k,v in row.to_dict().items() if not pd.isna(v)}
         })
         
-    # 1. Fetch old records for rollback
-    fetch_resp = await supabase_client.table("gstr2b_records").select("*").eq("client_id", client_id).eq("period", period).execute()
-    old_records = fetch_resp.data if fetch_resp.data else []
+    async with httpx.AsyncClient() as http_client:
+        # 1. Fetch old records for rollback
+        fetch_resp = await http_client.get(
+            f"{SUPABASE_URL}/rest/v1/gstr2b_records?client_id=eq.{client_id}&period=eq.{period}",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        old_records = fetch_resp.json() if fetch_resp.status_code == 200 else []
 
-    # 2. Delete old records
-    await supabase_client.table("gstr2b_records").delete().eq("client_id", client_id).eq("period", period).execute()
-    
-    # 3. Insert new records in batches
-    batch_size = 500
-    for i in range(0, len(records), batch_size):
-        batch = records[i:i+batch_size]
-        ins_resp = await supabase_client.table("gstr2b_records").insert(batch).execute()
-        if not ins_resp.data:
-            # Rollback
-            if old_records:
-                for j in range(0, len(old_records), batch_size):
-                    await supabase_client.table("gstr2b_records").insert(old_records[j:j+batch_size]).execute()
-            raise HTTPException(status_code=500, detail=f"Failed to insert GSTR-2B records")
-
-    # 4. Trigger Auto-Reconciliation logic via RPC or manual logic
-    inv_resp = await supabase_client.table("invoices").select("id,supplier_gstin,invoice_number,taxable_amount,total_amount,recon_status,recon_period").eq("client_id", client_id).execute()
-    if not inv_resp.data:
-        return {"status": "success", "message": f"Uploaded {len(records)} 2B records. No internal invoices to reconcile yet."}
+        # 2. Delete old records
+        await http_client.delete(
+            f"{SUPABASE_URL}/rest/v1/gstr2b_records?client_id=eq.{client_id}&period=eq.{period}",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
         
-    my_invoices = inv_resp.data
-    
+        # 3. Insert new records in chunks
+        chunk_size = 500
+        insert_success = True
+        for i in range(0, len(records), chunk_size):
+            chunk = records[i:i+chunk_size]
+            resp = await http_client.post(
+                f"{SUPABASE_URL}/rest/v1/gstr2b_records",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json=chunk
+            )
+            if resp.status_code not in (200, 201):
+                insert_success = False
+                break
+                
+        # 4. Rollback if insert failed
+        if not insert_success and old_records:
+            # Re-insert the old records (stripping IDs if auto-generated)
+            for r in old_records:
+                r.pop('id', None)
+                r.pop('created_at', None)
+            
+            for i in range(0, len(old_records), chunk_size):
+                await http_client.post(
+                    f"{SUPABASE_URL}/rest/v1/gstr2b_records",
+                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json=old_records[i:i+chunk_size]
+                )
+            raise HTTPException(status_code=500, detail="Failed to insert new reconciliation records. Original records were restored.")
+            
+        # Scope to invoices dated inside the reconciled month only. Without this, every
+        # never-reconciled invoice from *any* earlier month (recon_status is NULL until its
+        # own period is first reconciled) would get swept into whichever period you happen to
+        # run next and mislabeled "missing_in_2b" for the wrong month - the first reconciliation
+        # run on a client with existing history would flag its entire back-catalog incorrectly.
+        period_start, period_end = period_to_date_range(period)
+        base_url = (
+            f"{SUPABASE_URL}/rest/v1/invoices?client_id=eq.{client_id}"
+            f"&select=id,supplier_gstin,invoice_number,taxable_amount,total_amount,recon_status,recon_period"
+        )
+        if period_start and period_end:
+            base_url += f"&invoice_date=gte.{period_start}&invoice_date=lte.{period_end}"
+        pr_resp = await http_client.get(
+            base_url,
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        pr_invoices = pr_resp.json()
+        
     def clean_str(s):
         if not s: return ""
         import re
@@ -120,7 +172,7 @@ async def reconcile_gstr2b(
     
     import rapidfuzz
     
-    for inv in my_invoices:
+    for inv in pr_invoices:
         my_gstin = clean_str(inv.get('supplier_gstin'))
         my_inv_num = clean_str(inv.get('invoice_number'))
         scanned_tax = float(inv.get('taxable_amount') or 0)
@@ -163,11 +215,14 @@ async def reconcile_gstr2b(
                 })
                 
     if updates:
-        # Use bulk update RPC
-        await supabase_client.rpc("bulk_update_invoices_recon", {"updates": updates}).execute()
+        async with httpx.AsyncClient() as http_client:
+            await http_client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/bulk_update_invoices_recon",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={"updates": updates}
+            )
             
-            
-    return {"status": "success", "message": f"Reconciled {len(records)} records from 2B against {len(my_invoices)} Purchase Register invoices."}
+    return {"status": "success", "message": f"Reconciled {len(records)} records from 2B against {len(pr_invoices)} Purchase Register invoices."}
 
 import json
 

@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
+import { useState } from 'react';
 import { X, Building2, Settings, MapPin, DollarSign, Loader2 } from 'lucide-react';
 import { isValidGSTIN } from '../utils/gstin';
 
@@ -27,6 +28,9 @@ export function InvoiceDetailsModal({
   handleUpdateCategory,
   setSelectedInvoice
 }: InvoiceDetailsModalProps) {
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 50;
+
   if (!selectedInvoice) return null;
 
   return (
@@ -304,7 +308,7 @@ export function InvoiceDetailsModal({
                       </tr>
                     </thead>
                     <tbody>
-                      {invoiceLineItems.map((item, idx) => (
+                      {invoiceLineItems.slice(0, page * itemsPerPage).map((item, idx) => (
                         <tr key={item.id || idx} className="table-row">
                           <td className="p-3 text-text-primary">{item.description || '-'}</td>
                           <td className="p-3 text-text-secondary font-mono">{item.hsn_sac || '-'}</td>
@@ -316,6 +320,16 @@ export function InvoiceDetailsModal({
                       ))}
                     </tbody>
                   </table>
+                  {invoiceLineItems.length > page * itemsPerPage && (
+                    <div className="p-4 flex justify-center border-t border-border">
+                      <button 
+                        onClick={() => setPage(p => p + 1)}
+                        className="text-sm font-medium text-accent hover:text-accent-hover bg-accent/10 px-4 py-2 rounded-full transition-colors"
+                      >
+                        Load More ({invoiceLineItems.length - page * itemsPerPage} remaining)
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -29,7 +29,7 @@ export default function PlatformAdminLayout() {
             
             <div className="flex items-center gap-3">
               <ShieldAlert className="w-8 h-8 text-indigo-400" />
-              <span className="font-bold text-xl tracking-tight hidden sm:block">Payforce Admin</span>
+              <span className="font-bold text-xl tracking-tight hidden sm:block">KhataLens Admin</span>
             </div>
             
             {/* Desktop Navigation */}

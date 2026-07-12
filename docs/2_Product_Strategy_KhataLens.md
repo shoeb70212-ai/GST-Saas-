@@ -1,11 +1,11 @@
-# LedgerLens — Product Strategy & Target Audience
+# KhataLens — Product Strategy & Target Audience
 
 ## Target Audience
 **Primary User:** GST Accountants, Chartered Accountants (CAs), and Tax Consultants in India.
 **Secondary User:** Accounting firms or agencies processing large volumes of invoices.
 
 ## Core Value Proposition
-Time is money for an accountant. During GST filing season, data entry is the biggest bottleneck. LedgerLens cuts data entry time by 90% by instantly digitizing physical and PDF purchase invoices with near-perfect accuracy using Gemini 2.5 Flash.
+Time is money for an accountant. During GST filing season, data entry is the biggest bottleneck. KhataLens cuts data entry time by 90% by instantly digitizing physical and PDF purchase invoices with near-perfect accuracy using Gemini 2.5 Flash.
 
 ## Go-To-Market Strategy
 1. **Beta Testing (Current Phase):** Onboard a small group of 5-10 accountants. Give them 100 free credits (1 credit = 1 invoice scan) to test the app in a real-world filing scenario. 

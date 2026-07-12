@@ -60,7 +60,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
         // Automatically select the first client if none is selected
         if (data.length > 0 && !activeClientId) {
           // Check if there's a saved preference in localStorage
-          const savedId = localStorage.getItem('payforce_active_client');
+          const savedId = localStorage.getItem('khatalens_active_client');
           if (savedId && data.find(c => c.id === savedId)) {
             setActiveClientId(savedId);
           } else {
@@ -83,7 +83,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   // Persist active client selection
   useEffect(() => {
     if (activeClientId) {
-      localStorage.setItem('payforce_active_client', activeClientId);
+      localStorage.setItem('khatalens_active_client', activeClientId);
     }
   }, [activeClientId]);
 

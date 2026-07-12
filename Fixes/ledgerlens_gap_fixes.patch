@@ -1,0 +1,591 @@
+diff --git a/backend/batch_routes.py b/backend/batch_routes.py
+index 1dccfc0..59e6d21 100644
+--- a/backend/batch_routes.py
++++ b/backend/batch_routes.py
+@@ -30,6 +30,26 @@ router = APIRouter()
+ 
+ async def process_batch_worker(invoice_id: str, content: bytes, mime_type: str, user_id: str, token: str):
+     try:
++        # Check credit balance before spending an AI call. Batch jobs can run
++        # long after the request that queued them, so a user can hit 0
++        # credits mid-batch (e.g. a 300-file ZIP) — check per-file, not just
++        # once at upload time.
++        async with httpx.AsyncClient() as http_client:
++            profile_resp = await http_client.get(
++                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credits",
++                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
++            )
++            credits = profile_resp.json()[0].get("credits", 0) if profile_resp.status_code == 200 and profile_resp.json() else 0
++
++        if credits <= 0:
++            async with httpx.AsyncClient() as http_client:
++                await http_client.patch(
++                    f"{SUPABASE_URL}/rest/v1/invoices?id=eq.{invoice_id}",
++                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
++                    json={"processing_status": "failed", "error_message": "Insufficient credits. Please recharge your wallet."}
++                )
++            return
++
+         # Rate limit concurrent AI calls to prevent 429s (OpenRouter/Gemini)
+         sem = await get_semaphore()
+         async with sem:
+@@ -85,12 +105,20 @@ async def process_batch_worker(invoice_id: str, content: bytes, mime_type: str,
+                     raise Exception(f"Failed to insert line items: {resp.text}")
+                 
+     except Exception as e:
+-        # Mark as failed
++        # Mark as failed, incrementing retry_count so it's no longer a schema
++        # field nothing ever touches. Doesn't yet enforce a retry cap - that's
++        # a small follow-up for whenever a "Retry" action reads this value.
+         async with httpx.AsyncClient() as http_client:
++            current_resp = await http_client.get(
++                f"{SUPABASE_URL}/rest/v1/invoices?id=eq.{invoice_id}&select=retry_count",
++                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
++            )
++            current_retries = current_resp.json()[0].get("retry_count", 0) if current_resp.status_code == 200 and current_resp.json() else 0
++
+             await http_client.patch(
+                 f"{SUPABASE_URL}/rest/v1/invoices?id=eq.{invoice_id}",
+                 headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+-                json={"processing_status": "failed", "error_message": str(e)}
++                json={"processing_status": "failed", "error_message": str(e), "retry_count": (current_retries or 0) + 1}
+             )
+ 
+ @router.post("/api/upload-batch")
+@@ -114,7 +142,15 @@ async def upload_batch(
+         if user_resp.status_code != 200:
+             raise HTTPException(status_code=401, detail="Invalid session token")
+         user_id = user_resp.json().get("id")
+-        
++
++        profile_resp = await http_client.get(
++            f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credits",
++            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
++        )
++        credits = profile_resp.json()[0].get("credits", 0) if profile_resp.status_code == 200 and profile_resp.json() else 0
++        if credits <= 0:
++            raise HTTPException(status_code=402, detail="Insufficient credits. Please recharge your wallet.")
++
+     # Read Zip
+     content = await file.read()
+     try:
+diff --git a/backend/main.py b/backend/main.py
+index f2e43fc..0539707 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -208,6 +208,9 @@ async def scan_invoice(file: UploadFile = File(...), authorization: str = Header
+             raise HTTPException(status_code=402, detail="Insufficient credits. Please recharge your wallet.")
+ 
+     content = await file.read()
++
++    if len(content) > 10 * 1024 * 1024:  # 10MB - stray huge uploads shouldn't hang the instance
++        raise HTTPException(status_code=413, detail="File exceeds the 10MB size limit.")
+     
+     # Check if it's a PDF and convert to image
+     mime_type = file.content_type
+@@ -353,6 +356,8 @@ async def run_ai_extraction(content: bytes, mime_type: str):
+ 
+ from batch_routes import router as batch_router
+ from reconcile_routes import router as reconcile_router
++from public_routes import router as public_router
+ 
+ app.include_router(batch_router)
+ app.include_router(reconcile_router)
++app.include_router(public_router)
+diff --git a/backend/public_routes.py b/backend/public_routes.py
+new file mode 100644
+index 0000000..d0d886b
+--- /dev/null
++++ b/backend/public_routes.py
+@@ -0,0 +1,196 @@
++import os
++from typing import List
++
++import httpx
++from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
++
++from main import SUPABASE_URL, run_ai_extraction
++from batch_routes import format_date_to_iso
++
++router = APIRouter()
++
++# This must be the Supabase *service role* key (Project Settings -> API),
++# never the anon key. The whole point of these two endpoints is to let an
++# unauthenticated visitor (a business owner with no KhataLens login) write
++# into an accountant's data on their behalf. RLS on `clients`/`invoices`
++# requires auth.uid() = user_id, which an anonymous visitor can never satisfy
++# - so a normal anon-key request would just silently fail. The service role
++# key bypasses RLS, which is why client_id is validated server-side before
++# any write, and why nothing from this file is ever exposed to the frontend.
++SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
++
++MAX_FILE_SIZE = 10 * 1024 * 1024   # 10MB per file
++MAX_TOTAL_SIZE = 50 * 1024 * 1024  # 50MB per submission
++VALID_EXTS = ('.jpg', '.jpeg', '.png', '.webp', '.pdf')
++
++
++def _service_headers() -> dict:
++    if not SUPABASE_SERVICE_ROLE_KEY:
++        raise HTTPException(
++            status_code=500,
++            detail="Server misconfigured: SUPABASE_SERVICE_ROLE_KEY is not set."
++        )
++    return {
++        "apikey": SUPABASE_SERVICE_ROLE_KEY,
++        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
++        "Content-Type": "application/json",
++    }
++
++
++@router.get("/api/public/client/{client_id}")
++async def get_public_client_info(client_id: str):
++    """Unauthenticated lookup used only to show the client's name on the
++    portal page ('Send documents to {name}'). Returns nothing else."""
++    async with httpx.AsyncClient() as http_client:
++        resp = await http_client.get(
++            f"{SUPABASE_URL}/rest/v1/clients?id=eq.{client_id}&select=client_name",
++            headers=_service_headers()
++        )
++    if resp.status_code != 200 or not resp.json():
++        raise HTTPException(status_code=404, detail="Invalid portal link.")
++    return {"name": resp.json()[0].get("client_name") or "Your CA"}
++
++
++async def process_public_upload_worker(invoice_id: str, content: bytes, mime_type: str, owner_user_id: str):
++    headers = _service_headers()
++    try:
++        # Credits belong to the accountant, not the anonymous uploader. Check
++        # again here (not just at submission time) in case several files were
++        # queued and an earlier one in the batch used up what was left.
++        async with httpx.AsyncClient() as http_client:
++            profile_resp = await http_client.get(
++                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{owner_user_id}&select=credits",
++                headers=headers
++            )
++            credits = profile_resp.json()[0].get("credits", 0) if profile_resp.status_code == 200 and profile_resp.json() else 0
++
++        if credits <= 0:
++            async with httpx.AsyncClient() as http_client:
++                await http_client.patch(
++                    f"{SUPABASE_URL}/rest/v1/invoices?id=eq.{invoice_id}",
++                    headers=headers,
++                    json={"processing_status": "failed", "error_message": "Accountant's account is out of scan credits."}
++                )
++            return
++
++        data_dict = await run_ai_extraction(content, mime_type)
++
++        async with httpx.AsyncClient() as http_client:
++            await http_client.post(
++                f"{SUPABASE_URL}/rest/v1/rpc/decrement_credits",
++                headers=headers,
++                json={"user_id_param": owner_user_id}
++            )
++
++            db_update = {k.lower(): v for k, v in data_dict.items() if k != "Line_Items"}
++            if "invoice_date" in db_update:
++                db_update["invoice_date"] = format_date_to_iso(db_update["invoice_date"])
++            if "due_date" in db_update:
++                db_update["due_date"] = format_date_to_iso(db_update["due_date"])
++            db_update["processing_status"] = "completed"
++            db_update["error_message"] = None
++
++            await http_client.patch(
++                f"{SUPABASE_URL}/rest/v1/invoices?id=eq.{invoice_id}",
++                headers=headers,
++                json=db_update
++            )
++
++            line_items = data_dict.get("Line_Items", [])
++            if line_items:
++                items_payload = [{
++                    "invoice_id": invoice_id,
++                    "description": li.get("Description"),
++                    "hsn_sac": li.get("HSN_SAC"),
++                    "quantity": li.get("Quantity"),
++                    "unit_price": li.get("Unit_Price"),
++                    "tax_rate": li.get("Tax_Rate"),
++                    "amount": li.get("Amount"),
++                } for li in line_items]
++                resp = await http_client.post(
++                    f"{SUPABASE_URL}/rest/v1/invoice_line_items",
++                    headers=headers,
++                    json=items_payload
++                )
++                if resp.status_code not in (200, 201):
++                    raise Exception(f"Failed to insert line items: {resp.text}")
++
++    except Exception as e:
++        async with httpx.AsyncClient() as http_client:
++            await http_client.patch(
++                f"{SUPABASE_URL}/rest/v1/invoices?id=eq.{invoice_id}",
++                headers=headers,
++                json={"processing_status": "failed", "error_message": str(e)}
++            )
++
++
++@router.post("/api/public-upload")
++async def public_upload(
++    background_tasks: BackgroundTasks,
++    client_id: str = Form(...),
++    files: List[UploadFile] = File(...),
++):
++    # 1. Validate the portal link resolves to a real client, and find who owns it.
++    async with httpx.AsyncClient() as http_client:
++        client_resp = await http_client.get(
++            f"{SUPABASE_URL}/rest/v1/clients?id=eq.{client_id}&select=id,user_id",
++            headers=_service_headers()
++        )
++    if client_resp.status_code != 200 or not client_resp.json():
++        raise HTTPException(status_code=404, detail="Invalid portal link.")
++    owner_user_id = client_resp.json()[0]["user_id"]
++
++    # 2. Refuse upfront if the accountant has no credits left - no point queuing.
++    async with httpx.AsyncClient() as http_client:
++        profile_resp = await http_client.get(
++            f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{owner_user_id}&select=credits",
++            headers=_service_headers()
++        )
++    credits = profile_resp.json()[0].get("credits", 0) if profile_resp.status_code == 200 and profile_resp.json() else 0
++    if credits <= 0:
++        raise HTTPException(status_code=402, detail="This accountant's account is out of scan credits right now. Please contact them directly.")
++
++    # 3. Validate + queue each file. Re-enforce the same limits the portal UI
++    #    already shows client-side, since this endpoint is public and untrusted.
++    total_size = 0
++    queued = 0
++    async with httpx.AsyncClient() as http_client:
++        for f in files:
++            content = await f.read()
++            fname_lower = (f.filename or "").lower()
++
++            if not fname_lower.endswith(VALID_EXTS):
++                continue
++            if len(content) > MAX_FILE_SIZE:
++                continue
++            total_size += len(content)
++            if total_size > MAX_TOTAL_SIZE:
++                break
++
++            mime_type = f.content_type or "application/octet-stream"
++
++            ins_resp = await http_client.post(
++                f"{SUPABASE_URL}/rest/v1/invoices",
++                headers={**_service_headers(), "Prefer": "return=representation"},
++                json={
++                    "user_id": owner_user_id,
++                    "client_id": client_id,
++                    "file_name": f.filename,
++                    "processing_status": "pending",
++                }
++            )
++            if ins_resp.status_code in (200, 201):
++                invoice_id = ins_resp.json()[0]["id"]
++                queued += 1
++                background_tasks.add_task(
++                    process_public_upload_worker,
++                    invoice_id=invoice_id,
++                    content=content,
++                    mime_type=mime_type,
++                    owner_user_id=owner_user_id,
++                )
++
++    if queued == 0:
++        raise HTTPException(status_code=400, detail="No valid files were uploaded. Use JPG, PNG, or PDF, under 10MB each.")
++
++    return {"status": "success", "queued": queued}
+diff --git a/backend/reconcile_routes.py b/backend/reconcile_routes.py
+index 45942a2..474da67 100644
+--- a/backend/reconcile_routes.py
++++ b/backend/reconcile_routes.py
+@@ -1,6 +1,7 @@
+ import pandas as pd
+ import io
+ import asyncio
++import calendar
+ from fastapi import APIRouter, File, UploadFile, HTTPException, Header, Form
+ import httpx
+ from main import SUPABASE_URL, SUPABASE_ANON_KEY
+@@ -18,6 +19,20 @@ async def reconcile_gstr2b(
+         raise HTTPException(status_code=401, detail="Unauthorized")
+         
+     token = authorization.split(" ")[1]
++
++    # Period arrives as "MM-YYYY". Turn it into a date range so we only ever
++    # match Purchase Register invoices that actually belong to this period —
++    # otherwise every un-reconciled invoice from any earlier month gets swept
++    # into this run and mislabeled "missing_in_2b" for the wrong period.
++    try:
++        month_str, year_str = period.split('-')
++        month, year = int(month_str), int(year_str)
++        if not (1 <= month <= 12):
++            raise ValueError("month out of range")
++        period_start = f"{year:04d}-{month:02d}-01"
++        period_end = f"{year:04d}-{month:02d}-{calendar.monthrange(year, month)[1]:02d}"
++    except (ValueError, IndexError):
++        raise HTTPException(status_code=400, detail="Invalid period format. Expected MM-YYYY.")
+     
+     async with httpx.AsyncClient() as http_client:
+         user_resp = await http_client.get(
+@@ -128,7 +143,9 @@ async def reconcile_gstr2b(
+             raise HTTPException(status_code=500, detail="Failed to insert new reconciliation records. Original records were restored.")
+             
+         pr_resp = await http_client.get(
+-            f"{SUPABASE_URL}/rest/v1/invoices?client_id=eq.{client_id}&select=id,supplier_gstin,invoice_number,taxable_amount,total_amount,recon_status,recon_period",
++            f"{SUPABASE_URL}/rest/v1/invoices?client_id=eq.{client_id}"
++            f"&invoice_date=gte.{period_start}&invoice_date=lte.{period_end}"
++            f"&select=id,supplier_gstin,invoice_number,taxable_amount,total_amount,recon_status,recon_period",
+             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+         )
+         pr_invoices = pr_resp.json()
+diff --git a/frontend/src/lib/calculations.ts b/frontend/src/lib/calculations.ts
+deleted file mode 100644
+index 9a49b95..0000000
+--- a/frontend/src/lib/calculations.ts
++++ /dev/null
+@@ -1,48 +0,0 @@
+-/**
+- * Sunk GST = GST component of the unpaid portion of the invoice.
+- * The supplier already paid this full GST to the govt on filing.
+- * It's a permanent cash loss unless the buyer pays.
+- */
+-export function calculateSunkGST(invoiceValueExGst: number, gstRate: number, amountPaid: number, totalInvoice: number): number {
+-  if (totalInvoice <= 0) return 0;
+-  const gstAmount = invoiceValueExGst * (gstRate / 100);
+-  const outstanding = totalInvoice - amountPaid;
+-  const proportionOutstanding = outstanding / totalInvoice;
+-  return Math.round((gstAmount * proportionOutstanding) * 100) / 100;
+-}
+-
+-/**
+- * MSMED Act Section 16: Compound interest, monthly rests, at 3× RBI Bank Rate.
+- * Formula: A = P × (1 + r/12)^n
+- * Where r = 3 × (rbiBankRate/100) and n = months overdue
+- */
+-export function calculateMsmedInterest(principal: number, rbiBankRate: number, daysOverdueFromMsmedDue: number): number {
+-  if (daysOverdueFromMsmedDue <= 0 || principal <= 0) {
+-    return 0;
+-  }
+-  
+-  const annualRate = 3 * (rbiBankRate / 100); // e.g., 3 × 0.065 = 0.195
+-  const monthsOverdue = daysOverdueFromMsmedDue / 30.44; // average month length
+-  
+-  // Compound interest with monthly rests
+-  const amountWithInterest = principal * Math.pow(1 + (annualRate / 12), monthsOverdue);
+-  const interest = amountWithInterest - principal;
+-  return Math.round(interest * 100) / 100;
+-}
+-
+-/**
+- * The ITC the buyer has availed on this invoice.
+- * If they haven't paid within 180 days, this exact amount must be reversed
+- * PLUS 18% interest on it. This is the number we threaten them with.
+- */
+-export function calculateRule37ItcAtRisk(gstAmount: number, amountPaid: number, totalInvoice: number, daysOverdue: number = 0): { principal: number, interest: number } {
+-  if (totalInvoice <= 0) return { principal: 0, interest: 0 };
+-  const outstanding = totalInvoice - amountPaid;
+-  const proportionOutstanding = outstanding / totalInvoice;
+-  const principal = Math.round((gstAmount * proportionOutstanding) * 100) / 100;
+-  
+-  // Section 50 CGST Act: 18% p.a. interest on reversed ITC
+-  const interest = Math.round((principal * 0.18 * (Math.max(0, daysOverdue) / 365)) * 100) / 100;
+-  
+-  return { principal, interest };
+-}
+diff --git a/frontend/src/pages/ClientsPage.tsx b/frontend/src/pages/ClientsPage.tsx
+index e890c83..ccd9065 100644
+--- a/frontend/src/pages/ClientsPage.tsx
++++ b/frontend/src/pages/ClientsPage.tsx
+@@ -1,7 +1,7 @@
+ import React, { useState } from 'react';
+ import { supabase } from '../lib/supabase';
+ import { useClient, type Client } from '../lib/ClientContext';
+-import { Plus, Building2, Trash2, Edit2, Loader2, Save, X } from 'lucide-react';
++import { Plus, Building2, Trash2, Edit2, Loader2, Save, X, Link as LinkIcon } from 'lucide-react';
+ import toast from 'react-hot-toast';
+ 
+ export default function ClientsPage() {
+@@ -89,6 +89,16 @@ export default function ClientsPage() {
+     }
+   };
+ 
++  const handleCopyPortalLink = async (clientId: string) => {
++    const link = `${window.location.origin}/portal/${clientId}`;
++    try {
++      await navigator.clipboard.writeText(link);
++      toast.success('Portal link copied! Share it with this client.');
++    } catch {
++      toast.error('Could not copy link. Long-press or select it manually.');
++    }
++  };
++
+   if (loading) {
+     return <div className="min-h-[80vh] flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+   }
+@@ -185,6 +195,9 @@ export default function ClientsPage() {
+                   <Building2 className={`w-5 h-5 ${activeClientId === client.id ? 'text-accent' : 'text-text-secondary'}`} />
+                 </div>
+                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
++                  <button onClick={() => handleCopyPortalLink(client.id)} className="p-1.5 text-text-secondary hover:text-accent hover:bg-accent-subtle rounded" title="Copy client upload link">
++                    <LinkIcon className="w-3.5 h-3.5" />
++                  </button>
+                   <button onClick={() => handleEdit(client)} className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-bg-sunken rounded" title="Edit">
+                     <Edit2 className="w-3.5 h-3.5" />
+                   </button>
+diff --git a/frontend/src/pages/CollaborationPortal.tsx b/frontend/src/pages/CollaborationPortal.tsx
+index c94085c..8b18fd8 100644
+--- a/frontend/src/pages/CollaborationPortal.tsx
++++ b/frontend/src/pages/CollaborationPortal.tsx
+@@ -1,7 +1,6 @@
+ import { useState, useCallback, useEffect } from 'react';
+ import { useParams } from 'react-router-dom';
+ import { useDropzone } from 'react-dropzone';
+-import { supabase } from '../lib/supabase';
+ import { UploadCloud, CheckCircle2, Loader2, X, Building2, FileText, Sparkles } from 'lucide-react';
+ import toast from 'react-hot-toast';
+ 
+@@ -14,11 +13,13 @@ export default function CollaborationPortal() {
+ 
+   useEffect(() => {
+     if (clientId) {
+-      // Try to fetch client name to personalize the portal
+-      supabase.from('clients').select('name').eq('id', clientId).single()
+-        .then(({data}) => {
+-          if (data) setClientName(data.name);
+-        });
++      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
++      fetch(`${apiUrl}/api/public/client/${clientId}`)
++        .then(res => res.ok ? res.json() : null)
++        .then(data => {
++          if (data?.name) setClientName(data.name);
++        })
++        .catch(() => { /* keep default 'Your CA' label */ });
+     }
+   }, [clientId]);
+ 
+@@ -70,20 +71,34 @@ export default function CollaborationPortal() {
+       toast.error("Invalid portal link.");
+       return;
+     }
+-    
++
+     setIsUploading(true);
+     toast.loading("Uploading documents to your accountant...", { id: "collab-upload" });
+-    
+-    // Simulate upload delay for MVP
+-    await new Promise(r => setTimeout(r, 2000));
+-    
+-    // In a real implementation, this would call a public backend endpoint like /api/public-upload 
+-    // which validates the clientId and queues background extraction on behalf of the CA.
+-    
+-    toast.success("Documents successfully sent!", { id: "collab-upload" });
+-    setIsUploading(false);
+-    setIsSuccess(true);
+-    setFiles([]);
++
++    try {
++      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
++      const formData = new FormData();
++      formData.append('client_id', clientId);
++      files.forEach(f => formData.append('files', f.file));
++
++      const response = await fetch(`${apiUrl}/api/public-upload`, {
++        method: 'POST',
++        body: formData,
++      });
++
++      if (!response.ok) {
++        const errData = await response.json().catch(() => null);
++        throw new Error(errData?.detail || 'Failed to send documents.');
++      }
++
++      toast.success("Documents successfully sent!", { id: "collab-upload" });
++      setIsSuccess(true);
++      setFiles([]);
++    } catch (err: any) {
++      toast.error(err.message || "Failed to send documents. Please try again.", { id: "collab-upload" });
++    } finally {
++      setIsUploading(false);
++    }
+   };
+ 
+   if (isSuccess) {
+diff --git a/frontend/src/pages/ScanPage.tsx b/frontend/src/pages/ScanPage.tsx
+index 6c176e6..211f75f 100644
+--- a/frontend/src/pages/ScanPage.tsx
++++ b/frontend/src/pages/ScanPage.tsx
+@@ -46,6 +46,16 @@ function formatDateToIso(dateStr: string | null | undefined): string | null {
+ 
+ // Auth logic moved to App.tsx
+ 
++// Postgres unique_violation (23505) on unique_client_supplier_invoice means
++// this exact invoice (same client + supplier GSTIN + invoice number) is
++// already saved. Anything else is a genuine failure worth surfacing as-is.
++function getSaveErrorMessage(err: any): string {
++  if (err?.code === '23505') {
++    return 'Already scanned for this client (duplicate invoice number).';
++  }
++  return err?.message || 'Failed to save invoice.';
++}
++
+ function InvoiceRow({ fs, visibleColumns, onUpdate }: { fs: FileState, visibleColumns: string[], onUpdate: (data: InvoiceData) => void }) {
+   const [expanded, setExpanded] = useState(false);
+   const data = fs.extractedData || {};
+@@ -625,8 +635,11 @@ export default function ScanPage() {
+       }
+ 
+       setFileStates(prev => prev.map(f => f.id === fileId ? { ...f, savedToCloud: true } : f));
+-    } catch (err) {
++    } catch (err: any) {
+       console.error("Auto-save failed:", err);
++      const message = getSaveErrorMessage(err);
++      setFileStates(prev => prev.map(f => f.id === fileId ? { ...f, error: message, savedToCloud: false } : f));
++      toast.error(message, { duration: 5000 });
+     }
+   };
+ 
+@@ -658,12 +671,16 @@ export default function ScanPage() {
+ 
+     setIsSaving(true);
+     
++    let savedCount = 0;
++    let failedCount = 0;
++
+     try {
+       const { data: { session } } = await supabase.auth.getSession();
+       if (!session) throw new Error("No active session found. Please log in.");
+       const userId = session.user.id;
+ 
+       for (const fs of toSave) {
++       try {
+         const data = fs.extractedData!;
+         
+         const { data: invoiceRes, error: invoiceError } = await supabase
+@@ -733,10 +750,24 @@ export default function ScanPage() {
+           if (itemsError) throw itemsError;
+         }
+ 
+-        setFileStates(prev => prev.map(f => f.id === fs.id ? { ...f, savedToCloud: true } : f));
++        setFileStates(prev => prev.map(f => f.id === fs.id ? { ...f, savedToCloud: true, error: null } : f));
++        savedCount++;
++       } catch (fileErr: any) {
++        // Don't let one bad file (e.g. a duplicate) abort the rest of the batch.
++        console.error(`Save failed for ${fs.file.name}:`, fileErr);
++        const message = getSaveErrorMessage(fileErr);
++        setFileStates(prev => prev.map(f => f.id === fs.id ? { ...f, error: message, savedToCloud: false } : f));
++        failedCount++;
++       }
++      }
++
++      if (failedCount === 0) {
++        toast.success(`Saved ${savedCount} invoice${savedCount === 1 ? '' : 's'} to cloud database!`);
++      } else if (savedCount === 0) {
++        toast.error(`Failed to save ${failedCount} invoice${failedCount === 1 ? '' : 's'}. See details on each file.`);
++      } else {
++        toast.error(`Saved ${savedCount}, but ${failedCount} failed. See details on each file.`, { duration: 6000 });
+       }
+-      
+-      toast.success('Successfully saved to cloud database!');
+     } catch (err: any) {
+       console.error(err);
+       toast.error('Error saving to cloud: ' + (err.message || 'Unknown error'));

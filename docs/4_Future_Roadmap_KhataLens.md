@@ -1,4 +1,4 @@
-# LedgerLens — Future Roadmap & Pending Integrations
+# KhataLens — Future Roadmap & Pending Integrations
 
 This document outlines the features that were discussed and brainstormed but explicitly parked until after the initial Beta test completes.
 
@@ -59,5 +59,5 @@ This document outlines the features that were discussed and brainstormed but exp
 
 ## 8. Intentional Omissions (Out of Scope for MVP)
 **The Problem:** Auditors or new developers may flag the absence of **Section 43B(h) MSME Deduction-Loss Warnings** or **180-Day Rule 37 ITC Reversal Deadlines** as "missing features."
-**The Reality:** These are intentionally omitted. Both of these compliance rules require knowing the **exact date the invoice was paid**. Because LedgerLens MVP is an invoice data extraction and reconciliation tool—not a full ERP with live bank-feed integrations—we do not possess payment dates. 
-**The Solution:** These features are firmly parked until a future roadmap phase where LedgerLens integrates directly with banking APIs or ERP systems to sync live payment statuses.
+**The Reality:** These are intentionally omitted. Both of these compliance rules require knowing the **exact date the invoice was paid**. Because KhataLens MVP is an invoice data extraction and reconciliation tool—not a full ERP with live bank-feed integrations—we do not possess payment dates. 
+**The Solution:** These features are firmly parked until a future roadmap phase where KhataLens integrates directly with banking APIs or ERP systems to sync live payment statuses.

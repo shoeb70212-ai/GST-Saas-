@@ -8,7 +8,7 @@ router = APIRouter()
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") # Needed to list users if we want, but we can query invoices for now.
-SUPER_ADMIN_EMAIL = os.getenv("VITE_SUPER_ADMIN_EMAIL", "dev@payforce.com")
+SUPER_ADMIN_EMAIL = os.getenv("VITE_SUPER_ADMIN_EMAIL")
 
 async def verify_super_admin(authorization: str = Header(None)):
     if not authorization:
@@ -21,8 +21,7 @@ async def verify_super_admin(authorization: str = Header(None)):
     if not user_resp or not user_resp.user:
         raise HTTPException(status_code=401, detail="Invalid token")
         
-    allowed_emails = ["admin@payforce.in", "dev@payforce.com", SUPER_ADMIN_EMAIL]
-    if user_resp.user.email not in allowed_emails:
+    if user_resp.user.email != SUPER_ADMIN_EMAIL:
         raise HTTPException(status_code=403, detail="Forbidden: You are not the Super Admin.")
         
     return user_resp.user

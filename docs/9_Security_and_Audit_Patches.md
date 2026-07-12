@@ -1,6 +1,6 @@
 # Security & Architecture Audit Patches (v1.2)
 
-An external, rigorous AI code audit was performed on the LedgerLens platform. It successfully identified several deep architectural flaws, edge-case memory leaks, and mathematical edge-cases that emerged during rapid prototyping. 
+An external, rigorous AI code audit was performed on the KhataLens platform. It successfully identified several deep architectural flaws, edge-case memory leaks, and mathematical edge-cases that emerged during rapid prototyping. 
 
 This document serves as the official record of the **Critical and High** patches applied to harden the system for production.
 
@@ -34,7 +34,7 @@ This document serves as the official record of the **Critical and High** patches
 
 ### 2.2 CORS Spec Compliance (High)
 **The Problem:** The FastAPI backend used `allow_origins=["*"]` combined with `allow_credentials=True`. This is technically an illegal combination in the modern HTTP CORS specification.
-**The Fix:** Because LedgerLens uses stateless Bearer JWTs in the Authorization header (and not cookies), we disabled credentials (`allow_credentials=False`), bringing the wildcard origin into perfect alignment with security standards while keeping deployments easy.
+**The Fix:** Because KhataLens uses stateless Bearer JWTs in the Authorization header (and not cookies), we disabled credentials (`allow_credentials=False`), bringing the wildcard origin into perfect alignment with security standards while keeping deployments easy.
 
 ### 2.3 Strict GSTIN Regex (High)
 **The Problem:** The regex used to validate Indian GSTINs was `^[0-3][0-9]...`, which mathematically permitted invalid State Codes like `00`, `38`, and `39` (India only has 37 states/UTs).

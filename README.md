@@ -1,15 +1,15 @@
-# LedgerLens (formerly PayForce)
+# KhataLens 
 
-**LedgerLens** is an AI-powered GST Invoice Scanner and Multi-Tenant Accountant Workspace built for Indian professionals. 
+**KhataLens** is an AI-powered GST Invoice Scanner and Multi-Tenant Accountant Workspace built for Indian professionals. 
 
 ---
 
-## 🔄 The Pivot: From PayForce to LedgerLens
+## 🔄 The Pivot: From KhataLens to KhataLens
 
-**Original Concept (PayForce):** 
+**Original Concept (KhataLens):** 
 The project started as an Accounts Receivable (AR) and Collections tool for MSMEs. The idea was to use Indian GST compliance laws (Sunk GST, Rule 37, MSMED Act) as legal leverage to force buyers to pay their outstanding invoices. It included Dunning sequence generators and legal notices.
 
-**Why We Pivoted (LedgerLens):**
+**Why We Pivoted (KhataLens):**
 We realized that building a tool purely focused on "Collections & Legal Enforcement" was highly risky, very niche, and might not result in immediate paid conversions. Instead, we shifted focus to a **simpler, high-value utility that solves an immediate daily pain point for a specific audience: Accountants.**
 Accountants spend hours manually typing data from physical/PDF invoices into accounting software. We pivoted to build an AI-powered tool that automates this data entry, organizes it by client, and provides customizable analytics. This solves a real problem that accountants are willing to pay for today.
 

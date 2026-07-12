@@ -1,4 +1,4 @@
-# LedgerLens — Optimization & Hardening Sprint v1
+# KhataLens — Optimization & Hardening Sprint v1
 
 This document outlines the specific architectural, performance, and security patches applied during the optimization sprint following the comprehensive AI codebase audit.
 

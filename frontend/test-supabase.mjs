@@ -18,7 +18,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 async function test() {
   console.log("Attempting to login...");
   const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-    email: 'dev@payforce.com',
+    email: 'dev@khatalens.com',
     password: 'DevPass123!'
   });
 

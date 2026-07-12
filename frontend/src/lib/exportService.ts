@@ -1,89 +1,108 @@
 import * as XLSX from 'xlsx';
-import { AVAILABLE_COLUMNS } from '../lib/ScanContext';
 
-export const exportToExcelMultiSheet = (invoices: any[], allLineItems: any[], visibleColumns: string[]) => {
-  // --- Sheet 1: Summary ---
-  const summaryData: any[] = [];
-  
-  // Fixed GSTR-2B columns
-  const fixedKeys = [
-    'supplier_gstin', 'supplier_name', 'invoice_number', 'invoice_type', 
-    'invoice_date', 'total_amount', 'place_of_supply', 'reverse_charge_applicable', 
-    'taxable_amount', 'igst_amount', 'cgst_amount', 'sgst_amount', 'cess_amount'
-  ];
-
-  invoices.forEach(inv => {
-    const row: any = {};
-    
-    // 1. Add fixed columns
-    row['GSTIN of Supplier'] = inv.supplier_gstin || '';
-    row['Trade/Legal Name'] = inv.supplier_name || '';
-    row['Invoice Number'] = inv.invoice_number || '';
-    row['Invoice Type'] = inv.invoice_type || 'Tax Invoice';
-    row['Invoice Date'] = inv.invoice_date || '';
-    row['Invoice Value'] = inv.total_amount || '';
-    row['Place of Supply'] = inv.place_of_supply || '';
-    row['Reverse Charge'] = inv.reverse_charge_applicable ? 'Yes' : 'No';
-    row['Taxable Value'] = inv.taxable_amount || '';
-    row['Integrated Tax'] = inv.igst_amount || '';
-    row['Central Tax'] = inv.cgst_amount || '';
-    row['State/UT Tax'] = inv.sgst_amount || '';
-    row['Cess'] = inv.cess_amount || '';
-
-    // 2. Add extra visible columns chosen by user that aren't in fixed set
-    visibleColumns.forEach(key => {
-      const lowerKey = key.toLowerCase();
-      if (!fixedKeys.includes(lowerKey)) {
-        const colDef = AVAILABLE_COLUMNS.find(c => c.key === key);
-        if (colDef) {
-          row[colDef.label] = inv[lowerKey] || '';
-        }
-      }
-    });
-
-    summaryData.push(row);
-  });
-
-  // --- Sheet 2: Line Items ---
-  const lineItemsData: any[] = [];
+export const exportToExcelMultiSheet = (invoices: any[], allLineItems: any[]) => {
+  const tallyData: any[] = [];
   
   invoices.forEach(inv => {
     const items = allLineItems?.filter(li => li.invoice_id === inv.id) || [];
+    // Tally likes YYYYMMDD for dates in default template
+    const invDate = inv.invoice_date ? inv.invoice_date.replace(/-/g, '') : ''; 
+    const invType = inv.invoice_type || 'Tax Invoice';
+    let vchType = "Purchase";
+    if (invType === 'Credit Note') vchType = "Credit Note";
+    if (invType === 'Debit Note') vchType = "Debit Note";
     
-    const baseData: any = {};
-    visibleColumns.forEach(key => {
-      const colDef = AVAILABLE_COLUMNS.find(c => c.key === key);
-      if (colDef) {
-        baseData[colDef.label] = inv[key.toLowerCase()] || '';
-      }
-    });
+    const isBillOfSupply = invType === 'Bill of Supply';
+    const isCreditDebit = invType === 'Credit Note' || invType === 'Debit Note';
+    const mult = isCreditDebit ? -1 : 1;
+    
+    const partyDrCr = mult > 0 ? 'Cr' : 'Dr';
+    const expenseDrCr = mult > 0 ? 'Dr' : 'Cr';
 
+    // 1. Party Ledger (Total Amount)
+    tallyData.push({
+      'Voucher Date': invDate,
+      'Voucher Type Name': vchType,
+      'Voucher Number': inv.invoice_number || '',
+      'Ledger Name': inv.supplier_name || 'Cash',
+      'Ledger Amount': (inv.total_amount || 0),
+      'Ledger Amount Dr/Cr': partyDrCr,
+    });
+    
+    // 2. Expense Ledgers (Line Items)
     if (items.length > 0) {
-      items.forEach(item => {
-        lineItemsData.push({
-          ...baseData,
-          'Item Description': item.description || '',
-          'HSN/SAC': item.hsn_sac || '',
-          'Qty': item.quantity || '',
-          'Rate': item.unit_price || '',
-          'Tax %': item.tax_rate || '',
-          'Item Amount': item.amount || ''
+      items.forEach((item: any) => {
+        tallyData.push({
+          'Voucher Date': invDate,
+          'Voucher Type Name': vchType,
+          'Voucher Number': inv.invoice_number || '',
+          'Ledger Name': inv.expense_category || 'Purchase A/c',
+          'Ledger Amount': (item.amount || 0),
+          'Ledger Amount Dr/Cr': expenseDrCr,
         });
       });
     } else {
-      lineItemsData.push(baseData);
+      // Fallback if no line items
+      tallyData.push({
+        'Voucher Date': invDate,
+        'Voucher Type Name': vchType,
+        'Voucher Number': inv.invoice_number || '',
+        'Ledger Name': inv.expense_category || 'Purchase A/c',
+        'Ledger Amount': (inv.taxable_amount || 0),
+        'Ledger Amount Dr/Cr': expenseDrCr,
+      });
+    }
+
+    // 3. Tax Ledgers
+    if (!isBillOfSupply) {
+      if (inv.cgst_amount) {
+        tallyData.push({
+          'Voucher Date': invDate,
+          'Voucher Type Name': vchType,
+          'Voucher Number': inv.invoice_number || '',
+          'Ledger Name': 'CGST',
+          'Ledger Amount': (inv.cgst_amount),
+          'Ledger Amount Dr/Cr': expenseDrCr,
+        });
+      }
+      if (inv.sgst_amount) {
+        tallyData.push({
+          'Voucher Date': invDate,
+          'Voucher Type Name': vchType,
+          'Voucher Number': inv.invoice_number || '',
+          'Ledger Name': 'SGST',
+          'Ledger Amount': (inv.sgst_amount),
+          'Ledger Amount Dr/Cr': expenseDrCr,
+        });
+      }
+      if (inv.igst_amount) {
+        tallyData.push({
+          'Voucher Date': invDate,
+          'Voucher Type Name': vchType,
+          'Voucher Number': inv.invoice_number || '',
+          'Ledger Name': 'IGST',
+          'Ledger Amount': (inv.igst_amount),
+          'Ledger Amount Dr/Cr': expenseDrCr,
+        });
+      }
+      if (inv.cess_amount) {
+        tallyData.push({
+          'Voucher Date': invDate,
+          'Voucher Type Name': vchType,
+          'Voucher Number': inv.invoice_number || '',
+          'Ledger Name': 'Cess',
+          'Ledger Amount': (inv.cess_amount),
+          'Ledger Amount Dr/Cr': expenseDrCr,
+        });
+      }
     }
   });
 
   const workbook = XLSX.utils.book_new();
-  
-  const summarySheet = XLSX.utils.json_to_sheet(summaryData);
-  XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
-  
-  const lineItemsSheet = XLSX.utils.json_to_sheet(lineItemsData);
-  XLSX.utils.book_append_sheet(workbook, lineItemsSheet, "Line Items");
+  const tallySheet = XLSX.utils.json_to_sheet(tallyData);
+  XLSX.utils.book_append_sheet(workbook, tallySheet, "Accounting Vouchers");
 
-  XLSX.writeFile(workbook, "Saved_Invoices_Export.xlsx");
+  XLSX.writeFile(workbook, "Tally_Import_Template.xlsx");
 };
 
 const escapeXml = (unsafe: string) => {

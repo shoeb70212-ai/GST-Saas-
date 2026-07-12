@@ -1,6 +1,6 @@
 # Phase 2: Technical Feature Specifications
 
-This document outlines the detailed architecture, workflows, and technical requirements for the upcoming high-priority features in LedgerLens.
+This document outlines the detailed architecture, workflows, and technical requirements for the upcoming high-priority features in KhataLens.
 
 ---
 

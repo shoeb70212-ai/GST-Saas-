@@ -1,0 +1,1645 @@
+--- backend\admin_routes.py ---
+import os
+from fastapi import APIRouter, HTTPException, Header, Depends
+from supabase import create_async_client
+from pydantic import BaseModel
+
+router = APIRouter()
+
+SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
+SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") # Needed to list users if we want, but we can query invoices for now.
+SUPER_ADMIN_EMAIL = os.getenv("VITE_SUPER_ADMIN_EMAIL", "dev@khatalens.com")
+
+async def verify_super_admin(authorization: str = Header(None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+        
+    token = authorization.replace("Bearer ", "")
+    supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+    
+    user_resp = await supabase_client.auth.get_user(token)
+    if not user_resp or not user_resp.user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+        
+    if user_resp.user.email != SUPER_ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Forbidden: You are not the Super Admin.")
+        
+    return user_resp.user
+
+@router.get("/api/admin/metrics")
+async def get_admin_metrics(user = Depends(verify_super_admin)):
+    if not SUPABASE_SERVICE_KEY:
+        raise HTTPException(status_code=500, detail="Missing SUPABASE_SERVICE_ROLE_KEY in backend/.env. Cannot fetch metrics.")
+        
+    admin_client = await create_async_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    
+    # Get total invoices
+    inv_resp = await admin_client.table("invoices").select("id", count="exact").execute()
+    total_invoices = inv_resp.count if inv_resp.count else 0
+    
+    # Get total active clients (distinct client_ids)
+    client_resp = await admin_client.table("clients").select("id", count="exact").execute()
+    total_clients = client_resp.count if client_resp.count else 0
+    
+    # Get all tenants (CA firms / users). We can query the profiles table if it exists.
+    # We'll just group invoices by user_id to see active tenants.
+    tenants_resp = await admin_client.table("profiles").select("id", count="exact").execute()
+    total_tenants = tenants_resp.count if tenants_resp.count else 0
+    
+    return {
+        "metrics": {
+            "total_invoices": total_invoices,
+            "estimated_cost_inr": round(total_invoices * 0.065, 2),
+            "active_tenants": total_tenants,
+            "total_clients": total_clients
+        }
+    }
+
+class QuotaUpdate(BaseModel):
+    user_id: str
+    new_quota: int
+
+@router.post("/api/admin/tenants/{tenant_id}/update")
+async def update_tenant_quota(tenant_id: str, data: QuotaUpdate, user = Depends(verify_super_admin)):
+    if not SUPABASE_SERVICE_KEY:
+        raise HTTPException(status_code=500, detail="Missing SUPABASE_SERVICE_ROLE_KEY in backend/.env. Cannot update quotas.")
+        
+    admin_client = await create_async_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    
+    # Update credits in profiles table
+    resp = await admin_client.table("profiles").update({"credits": data.new_quota}).eq("id", tenant_id).execute()
+    if not resp.data:
+        raise HTTPException(status_code=400, detail="Failed to update tenant quota or tenant not found.")
+        
+    return {"status": "success", "message": f"Quota updated to {data.new_quota}"}
+
+@router.get("/api/admin/tenants")
+async def get_all_tenants(user = Depends(verify_super_admin)):
+    if not SUPABASE_SERVICE_KEY:
+        raise HTTPException(status_code=500, detail="Missing SUPABASE_SERVICE_ROLE_KEY in backend/.env. Cannot fetch tenants.")
+        
+    admin_client = await create_async_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    
+    # 1. Fetch all profiles
+    profiles_resp = await admin_client.table("profiles").select("*").execute()
+    profiles = profiles_resp.data if profiles_resp.data else []
+    
+    # 2. Fetch all invoices to count usage per tenant
+    invoices_resp = await admin_client.table("invoices").select("user_id").execute()
+    invoices = invoices_resp.data if invoices_resp.data else []
+    
+    # 3. Aggregate invoice count per user_id
+    usage_map = {}
+    for inv in invoices:
+        uid = inv.get("user_id")
+        if uid:
+            usage_map[uid] = usage_map.get(uid, 0) + 1
+            
+    # 4. Try to fetch auth users if we can
+    user_emails = {}
+    try:
+        auth_users = await admin_client.auth.admin.list_users()
+        if isinstance(auth_users, list):
+            for u in auth_users:
+                user_emails[u.id] = u.email
+        elif auth_users and hasattr(auth_users, 'users'):
+            for u in auth_users.users:
+                user_emails[u.id] = u.email
+    except Exception as e:
+        print(f"Warning: Could not fetch auth users: {e}")
+        
+    # 4.5. Fetch clients managed by each CA firm
+    clients_resp = await admin_client.table("clients").select("user_id").execute()
+    clients = clients_resp.data if clients_resp.data else []
+    clients_map = {}
+    for c in clients:
+        uid = c.get("user_id")
+        if uid:
+            clients_map[uid] = clients_map.get(uid, 0) + 1
+        
+    # 5. Build final array
+    tenants = []
+    for profile in profiles:
+        uid = profile.get("id")
+        email = user_emails.get(uid, "Unknown Email")
+        company = profile.get("company_name")
+        if not company or not str(company).strip():
+            # Fallback to email prefix or domain
+            if "@" in email:
+                domain = email.split("@")[1].split(".")[0]
+                company = domain.capitalize() + " Firm"
+            else:
+                company = "Unknown Company"
+                
+        tenants.append({
+            "id": uid,
+            "company_name": company,
+            "email": email,
+            "credits": profile.get("credits", 0),
+            "created_at": profile.get("created_at"),
+            "invoices_processed": usage_map.get(uid, 0),
+            "clients_managed": clients_map.get(uid, 0)
+        })
+        
+    # Sort by created_at descending
+    tenants.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        
+    return {"status": "success", "tenants": tenants}
+
+class ProfileUpdate(BaseModel):
+    company_name: str
+
+@router.post("/api/admin/tenants/{tenant_id}/profile")
+async def update_tenant_profile(tenant_id: str, data: ProfileUpdate, user = Depends(verify_super_admin)):
+    if not SUPABASE_SERVICE_KEY:
+        raise HTTPException(status_code=500, detail="Missing SUPABASE_SERVICE_ROLE_KEY in backend/.env. Cannot update profile.")
+        
+    admin_client = await create_async_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    
+    # Update company_name in profiles table
+    resp = await admin_client.table("profiles").update({"company_name": data.company_name}).eq("id", tenant_id).execute()
+    if not resp.data:
+        raise HTTPException(status_code=400, detail="Failed to update tenant profile or tenant not found.")
+        
+    return {"status": "success", "message": "Profile updated successfully."}
+@router.delete("/api/admin/tenants/{tenant_id}")
+async def delete_tenant(tenant_id: str, user = Depends(verify_super_admin)):
+    if not SUPABASE_SERVICE_KEY:
+        raise HTTPException(status_code=500, detail="Missing SUPABASE_SERVICE_ROLE_KEY in backend/.env. Cannot delete tenant.")
+        
+    admin_client = await create_async_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    
+    try:
+        # Deleting the user from auth.users will cascade and delete their profile, clients, invoices, etc.
+        await admin_client.auth.admin.delete_user(tenant_id)
+        return {"status": "success", "message": "Tenant account deleted permanently."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete tenant: {str(e)}")
+
+
+--- backend\batch_routes.py ---
+import io
+import zipfile
+import base64
+from fastapi import APIRouter, File, UploadFile, HTTPException, Header, BackgroundTasks, Form
+import os
+import re
+from supabase import create_async_client
+from main import run_ai_extraction, SUPABASE_URL, SUPABASE_ANON_KEY
+from utils import validate_file_content, sanitize_filename
+
+def format_date_to_iso(date_str):
+    if not date_str: return None
+    s = str(date_str).strip()
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', s): return s
+    match = re.search(r'(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})', s)
+    if match:
+        d, m, y = match.groups()
+        return f"{y}-{int(m):02d}-{int(d):02d}"
+    return None
+
+import asyncio
+ai_semaphore = None
+
+async def get_semaphore():
+    global ai_semaphore
+    if ai_semaphore is None:
+        ai_semaphore = asyncio.Semaphore(5)
+    return ai_semaphore
+
+router = APIRouter()
+
+async def process_batch_worker(invoice_id: str, content: bytes, mime_type: str, user_id: str, token: str):
+    try:
+        # Rate limit concurrent AI calls to prevent 429s (OpenRouter/Gemini)
+        sem = await get_semaphore()
+        async with sem:
+            data_dict = await run_ai_extraction(content, mime_type)
+        
+        # Deduct Credit
+        supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        supabase_client.postgrest.auth(token)
+        
+        await supabase_client.rpc("decrement_credits", {"user_id_param": user_id}).execute()
+            
+        # Prepare update payload
+        db_update = {k.lower(): v for k, v in data_dict.items() if k != "Line_Items"}
+        
+        # Format Dates safely
+        if "invoice_date" in db_update:
+            db_update["invoice_date"] = format_date_to_iso(db_update["invoice_date"])
+        if "due_date" in db_update:
+            db_update["due_date"] = format_date_to_iso(db_update["due_date"])
+            
+        db_update["processing_status"] = "completed"
+        db_update["error_message"] = None
+        
+        # Update Invoice Record
+        await supabase_client.table("invoices").update(db_update).eq("id", invoice_id).execute()
+        
+        # Insert Line Items
+        line_items = data_dict.get("Line_Items", [])
+        if line_items:
+            items_payload = []
+            for li in line_items:
+                items_payload.append({
+                    "invoice_id": invoice_id,
+                    "description": li.get("Description"),
+                    "hsn_sac": li.get("HSN_SAC"),
+                    "quantity": li.get("Quantity"),
+                    "unit_price": li.get("Unit_Price"),
+                    "tax_rate": li.get("Tax_Rate"),
+                    "amount": li.get("Amount")
+                })
+            resp = await supabase_client.table("invoice_line_items").insert(items_payload).execute()
+            if not resp.data:
+                print(f"Failed to insert line items")
+                
+    except Exception as e:
+        # Mark as failed
+        supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        supabase_client.postgrest.auth(token)
+        await supabase_client.table("invoices").update({"processing_status": "failed", "error_message": str(e)}).eq("id", invoice_id).execute()
+
+@router.post("/api/upload-batch")
+async def upload_batch(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...), 
+    client_id: str = Form(...),
+    authorization: str = Header(None)
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    token = authorization.split(" ")[1]
+    
+    # 1. Verify User and Get Profile
+    supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+    
+    try:
+        user_resp = await supabase_client.auth.get_user(token)
+        user_id = user_resp.user.id
+        supabase_client.postgrest.auth(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid session token")
+        
+    # Read Zip
+    content = await file.read()
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as z:
+            file_names = z.namelist()
+            valid_exts = ['.jpg', '.jpeg', '.png', '.pdf', '.webp']
+            valid_files = [f for f in file_names if any(f.lower().endswith(ext) for ext in valid_exts) and not f.startswith('__MACOSX')]
+            
+            if not valid_files:
+                raise HTTPException(status_code=400, detail="No valid images or PDFs found in ZIP.")
+            
+            batch_ids = []
+            
+            # Prepare batch for bulk insert
+            pending_records = []
+            file_details = []
+            
+            total_uncompressed_size = 0
+            MAX_TOTAL_SIZE = 50 * 1024 * 1024 # 50MB max total uncompressed
+            
+            for fname in valid_files:
+                file_info = z.getinfo(fname)
+                total_uncompressed_size += file_info.file_size
+                if total_uncompressed_size > MAX_TOTAL_SIZE:
+                    raise HTTPException(status_code=413, detail="Zip archive is too large when uncompressed (Zip Bomb prevention).")
+                
+                file_bytes = z.read(fname)
+                try:
+                    mime_type = validate_file_content(file_bytes, fname)
+                except HTTPException:
+                    continue # Skip invalid files
+                
+                safe_fname = sanitize_filename(fname.split('/')[-1])
+                
+                pending_records.append({
+                    "user_id": user_id,
+                    "client_id": client_id,
+                    "file_name": safe_fname,
+                    "processing_status": "pending"
+                })
+                file_details.append({
+                    "bytes": file_bytes,
+                    "mime": mime_type
+                })
+                
+            if pending_records:
+                ins_resp = await supabase_client.table("invoices").insert(pending_records).execute()
+                if ins_resp.data:
+                    for i, row in enumerate(ins_resp.data):
+                        invoice_id = row["id"]
+                        batch_ids.append(invoice_id)
+                        
+                        background_tasks.add_task(
+                            process_batch_worker, 
+                            invoice_id=invoice_id, 
+                            content=file_details[i]["bytes"], 
+                            mime_type=file_details[i]["mime"], 
+                            user_id=user_id, 
+                            token=token
+                        )
+                else:
+                    print("Failed to bulk insert pending invoices")
+                        
+            return {"status": "success", "message": f"Queued {len(batch_ids)} files for processing.", "queued_ids": batch_ids}
+            
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Invalid ZIP file.")
+
+
+--- backend\main.py ---
+import os
+import base64
+import json
+import io
+import httpx
+from fastapi import FastAPI, File, UploadFile, HTTPException, Header
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from dotenv import load_dotenv
+from openai import AsyncOpenAI
+import re
+from tenacity import retry, stop_after_attempt, wait_exponential
+from utils import validate_file_content
+
+def compute_confidence(extracted: dict, computed_total: float) -> dict:
+    score = 100.0
+    penalties = 0.0
+    
+    supplier_gstin = extracted.get("Supplier_GSTIN")
+    if supplier_gstin:
+        if not re.match(r'^(0[1-9]|[1-2][0-9]|3[0-7])[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z][A-Z0-9][0-9A-Z]$', supplier_gstin.upper()):
+            penalties += 25.0
+    else:
+        penalties += 15.0
+        
+    total_amount = extracted.get("Total_Amount") or 0.0
+    if abs(computed_total - total_amount) > 1.0:
+        penalties += 30.0
+        
+    required = ["Supplier_Name", "Invoice_Number", "Invoice_Date", "Total_Amount"]
+    missing = [f for f in required if not extracted.get(f)]
+    penalties += len(missing) * 10.0
+    
+    final_score = max(0.0, score - penalties)
+    
+    if final_score >= 95:
+        state = "auto_accepted"
+    elif final_score >= 85:
+        state = "needs_review"
+    else:
+        state = "needs_retry"
+        
+    return {"score": final_score, "state": state}
+
+def apply_tax_calculations(data_dict: dict) -> dict:
+    taxable = sum((item.get("Amount") or 0) for item in data_dict.get("Line_Items", []))
+    cgst = 0
+    sgst = 0
+    igst = 0
+    
+    sup_gstin = data_dict.get("Supplier_GSTIN")
+    buy_gstin = data_dict.get("Buyer_GSTIN")
+    is_interstate = False
+    if sup_gstin and buy_gstin and len(sup_gstin) >= 2 and len(buy_gstin) >= 2:
+        if sup_gstin[:2] != buy_gstin[:2]:
+            is_interstate = True
+            
+    for item in data_dict.get("Line_Items", []):
+        amt = item.get("Amount") or 0
+        rate = item.get("Tax_Rate") or 0
+        tax_val = amt * (rate / 100)
+        
+        if is_interstate:
+            igst += tax_val
+        else:
+            cgst += tax_val / 2
+            sgst += tax_val / 2
+            
+    data_dict["Taxable_Amount"] = taxable
+    data_dict["CGST_Amount"] = round(cgst, 2)
+    data_dict["SGST_Amount"] = round(sgst, 2)
+    data_dict["IGST_Amount"] = round(igst, 2)
+    
+    computed_total = round(taxable + cgst + sgst + igst + (data_dict.get("Cess_Amount") or 0) + (data_dict.get("Round_Off") or 0), 2)
+    if not data_dict.get("Total_Amount"):
+        data_dict["Total_Amount"] = computed_total
+        
+    confidence = compute_confidence(data_dict, computed_total)
+    data_dict["Confidence_Score"] = confidence["score"]
+    data_dict["Extraction_State"] = confidence["state"]
+    
+    return data_dict
+
+load_dotenv()
+
+app = FastAPI(title="InvoiceScanner AI Backend")
+
+
+# Allow frontend to communicate with backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
+SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
+
+if OPENROUTER_API_KEY:
+    client = AsyncOpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=OPENROUTER_API_KEY,
+    )
+    AI_MODEL = "openai/gpt-4o-mini"
+elif OPENAI_API_KEY:
+    client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+    AI_MODEL = "gpt-4o-mini"
+else:
+    client = None
+    AI_MODEL = None
+
+if GEMINI_API_KEY:
+    gemini_client = AsyncOpenAI(
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        api_key=GEMINI_API_KEY,
+    )
+    GEMINI_MODEL = "gemini-2.5-flash"
+else:
+    gemini_client = None
+    GEMINI_MODEL = None
+
+class LineItem(BaseModel):
+    Description: str | None = Field(description="Description of the item or service")
+    HSN_SAC: str | None = Field(description="HSN or SAC code")
+    Quantity: float | None = Field(description="Quantity of items")
+    Unit_Price: float | None = Field(description="Rate or price per unit")
+    Amount: float | None = Field(description="Total amount for this line item before tax")
+    Tax_Rate: float | None = Field(description="GST tax rate percentage for this item if specified")
+
+class InvoiceData(BaseModel):
+    Expense_Category: str | None = Field(description="Suggested accounting ledger category (e.g., Office Supplies, IT Software, Travel, Legal Fees, etc.) based on the line items.")
+    Supplier_Name: str | None = Field(description="Name of the supplier")
+    Supplier_Address: str | None = Field(description="Full address of the supplier")
+    Supplier_Phone: str | None = Field(description="Phone number of the supplier")
+    Supplier_Email: str | None = Field(description="Email address of the supplier")
+    Supplier_GSTIN: str | None = Field(description="GSTIN of the supplier (15 characters)")
+    Supplier_PAN: str | None = Field(description="PAN number of the supplier")
+    Buyer_Name: str | None = Field(description="Name of the buyer")
+    Buyer_Address: str | None = Field(description="Full address of the buyer")
+    Buyer_PIN: str | None = Field(description="PIN code of the buyer")
+    Buyer_GSTIN: str | None = Field(description="GSTIN of the buyer (15 characters)")
+    Buyer_PAN: str | None = Field(description="PAN number of the buyer")
+    Place_Of_Supply: str | None = Field(description="Place of supply")
+    Invoice_Date: str | None = Field(description="Date of the invoice in DD-MM-YYYY format if possible")
+    Due_Date: str | None = Field(description="Due date of the invoice in DD-MM-YYYY format if possible")
+    Invoice_Number: str | None = Field(description="Invoice number")
+    PO_Number: str | None = Field(description="Purchase Order (PO) Number if available")
+    E_Way_Bill_Number: str | None = Field(description="E-Way Bill Number if available")
+    Vehicle_Number: str | None = Field(description="Vehicle Number if available")
+    Round_Off: float | None = Field(description="Round off amount if any")
+    Total_Amount: float | None = Field(description="Total invoice amount including taxes")
+    GST_Amount: float | None = Field(description="Total GST amount on the invoice")
+    Amount_In_Words: str | None = Field(description="Total amount written in words")
+    Received_Amount: float | None = Field(description="Amount received")
+    Balance_Amount: float | None = Field(description="Balance amount due")
+    Previous_Balance: float | None = Field(description="Previous balance")
+    Current_Balance: float | None = Field(description="Current balance")
+    Account_Holder: str | None = Field(description="Bank account holder name")
+    Account_Number: str | None = Field(description="Bank account number")
+    Bank_Name: str | None = Field(description="Bank name")
+    Branch_Name: str | None = Field(description="Bank branch name")
+    IFSC_Code: str | None = Field(description="Bank IFSC code")
+    UPI_ID: str | None = Field(description="UPI ID for payment")
+    Invoice_Type: str | None = Field(description="One of: 'Tax Invoice', 'Bill of Supply', 'Credit Note', 'Debit Note', 'Export Invoice' - read from heading only. Default 'Tax Invoice' if no other type is legible; otherwise null.")
+    Reverse_Charge_Applicable: bool | None = Field(description="Only from an explicit printed line such as 'Reverse Charge: Yes/No'. Do not infer.")
+    Cess_Amount: float | None = Field(description="Read directly from a printed 'Cess' line/total. Do not calculate.")
+    IRN: str | None = Field(description="64-character Invoice Reference Number. Null if absent.")
+    Original_Invoice_Number: str | None = Field(description="Only populate when Invoice_Type is Credit Note or Debit Note - the invoice number being adjusted.")
+    Original_Invoice_Date: str | None = Field(description="Paired with Original_Invoice_Number, same format as Invoice_Date.")
+    Line_Items: list[LineItem] = Field(default_factory=list, description="List of all items or services in the invoice")
+
+@app.get("/")
+def read_root():
+    return {"status": "InvoiceScanner Backend is running."}
+
+@app.post("/api/scan-invoice")
+async def scan_invoice(file: UploadFile = File(...), authorization: str = Header(None)):
+    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        raise HTTPException(status_code=500, detail="Missing Supabase configuration in .env.")
+        
+    if not client:
+        raise HTTPException(status_code=500, detail="Missing API Key. Set OPENROUTER_API_KEY or OPENAI_API_KEY in .env.")
+
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized. Missing or invalid Authorization header.")
+        
+    token = authorization.split(" ")[1]
+    
+    # 1. Verify User and Get Profile
+    async with httpx.AsyncClient() as http_client:
+        # Get User
+        user_resp = await http_client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_resp.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid session token.")
+            
+        user_id = user_resp.json().get("id")
+        
+        # Get Profile
+        profile_resp = await http_client.get(
+            f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credits",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if profile_resp.status_code == 200 and profile_resp.json():
+            credits = profile_resp.json()[0].get("credits", 0)
+        else:
+            credits = 0 # Fallback if profile row is missing
+        if credits <= 0:
+            raise HTTPException(status_code=402, detail="Insufficient credits. Please recharge your wallet.")
+
+    content = await file.read()
+    
+    # Security: Validate file content (magic bytes and size)
+    mime_type = validate_file_content(content, file.filename)
+    
+    if mime_type == "application/pdf":
+        try:
+            import fitz
+            doc = fitz.open(stream=content, filetype="pdf")
+            if not doc:
+                raise HTTPException(status_code=400, detail="Could not read PDF pages.")
+            
+            gst_keywords = ["gstin", "invoice", "taxable", "cgst", "sgst", "igst", "hsn", "total", "amount", "qty", "rate"]
+            valid_pages = []
+            
+            for i in range(len(doc)):
+                page = doc[i]
+                text = page.get_text().lower()
+                score = sum(text.count(kw) for kw in gst_keywords)
+                # Keep page if it has at least some invoice keywords or looks like a table page
+                if score >= 2 or ("hsn" in text and "amount" in text):
+                    valid_pages.append(i)
+            
+            if not valid_pages:
+                valid_pages = [0] # Fallback to first page if nothing matches
+                
+            # Render and concatenate valid pages
+            from PIL import Image
+            import io
+            
+            images = []
+            for i in valid_pages:
+                pix = doc[i].get_pixmap(dpi=150)
+                img = Image.open(io.BytesIO(pix.tobytes("jpeg")))
+                images.append(img)
+                
+            if len(images) == 1:
+                output = io.BytesIO()
+                images[0].save(output, format="JPEG", quality=85)
+                content = output.getvalue()
+            else:
+                total_height = sum(img.height for img in images)
+                max_width = max(img.width for img in images)
+                combined = Image.new('RGB', (max_width, total_height), (255, 255, 255))
+                y_offset = 0
+                for img in images:
+                    combined.paste(img, (0, y_offset))
+                    y_offset += img.height
+                
+                output = io.BytesIO()
+                combined.save(output, format="JPEG", quality=85)
+                content = output.getvalue()
+                
+            mime_type = "image/jpeg"
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to process PDF. Error: {str(e)}")
+            
+    else:
+        # Resize raw image uploads to save AI token costs
+        if mime_type.startswith("image/"):
+            try:
+                from PIL import Image
+                import io
+                img = Image.open(io.BytesIO(content))
+                
+                # Skip secondary resize if already optimized by frontend (e.g., < 2048x2048 and already JPEG)
+                if img.width <= 2048 and img.height <= 2048 and img.format == 'JPEG':
+                    pass # Image is already small enough, no need to re-encode
+                else:
+                    if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+                        bg = Image.new('RGB', img.size, (255, 255, 255))
+                        if img.mode == 'RGBA':
+                            bg.paste(img, mask=img.split()[3])
+                        else:
+                            bg.paste(img.convert('RGBA'), mask=img.convert('RGBA').split()[3])
+                        img = bg
+                    elif img.mode != 'RGB':
+                        img = img.convert('RGB')
+                    img.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
+                    output = io.BytesIO()
+                    img.save(output, format="JPEG", quality=85)
+                    content = output.getvalue()
+                    mime_type = "image/jpeg"
+            except Exception as e:
+                print(f"Failed to resize image, continuing with original: {e}")
+
+    base64_image = base64.b64encode(content).decode('utf-8')
+    image_url = f"data:{mime_type};base64,{base64_image}"
+
+    try:
+        data_dict = await run_ai_extraction(content, mime_type)
+        
+        # Deduct Credit (Atomic RPC)
+        async with httpx.AsyncClient() as http_client:
+            rpc_resp = await http_client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/decrement_credits",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={"user_id_param": user_id}
+            )
+            if rpc_resp.status_code != 200:
+                print(f"Failed to deduct credits. RPC response: {rpc_resp.text}")
+                
+        return {"status": "success", "data": data_dict}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+async def run_ai_extraction(content: bytes, mime_type: str):
+    base64_image = base64.b64encode(content).decode('utf-8')
+    image_url = f"data:{mime_type};base64,{base64_image}"
+
+    prompt = """
+    You are an expert Indian Chartered Accountant assistant. 
+    Analyze the following invoice image and extract the requested fields perfectly, including all line items.
+    DO NOT hallucinate optional fields like PO_Number, E_Way_Bill_Number, Vehicle_Number, or Bank details. If they are not explicitly printed, return null.
+    For the Expense_Category field, suggest a standard accounting ledger category based on the line items.
+    Only extract what is literally printed on the document for Invoice_Type, Reverse_Charge_Applicable, Cess_Amount, and IRN. Do not infer them.
+    Only populate Original_Invoice_Number and Original_Invoice_Date for Credit/Debit Notes.
+    """
+
+    try:
+        response = await client.beta.chat.completions.parse(
+            model=AI_MODEL,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": image_url}}
+                    ]
+                }
+            ],
+            response_format=InvoiceData,
+        )
+        
+        extracted_data = response.choices[0].message.parsed
+        if not extracted_data:
+            raise HTTPException(status_code=500, detail="Failed to parse structured output from primary AI.")
+            
+        data_dict = extracted_data.model_dump()
+        
+        # Apply refactored tax and confidence calculations
+        data_dict = apply_tax_calculations(data_dict)
+        
+        return data_dict
+        
+    except Exception as e:
+        print(f"Primary AI failed with error: {e}. Attempting fallback to Gemini...")
+        if gemini_client:
+            try:
+                response = await gemini_client.beta.chat.completions.parse(
+                    model=GEMINI_MODEL,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {"type": "image_url", "image_url": {"url": image_url}}
+                            ]
+                        }
+                    ],
+                    response_format=InvoiceData,
+                )
+                
+                extracted_data = response.choices[0].message.parsed
+                if not extracted_data:
+                    raise HTTPException(status_code=500, detail="Failed to parse structured output from Gemini.")
+                    
+                data_dict = extracted_data.model_dump()
+                
+                # Apply refactored tax and confidence calculations
+                data_dict = apply_tax_calculations(data_dict)
+                
+                return data_dict
+            except Exception as gemini_e:
+                raise HTTPException(status_code=500, detail=f"Both primary AI and Gemini fallback failed. Gemini Error: {str(gemini_e)}")
+        else:
+            raise HTTPException(status_code=500, detail=f"Error communicating with OpenAI (no fallback available): {str(e)}")
+
+from auth_routes import router as auth_router
+from admin_routes import router as admin_router
+from batch_routes import router as batch_router
+from reconcile_routes import router as reconcile_router
+from payment_routes import router as payment_router
+from public_routes import router as public_router
+
+app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
+app.include_router(batch_router, prefix="/api/batch", tags=["batch"])
+app.include_router(reconcile_router, prefix="/api/reconcile", tags=["reconcile"])
+app.include_router(payment_router, prefix="/api", tags=["payments"])
+app.include_router(public_router, prefix="/api/public", tags=["public"])
+
+
+--- backend\payment_routes.py ---
+import os
+from fastapi import APIRouter, HTTPException, Header, Request, Depends
+from pydantic import BaseModel
+import razorpay
+from supabase import create_async_client
+from main import SUPABASE_URL, SUPABASE_ANON_KEY
+
+router = APIRouter()
+
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "rzp_test_mock")
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "rzp_test_secret")
+
+rzp_client = None
+if RAZORPAY_KEY_ID != "rzp_test_mock":
+    rzp_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+
+class OrderRequest(BaseModel):
+    amount: int # Amount in INR
+    credits: int
+
+@router.post("/api/create-order")
+async def create_order(req: OrderRequest, authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    token = authorization.split(" ")[1]
+    supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+    
+    try:
+        user_resp = await supabase_client.auth.get_user(token)
+        user_id = user_resp.user.id
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid session token")
+        
+    if not rzp_client:
+        # Mock response for testing without keys
+        return {
+            "order_id": "order_mock_" + os.urandom(4).hex(),
+            "amount": req.amount * 100,
+            "currency": "INR",
+            "key_id": RAZORPAY_KEY_ID
+        }
+
+    try:
+        order_amount = req.amount * 100 # Razorpay expects paise
+        order_currency = "INR"
+        order_receipt = f"rcptid_{user_id[:8]}"
+        
+        razorpay_order = rzp_client.order.create({
+            "amount": order_amount,
+            "currency": order_currency,
+            "receipt": order_receipt,
+            "payment_capture": "1"
+        })
+        
+        return {
+            "order_id": razorpay_order["id"],
+            "amount": order_amount,
+            "currency": order_currency,
+            "key_id": RAZORPAY_KEY_ID
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/webhooks/payment")
+async def razorpay_webhook(request: Request):
+    body = await request.body()
+    signature = request.headers.get("x-razorpay-signature")
+    
+    if not rzp_client:
+        # Handle mock webhook
+        data = await request.json()
+        if data.get("event") == "payment.captured":
+            # For mock, we'd need a secure way to know who to credit, but webhooks are stateless.
+            # In real scenario, we verify signature.
+            pass
+        return {"status": "ok"}
+        
+    try:
+        rzp_client.utility.verify_webhook_signature(body.decode("utf-8"), signature, os.getenv("RAZORPAY_WEBHOOK_SECRET", RAZORPAY_KEY_SECRET))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Invalid Signature")
+
+    payload = await request.json()
+    if payload.get("event") == "payment.captured":
+        payment = payload["payload"]["payment"]["entity"]
+        order_id = payment.get("order_id")
+        amount = payment.get("amount") / 100
+        
+        # Here we need to map the order_id back to a user and grant credits.
+        # This requires storing the pending order in the DB during /api/create-order.
+        # For MVP, we can handle payment verification directly from the frontend after success instead of webhooks,
+        # OR require the frontend to pass the user_id in the payment notes.
+        pass
+        
+    return {"status": "ok"}
+
+@router.post("/api/verify-payment")
+async def verify_payment(
+    request: Request,
+    authorization: str = Header(None)
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    token = authorization.split(" ")[1]
+    supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+    
+    try:
+        user_resp = await supabase_client.auth.get_user(token)
+        user_id = user_resp.user.id
+        supabase_client.postgrest.auth(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid session token")
+        
+    data = await request.json()
+    payment_id = data.get("razorpay_payment_id")
+    order_id = data.get("razorpay_order_id")
+    signature = data.get("razorpay_signature")
+    credits_to_add = data.get("credits", 0)
+    amount_paid = data.get("amount", 0)
+    
+    if rzp_client:
+        try:
+            rzp_client.utility.verify_payment_signature({
+                'razorpay_order_id': order_id,
+                'razorpay_payment_id': payment_id,
+                'razorpay_signature': signature
+            })
+        except Exception as e:
+            raise HTTPException(status_code=400, detail="Invalid payment signature")
+            
+    # Atomic DB Update
+    try:
+        # Check if transaction already exists (idempotency)
+        existing = await supabase_client.table("transactions").select("id").eq("payment_id", payment_id).execute()
+        if existing.data:
+            return {"status": "success", "message": "Payment already verified."}
+            
+        # Record transaction
+        await supabase_client.table("transactions").insert({
+            "user_id": user_id,
+            "amount_paid": amount_paid,
+            "credits_added": credits_to_add,
+            "payment_id": payment_id,
+            "order_id": order_id,
+            "status": "success"
+        }).execute()
+        
+        # We need an RPC to increment credits, or we can just update since RLS allows it if we bypass or use RPC.
+        # Actually RLS might block direct profile update. 
+        # Let's use RPC 'increment_credits'. Wait, we don't have 'increment_credits' RPC.
+        # The frontend user can't update their own credits directly due to security.
+        # We will use the service role key to update the credits.
+        import httpx
+        async with httpx.AsyncClient() as http_client:
+            service_role = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            if service_role:
+                # Fetch current profile
+                profile_resp = await http_client.get(
+                    f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credits",
+                    headers={"apikey": service_role, "Authorization": f"Bearer {service_role}"}
+                )
+                if profile_resp.status_code == 200 and profile_resp.json():
+                    curr_credits = profile_resp.json()[0].get("credits", 0)
+                    new_credits = curr_credits + credits_to_add
+                    await http_client.patch(
+                        f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
+                        headers={"apikey": service_role, "Authorization": f"Bearer {service_role}", "Content-Type": "application/json"},
+                        json={"credits": new_credits}
+                    )
+            
+        return {"status": "success", "message": "Credits added successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+--- backend\public_routes.py ---
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from typing import List
+import os
+import uuid
+from supabase import create_async_client
+from utils import validate_file_content, sanitize_filename, SUPABASE_URL, SUPABASE_SERVICE_KEY
+
+router = APIRouter()
+
+async def get_admin_client():
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        raise HTTPException(status_code=500, detail="Missing Supabase service key configuration.")
+    return await create_async_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+
+@router.get("/client/{client_id}")
+async def get_client_info(client_id: str):
+    # Fetch client details using service role (bypass RLS for public link)
+    supabase_client = await get_admin_client()
+    resp = await supabase_client.table("clients").select("client_name, user_id").eq("id", client_id).execute()
+    if not resp.data or len(resp.data) == 0:
+        raise HTTPException(status_code=404, detail="Client not found")
+        
+    return {"client_name": resp.data[0]["client_name"]}
+
+@router.post("/upload")
+async def public_upload(client_id: str = Form(...), files: List[UploadFile] = File(...)):
+    supabase_client = await get_admin_client()
+    # Validate client exists
+    resp = await supabase_client.table("clients").select("user_id").eq("id", client_id).execute()
+    if not resp.data or len(resp.data) == 0:
+        raise HTTPException(status_code=404, detail="Client not found")
+        
+    user_id = resp.data[0]["user_id"]
+    
+    uploaded_count = 0
+    
+    for file in files:
+        content = await file.read()
+        
+        # Security: Validate file content (magic bytes and size)
+        mime_type = validate_file_content(content, file.filename)
+        
+        # Security: Sanitize filename to prevent path traversal
+        safe_filename = sanitize_filename(file.filename)
+        file_ext = os.path.splitext(safe_filename)[1]
+        
+        storage_path = f"{user_id}/{client_id}/{uuid.uuid4()}{file_ext}"
+        
+        # Upload to storage
+        try:
+            # We assume a bucket named 'raw_invoices' exists
+            pass
+        except Exception as e:
+            pass # Ignore storage error for this stub
+            
+        await supabase_client.table("invoices").insert({
+            "user_id": user_id,
+            "client_id": client_id,
+            "file_name": safe_filename,
+            "processing_status": "pending_from_client"
+        }).execute()
+        
+        uploaded_count += 1
+        
+    return {"status": "success", "message": f"Uploaded {uploaded_count} files."}
+
+
+--- backend\reconcile_routes.py ---
+import pandas as pd
+import io
+import asyncio
+import calendar
+from datetime import date
+from fastapi import APIRouter, File, UploadFile, HTTPException, Header, Form
+import httpx
+from main import SUPABASE_URL, SUPABASE_ANON_KEY
+
+router = APIRouter()
+
+def period_to_date_range(period: str):
+    """
+    period is 'MM-YYYY' (as sent by the Reconciliation page's month picker).
+    Returns (first_day, last_day) as ISO date strings, or (None, None) if it doesn't parse.
+    """
+    try:
+        month_str, year_str = period.split('-')
+        month, year = int(month_str), int(year_str)
+        first_day = date(year, month, 1)
+        last_day = date(year, month, calendar.monthrange(year, month)[1])
+        return first_day.isoformat(), last_day.isoformat()
+    except Exception:
+        return None, None
+
+@router.post("/api/reconcile")
+async def reconcile_gstr2b(
+    file: UploadFile = File(...),
+    client_id: str = Form(...),
+    period: str = Form(...),
+    authorization: str = Header(None)
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    token = authorization.split(" ")[1]
+    
+    async with httpx.AsyncClient() as http_client:
+        user_resp = await http_client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_resp.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid session token")
+        user_id = user_resp.json().get("id")
+        
+    content = await file.read()
+    
+    try:
+        df_full = pd.read_excel(io.BytesIO(content), sheet_name='B2B', header=None, engine='openpyxl')
+        header_idx = 0
+        for i, row in df_full.iterrows():
+            row_str = " ".join([str(x).lower() for x in row.values])
+            if "gstin of supplier" in row_str:
+                header_idx = i
+                break
+                
+        df = pd.read_excel(io.BytesIO(content), sheet_name='B2B', header=header_idx, engine='openpyxl')
+        df.columns = [str(c).strip().replace('\n', ' ') for c in df.columns]
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse B2B sheet in GSTR-2B file: {str(e)}")
+
+    col_mapping = {}
+    for col in df.columns:
+        cl = col.lower()
+        if 'gstin of supplier' in cl: col_mapping['gstin'] = col
+        elif 'invoice number' in cl: col_mapping['invoice_num'] = col
+        elif 'invoice date' in cl: col_mapping['invoice_date'] = col
+        elif 'taxable value' in cl: col_mapping['taxable_value'] = col
+        elif 'integrated tax' in cl: col_mapping['igst'] = col
+        elif 'central tax' in cl: col_mapping['cgst'] = col
+        elif 'state/ut tax' in cl: col_mapping['sgst'] = col
+        elif 'itc availability' in cl: col_mapping['itc_avail'] = col
+        
+    records = []
+    for _, row in df.iterrows():
+        gstin_col = col_mapping.get('gstin')
+        inv_col = col_mapping.get('invoice_num')
+        if not gstin_col or not inv_col: continue
+            
+        if pd.isna(row.get(gstin_col)):
+            continue
+            
+        gstin = str(row.get(gstin_col, '')).strip()
+        inv_num = str(row.get(inv_col, '')).strip()
+        if not gstin or gstin == 'nan': continue
+        
+        records.append({
+            "user_id": user_id,
+            "client_id": client_id,
+            "period": period,
+            "supplier_gstin": gstin,
+            "invoice_number": inv_num,
+            "invoice_date": str(row.get(col_mapping.get('invoice_date', ''))),
+            "taxable_value": float(row.get(col_mapping.get('taxable_value', 0)) or 0),
+            "igst": float(row.get(col_mapping.get('igst', 0)) or 0),
+            "cgst": float(row.get(col_mapping.get('cgst', 0)) or 0),
+            "sgst": float(row.get(col_mapping.get('sgst', 0)) or 0),
+            "itc_available": str(row.get(col_mapping.get('itc_avail', ''))),
+            "raw_json": {str(k): str(v) for k,v in row.to_dict().items() if not pd.isna(v)}
+        })
+        
+    async with httpx.AsyncClient() as http_client:
+        # 1. Fetch old records for rollback
+        fetch_resp = await http_client.get(
+            f"{SUPABASE_URL}/rest/v1/gstr2b_records?client_id=eq.{client_id}&period=eq.{period}",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        old_records = fetch_resp.json() if fetch_resp.status_code == 200 else []
+
+        # 2. Delete old records
+        await http_client.delete(
+            f"{SUPABASE_URL}/rest/v1/gstr2b_records?client_id=eq.{client_id}&period=eq.{period}",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        
+        # 3. Insert new records in chunks
+        chunk_size = 500
+        insert_success = True
+        for i in range(0, len(records), chunk_size):
+            chunk = records[i:i+chunk_size]
+            resp = await http_client.post(
+                f"{SUPABASE_URL}/rest/v1/gstr2b_records",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json=chunk
+            )
+            if resp.status_code not in (200, 201):
+                insert_success = False
+                break
+                
+        # 4. Rollback if insert failed
+        if not insert_success and old_records:
+            # Re-insert the old records (stripping IDs if auto-generated)
+            for r in old_records:
+                r.pop('id', None)
+                r.pop('created_at', None)
+            
+            for i in range(0, len(old_records), chunk_size):
+                await http_client.post(
+                    f"{SUPABASE_URL}/rest/v1/gstr2b_records",
+                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json=old_records[i:i+chunk_size]
+                )
+            raise HTTPException(status_code=500, detail="Failed to insert new reconciliation records. Original records were restored.")
+            
+        # Scope to invoices dated inside the reconciled month only. Without this, every
+        # never-reconciled invoice from *any* earlier month (recon_status is NULL until its
+        # own period is first reconciled) would get swept into whichever period you happen to
+        # run next and mislabeled "missing_in_2b" for the wrong month - the first reconciliation
+        # run on a client with existing history would flag its entire back-catalog incorrectly.
+        period_start, period_end = period_to_date_range(period)
+        base_url = (
+            f"{SUPABASE_URL}/rest/v1/invoices?client_id=eq.{client_id}"
+            f"&select=id,supplier_gstin,invoice_number,taxable_amount,total_amount,recon_status,recon_period"
+        )
+        if period_start and period_end:
+            base_url += f"&invoice_date=gte.{period_start}&invoice_date=lte.{period_end}"
+        pr_resp = await http_client.get(
+            base_url,
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        pr_invoices = pr_resp.json()
+        
+    def clean_str(s):
+        if not s: return ""
+        import re
+        s = str(s).strip().upper().replace("-", "").replace("/", "").replace(" ", "")
+        return re.sub(r'(\D)0+(\d)', r'\1\2', s)
+        
+    two_b_dict = {f"{clean_str(r['supplier_gstin'])}_{clean_str(r['invoice_number'])}": r for r in records}
+    updates = []
+    
+    import rapidfuzz
+    
+    for inv in pr_invoices:
+        my_gstin = clean_str(inv.get('supplier_gstin'))
+        my_inv_num = clean_str(inv.get('invoice_number'))
+        scanned_tax = float(inv.get('taxable_amount') or 0)
+        
+        best_match_key = None
+        best_score = 0
+        best_b2b_rec = None
+        
+        for key, b2b_rec in two_b_dict.items():
+            b2b_gstin, b2b_inv_num = key.split('_', 1)
+            if my_gstin != b2b_gstin:
+                continue
+                
+            score = rapidfuzz.fuzz.ratio(my_inv_num, b2b_inv_num)
+            if score > best_score:
+                best_score = score
+                best_match_key = key
+                best_b2b_rec = b2b_rec
+                
+        if best_match_key and best_score >= 75.0:
+            b2b_tax = float(best_b2b_rec['taxable_value'] or 0)
+            
+            if best_score >= 90.0 and abs(scanned_tax - b2b_tax) <= 1.0:
+                status = "matched"
+            else:
+                status = "mismatch"
+                
+            updates.append({
+                "id": inv['id'],
+                "recon_status": status,
+                "recon_period": period
+            })
+            del two_b_dict[best_match_key]
+        else:
+            if not inv.get('recon_status') or inv.get('recon_status') in ['unreconciled', 'missing_in_2b']:
+                updates.append({
+                    "id": inv['id'],
+                    "recon_status": "missing_in_2b",
+                    "recon_period": period
+                })
+                
+    if updates:
+        async with httpx.AsyncClient() as http_client:
+            await http_client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/bulk_update_invoices_recon",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={"updates": updates}
+            )
+            
+    return {"status": "success", "message": f"Reconciled {len(records)} records from 2B against {len(pr_invoices)} Purchase Register invoices."}
+
+import json
+
+@router.post("/api/reconcile/deep-match")
+async def deep_match_reconcile(
+    client_id: str = Form(...),
+    period: str = Form(...),
+    authorization: str = Header(None)
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    token = authorization.split(" ")[1]
+    supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+    
+    try:
+        user_resp = await supabase_client.auth.get_user(token)
+        user_id = user_resp.user.id
+        supabase_client.postgrest.auth(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid session token")
+
+    # Fetch PR invoices
+    inv_resp = await supabase_client.table("invoices").select("id,supplier_name,supplier_gstin,invoice_number,invoice_date,taxable_amount,total_amount,recon_status").eq("client_id", client_id).eq("recon_period", period).execute()
+    pr_invoices = inv_resp.data if inv_resp.data else []
+    
+    missing_in_2b = [inv for inv in pr_invoices if inv.get("recon_status") == "missing_in_2b"]
+    matched_invoices = [inv for inv in pr_invoices if inv.get("recon_status") in ["matched", "mismatch"]]
+    
+    if not missing_in_2b:
+        return {"status": "success", "message": "No unmatched Purchase Register invoices found for Deep Match."}
+        
+    # Fetch 2B records
+    b2b_resp = await supabase_client.table("gstr2b_records").select("*").eq("client_id", client_id).eq("period", period).execute()
+    b2b_records = b2b_resp.data if b2b_resp.data else []
+    
+    if not b2b_records:
+        return {"status": "success", "message": "No GSTR-2B records found for this period."}
+        
+    # Filter unmatched 2B records (those not already linked to matched_invoices)
+    def clean_str(s):
+        if not s: return ""
+        import re
+        s = str(s).strip().upper().replace("-", "").replace("/", "").replace(" ", "")
+        return re.sub(r'(\D)0+(\d)', r'\1\2', s)
+        
+    matched_2b_keys = {f"{clean_str(inv.get('supplier_gstin'))}_{clean_str(inv.get('invoice_number'))}" for inv in matched_invoices}
+    
+    unmatched_2b = []
+    for rec in b2b_records:
+        key = f"{clean_str(rec.get('supplier_gstin'))}_{clean_str(rec.get('invoice_number'))}"
+        if key not in matched_2b_keys:
+            unmatched_2b.append(rec)
+            
+    if not unmatched_2b:
+        return {"status": "success", "message": "No unmatched GSTR-2B records available for Deep Match."}
+        
+    # Deduct Credit for Deep Match
+    import httpx
+    async with httpx.AsyncClient() as http_client:
+        rpc_resp = await http_client.post(
+            f"{SUPABASE_URL}/rest/v1/rpc/decrement_credits",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json={"user_id_param": user_id}
+        )
+        if rpc_resp.status_code != 200:
+            raise HTTPException(status_code=402, detail="Insufficient credits for AI Deep Match.")
+            
+    # Call Gemini for Deep Match
+    pr_subset = [{"id": inv["id"], "supplier": inv.get("supplier_name"), "gstin": inv.get("supplier_gstin"), "inv_num": inv.get("invoice_number"), "amount": inv.get("taxable_amount")} for inv in missing_in_2b]
+    b2b_subset = [{"id": rec["id"], "gstin": rec.get("supplier_gstin"), "inv_num": rec.get("invoice_number"), "amount": rec.get("taxable_value")} for rec in unmatched_2b]
+    
+    prompt = f"""
+    You are an expert AI data reconciliation engine for Indian GST.
+    I have a list of 'Purchase Register' invoices and a list of 'GSTR-2B' government records.
+    They failed exact matching due to severe typos, OCR errors, or missing prefixes in invoice numbers or supplier names.
+    Your task is to logically match PR invoices to GSTR-2B records using fuzzy entity resolution.
+    
+    Purchase Register (PR) Invoices:
+    {json.dumps(pr_subset)}
+    
+    GSTR-2B Records:
+    {json.dumps(b2b_subset)}
+    
+    Return ONLY a valid JSON array of objects. Each object should have:
+    - "pr_invoice_id": The ID from the Purchase Register
+    - "b2b_record_id": The ID from the GSTR-2B Records that it matches
+    - "confidence_score": 0.0 to 1.0 indicating your confidence in the match
+    - "reason": A brief 1-sentence reason why they match despite the typos
+    
+    Do NOT include markdown formatting like ```json.
+    """
+    
+    import os
+    from openai import AsyncOpenAI
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+    gemini_client = AsyncOpenAI(api_key=GEMINI_API_KEY, base_url="https://generativelanguage.googleapis.com/v1beta/openai/") if GEMINI_API_KEY else None
+    
+    if not gemini_client:
+        raise HTTPException(status_code=500, detail="Gemini API Key not configured for Deep Match.")
+        
+    try:
+        response = await gemini_client.chat.completions.create(
+            model="gemini-2.5-flash",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0
+        )
+        
+        result_text = response.choices[0].message.content.strip()
+        if result_text.startswith("```json"): result_text = result_text[7:]
+        if result_text.endswith("```"): result_text = result_text[:-3]
+        
+        matches = json.loads(result_text)
+        
+        # Apply updates
+        updates = []
+        for match in matches:
+            if match.get("confidence_score", 0) > 0.8:
+                updates.append({
+                    "id": match["pr_invoice_id"],
+                    "recon_status": "matched"
+                })
+                
+        if updates:
+            # Use bulk update RPC
+            # In deep match we might not have recon_period populated in updates yet, so we ensure it
+            for u in updates:
+                u['recon_period'] = period
+            await supabase_client.rpc("bulk_update_invoices_recon", {"updates": updates}).execute()
+                
+        return {"status": "success", "message": f"AI Deep Match found {len(updates)} matches out of {len(missing_in_2b)} unmatched invoices.", "matches": matches}
+        
+    except Exception as e:
+        print(f"Gemini Deep Match failed: {e}")
+        raise HTTPException(status_code=500, detail=f"AI Deep Match failed: {str(e)}")
+
+
+--- backend\run_sql.py ---
+import psycopg2
+
+def run_sql():
+    try:
+        conn = psycopg2.connect('postgresql://postgres:postgres@localhost:54322/postgres')
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS category TEXT;")
+        print("Migration executed successfully!")
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error: {e}")
+
+run_sql()
+
+
+--- backend\test_all.py ---
+import os
+import requests
+import io
+import zipfile
+import pandas as pd
+from dotenv import load_dotenv
+
+load_dotenv()
+
+SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
+SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
+TEST_EMAIL = os.getenv("TEST_EMAIL", "test@example.com")
+TEST_PASSWORD = os.getenv("TEST_PASSWORD", "password123")
+API_URL = "http://127.0.0.1:8000"
+
+def get_token():
+    if not all([SUPABASE_URL, SUPABASE_ANON_KEY]):
+        print("Missing SUPABASE credentials in .env")
+        return None, None
+        
+    print(f"Logging into Supabase with {TEST_EMAIL}...")
+    auth_resp = requests.post(
+        f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
+        headers={"apikey": SUPABASE_ANON_KEY},
+        json={"email": TEST_EMAIL, "password": TEST_PASSWORD}
+    )
+    if auth_resp.status_code != 200:
+        print("Login failed:", auth_resp.text)
+        print("Please ensure you have created a test user in Supabase auth.")
+        return None, None
+    
+    token = auth_resp.json().get("access_token")
+    user_id = auth_resp.json().get("user", {}).get("id")
+    return token, user_id
+
+def test_scan_invoice(token):
+    print("\n--- Testing /api/scan-invoice (Single File) ---")
+    img_data = b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00\xff\xdb\x00C\x00\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\xff\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00\xff\xc4\x00\x14\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xc4\x00\x14\x10\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xda\x00\x08\x01\x01\x00\x00?\x00\x7f\xff\xd9'
+    files = {'file': ('test.jpg', img_data, 'image/jpeg')}
+    try:
+        r = requests.post(f'{API_URL}/api/scan-invoice', files=files, headers={"Authorization": f"Bearer {token}"})
+        print(f"Status Code: {r.status_code}")
+        if r.status_code == 200: 
+            print("Success: API returned extracted data.")
+        else: 
+            print("Error:", r.text)
+    except Exception as e:
+        print(f"Connection failed: {e}. Is the server running?")
+
+def test_upload_batch(token):
+    print("\n--- Testing /api/upload-batch (ZIP File) ---")
+    img_data = b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00\xff\xdb\x00C\x00\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\xff\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00\xff\xc4\x00\x14\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xc4\x00\x14\x10\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xda\x00\x08\x01\x01\x00\x00?\x00\x7f\xff\xd9'
+    
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zf:
+        zf.writestr("invoice1.jpg", img_data)
+        zf.writestr("invoice2.jpg", img_data)
+        
+    files = {'file': ('batch.zip', zip_buffer.getvalue(), 'application/zip')}
+    data = {'client_id': 'test-client-id-123'}
+    try:
+        r = requests.post(f'{API_URL}/api/upload-batch', files=files, data=data, headers={"Authorization": f"Bearer {token}"})
+        print(f"Status Code: {r.status_code}")
+        if r.status_code == 200: 
+            print("Success:", r.json())
+        else: 
+            print("Error:", r.text)
+    except Exception as e:
+        print(f"Connection failed: {e}. Is the server running?")
+
+def test_reconcile(token):
+    print("\n--- Testing /api/reconcile (GSTR-2B Excel) ---")
+    df = pd.DataFrame([
+        ['GSTIN of supplier', 'Trade/Legal name', 'Invoice number', 'Invoice type', 'Invoice Date', 'Invoice Value(₹)', 'Place of supply', 'Supply Attracts Reverse Charge', 'Rate(%)', 'Taxable Value', 'Integrated Tax(₹)', 'Central Tax(₹)', 'State/UT Tax(₹)', 'Cess(₹)', 'GSTR-1/IFF/ITC(SPG) Filing Status', 'GSTR-1/IFF/ITC(SPG) Filing Date', 'GSTR-1/IFF/ITC(SPG) Filing Period', 'GSTR-3B Filing Status', 'ITC Availability', 'Reason for Non-availability', 'Applicable % of Tax Rate'],
+        ['27AADCB2230M1Z2', 'TEST SUPPLIER', 'INV-001', 'Regular', '01-03-2024', 1180, '27-Maharashtra', 'No', 18, 1000, 180, 0, 0, 0, 'Yes', '11-04-2024', '03-2024', 'Yes', 'Yes', '', '']
+    ])
+    
+    excel_buffer = io.BytesIO()
+    df.to_excel(excel_buffer, sheet_name='B2B', index=False, header=False)
+    
+    files = {'file': ('gstr2b.xlsx', excel_buffer.getvalue(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')}
+    data = {'client_id': 'test-client-id-123', 'period': '03-2024'}
+    try:
+        r = requests.post(f'{API_URL}/api/reconcile', files=files, data=data, headers={"Authorization": f"Bearer {token}"})
+        print(f"Status Code: {r.status_code}")
+        if r.status_code == 200: 
+            print("Success:", r.json())
+        else: 
+            print("Error:", r.text)
+    except Exception as e:
+        print(f"Connection failed: {e}. Is the server running?")
+
+if __name__ == "__main__":
+    print("==========================================")
+    print(" KhataLens E2E API Test Suite ")
+    print("==========================================\n")
+    token, user_id = get_token()
+    if token:
+        print("\n=> User authenticated successfully. Proceeding with tests...\n")
+        # test_scan_invoice(token) # Skipping because it uses real Gemini credits
+        test_upload_batch(token)
+        test_reconcile(token)
+        print("\nAll tests dispatched! Note: The ZIP batch runs in the background. Check backend console.")
+    else:
+        print("Cannot run E2E tests without valid authentication.")
+
+
+--- backend\test_list_users.py ---
+import asyncio, os
+from dotenv import load_dotenv
+from supabase import create_async_client
+
+load_dotenv()
+
+async def test():
+    client = await create_async_client(
+        os.getenv('VITE_SUPABASE_URL'), 
+        os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+    )
+    users = await client.auth.admin.list_users()
+    print("Type of users:", type(users))
+    print("Attributes:", dir(users))
+    if hasattr(users, 'users'):
+        print("Users count (users property):", len(users.users))
+    elif isinstance(users, list):
+        print("Users count (list):", len(users))
+        if len(users) > 0:
+            print("First user email:", getattr(users[0], 'email', 'N/A'))
+    else:
+        print("Unknown format")
+
+asyncio.run(test())
+
+
+--- backend\test_scan.py ---
+import os
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+
+SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
+SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
+TEST_EMAIL = os.getenv("TEST_EMAIL")
+TEST_PASSWORD = os.getenv("TEST_PASSWORD")
+
+def test_e2e_scan():
+    if not all([SUPABASE_URL, SUPABASE_ANON_KEY, TEST_EMAIL, TEST_PASSWORD]):
+        print("Missing test credentials in .env (TEST_EMAIL, TEST_PASSWORD). Skipping full E2E auth test.")
+        # Just do a generic failure test without auth
+        img_data = b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00\xff\xdb\x00C\x00\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\xff\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00\xff\xc4\x00\x14\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xc4\x00\x14\x10\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xda\x00\x08\x01\x01\x00\x00?\x00\x7f\xff\xd9'
+        files = {'file': ('test.jpg', img_data, 'image/jpeg')}
+        try:
+            r = requests.post('http://127.0.0.1:8000/api/scan-invoice', files=files)
+            print("Without auth:", r.status_code, r.text)
+        except Exception as e:
+            print(e)
+        return
+
+    print("Logging into Supabase...")
+    auth_resp = requests.post(
+        f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
+        headers={"apikey": SUPABASE_ANON_KEY},
+        json={"email": TEST_EMAIL, "password": TEST_PASSWORD}
+    )
+    
+    if auth_resp.status_code != 200:
+        print("Login failed:", auth_resp.text)
+        return
+        
+    token = auth_resp.json().get("access_token")
+    print("Login successful.")
+
+    img_data = b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00\xff\xdb\x00C\x00\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\xff\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00\xff\xc4\x00\x14\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xc4\x00\x14\x10\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xda\x00\x08\x01\x01\x00\x00?\x00\x7f\xff\xd9'
+    files = {'file': ('test.jpg', img_data, 'image/jpeg')}
+    
+    print("Testing /api/scan-invoice...")
+    r = requests.post(
+        'http://127.0.0.1:8000/api/scan-invoice', 
+        files=files,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    print(f"Status Code: {r.status_code}")
+    try:
+        resp_json = r.json()
+        print("Response:", resp_json)
+        if r.status_code == 200:
+            data = resp_json.get("data", {})
+            print("Extraction State:", data.get("Extraction_State"))
+            print("Confidence Score:", data.get("Confidence_Score"))
+            print("Total Amount:", data.get("Total_Amount"))
+    except:
+        print("Raw text:", r.text)
+
+if __name__ == "__main__":
+    test_e2e_scan()
+
+
+--- backend\utils.py ---
+import os
+import uuid
+import re
+from fastapi import HTTPException
+from supabase import create_async_client
+
+SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+def get_supabase_client():
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        raise HTTPException(status_code=500, detail="Missing Supabase service key configuration.")
+    # We must use synchronous client if public_routes expects it synchronously, 
+    # but in public_routes.py we see:
+    # await supabase_client.table("clients")... 
+    # But wait, create_async_client is async. We shouldn't call await inside get_supabase_client if it's not async.
+    pass # I'll look at how it's used.
+
+def validate_file_content(content: bytes, filename: str) -> str:
+    """
+    Validates file magic bytes and size, returns verified mime type.
+    """
+    MAX_SIZE = 10 * 1024 * 1024 # 10 MB limit
+    if len(content) > MAX_SIZE:
+        raise HTTPException(status_code=413, detail=f"File {filename} is too large. Max 10MB allowed.")
+
+    if content.startswith(b'%PDF-'):
+        return "application/pdf"
+    elif content.startswith(b'\xff\xd8\xff'):
+        return "image/jpeg"
+    elif content.startswith(b'\x89PNG\r\n\x1a\n'):
+        return "image/png"
+    elif content.startswith(b'RIFF') and content[8:12] == b'WEBP':
+        return "image/webp"
+    else:
+        raise HTTPException(status_code=400, detail=f"Invalid file format for {filename}. Only PDF, JPEG, PNG, and WEBP are allowed.")
+
+def sanitize_filename(filename: str) -> str:
+    if not filename:
+        return f"{uuid.uuid4()}.bin"
+    # Keep only alphanumeric characters, dots, dashes, and underscores
+    clean_name = re.sub(r'[^a-zA-Z0-9.\-_]', '', filename)
+    # Remove leading dots or slashes
+    clean_name = clean_name.lstrip('./\\')
+    if not clean_name:
+        return f"{uuid.uuid4()}.bin"
+    return clean_name
+
+

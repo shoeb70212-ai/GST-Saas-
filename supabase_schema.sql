@@ -1,4 +1,4 @@
--- Supabase Schema for PayForce (InvoiceScanner AI)
+-- Supabase Schema for KhataLens (InvoiceScanner AI)
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

@@ -277,7 +277,7 @@ export default function ScanPage() {
   const toggleColumn = (key: string) => {
     setVisibleColumns(prev => {
       const next = prev.includes(key) ? prev.filter(c => c !== key) : [...prev, key];
-      localStorage.setItem('payforce_columns', JSON.stringify(next));
+      localStorage.setItem('khatalens_columns', JSON.stringify(next));
       return next;
     });
   };
@@ -704,7 +704,7 @@ export default function ScanPage() {
       });
 
       const { exportToExcelMultiSheet } = await import('../lib/exportService');
-      exportToExcelMultiSheet(invoices, allLineItems, visibleColumns);
+      exportToExcelMultiSheet(invoices, allLineItems);
     } finally {
       setIsExporting(false);
     }
@@ -723,7 +723,7 @@ export default function ScanPage() {
             <Sparkles className="w-5 h-5 text-white" />
           </div>
           <span className="text-xl font-bold text-text-primary">
-            LedgerLens
+            KhataLens
           </span>
         </div>
         <div className="flex items-center gap-4">

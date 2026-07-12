@@ -157,19 +157,16 @@ async def verify_payment(
         async with httpx.AsyncClient() as http_client:
             service_role = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
             if service_role:
-                # Fetch current profile
-                profile_resp = await http_client.get(
-                    f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credits",
-                    headers={"apikey": service_role, "Authorization": f"Bearer {service_role}"}
+                # Use atomic RPC to prevent race conditions
+                await http_client.post(
+                    f"{SUPABASE_URL}/rest/v1/rpc/increment_credits",
+                    headers={
+                        "apikey": service_role, 
+                        "Authorization": f"Bearer {service_role}", 
+                        "Content-Type": "application/json"
+                    },
+                    json={"user_id_param": user_id, "amount": credits_to_add}
                 )
-                if profile_resp.status_code == 200 and profile_resp.json():
-                    curr_credits = profile_resp.json()[0].get("credits", 0)
-                    new_credits = curr_credits + credits_to_add
-                    await http_client.patch(
-                        f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
-                        headers={"apikey": service_role, "Authorization": f"Bearer {service_role}", "Content-Type": "application/json"},
-                        json={"credits": new_credits}
-                    )
             
         return {"status": "success", "message": "Credits added successfully."}
     except Exception as e:

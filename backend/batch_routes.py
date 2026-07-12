@@ -6,6 +6,7 @@ import os
 import re
 from supabase import create_async_client
 from main import run_ai_extraction, SUPABASE_URL, SUPABASE_ANON_KEY
+from utils import validate_file_content, sanitize_filename
 
 def format_date_to_iso(date_str):
     if not date_str: return None
@@ -72,7 +73,7 @@ async def process_batch_worker(invoice_id: str, content: bytes, mime_type: str, 
                 })
             resp = await supabase_client.table("invoice_line_items").insert(items_payload).execute()
             if not resp.data:
-                print(f"Failed to insert line items")
+                raise Exception("Database error: Failed to insert line items")
                 
     except Exception as e:
         # Mark as failed
@@ -102,10 +103,9 @@ async def upload_batch(
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid session token")
         
-    # Read Zip
-    content = await file.read()
+    # Process Zip as stream
     try:
-        with zipfile.ZipFile(io.BytesIO(content)) as z:
+        with zipfile.ZipFile(file.file) as z:
             file_names = z.namelist()
             valid_exts = ['.jpg', '.jpeg', '.png', '.pdf', '.webp']
             valid_files = [f for f in file_names if any(f.lower().endswith(ext) for ext in valid_exts) and not f.startswith('__MACOSX')]
@@ -119,17 +119,27 @@ async def upload_batch(
             pending_records = []
             file_details = []
             
+            total_uncompressed_size = 0
+            MAX_TOTAL_SIZE = 50 * 1024 * 1024 # 50MB max total uncompressed
+            
             for fname in valid_files:
+                file_info = z.getinfo(fname)
+                total_uncompressed_size += file_info.file_size
+                if total_uncompressed_size > MAX_TOTAL_SIZE:
+                    raise HTTPException(status_code=413, detail="Zip archive is too large when uncompressed (Zip Bomb prevention).")
+                
                 file_bytes = z.read(fname)
-                mime_type = "image/jpeg"
-                if fname.lower().endswith('.png'): mime_type = "image/png"
-                if fname.lower().endswith('.webp'): mime_type = "image/webp"
-                if fname.lower().endswith('.pdf'): mime_type = "application/pdf"
+                try:
+                    mime_type = validate_file_content(file_bytes, fname)
+                except HTTPException:
+                    continue # Skip invalid files
+                
+                safe_fname = sanitize_filename(fname.split('/')[-1])
                 
                 pending_records.append({
                     "user_id": user_id,
                     "client_id": client_id,
-                    "file_name": fname.split('/')[-1],
+                    "file_name": safe_fname,
                     "processing_status": "pending"
                 })
                 file_details.append({

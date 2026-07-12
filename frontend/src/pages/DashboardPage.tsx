@@ -88,7 +88,7 @@ export default function DashboardPage() {
   const recentInvoices = dashboardData?.recentInvoices || [];
 
   useEffect(() => {
-    const saved = localStorage.getItem('payforce_widgets');
+    const saved = localStorage.getItem('khatalens_widgets');
     if (saved) {
       try {
         setVisibleWidgets(JSON.parse(saved));
@@ -99,7 +99,7 @@ export default function DashboardPage() {
   const toggleWidget = (key: string) => {
     setVisibleWidgets(prev => {
       const next = prev.includes(key) ? prev.filter(w => w !== key) : [...prev, key];
-      localStorage.setItem('payforce_widgets', JSON.stringify(next));
+      localStorage.setItem('khatalens_widgets', JSON.stringify(next));
       return next;
     });
   };
@@ -172,9 +172,9 @@ export default function DashboardPage() {
         <div className="w-20 h-20 rounded-full bg-bg-sunken flex items-center justify-center mb-6">
           <Building2 className="w-10 h-10 text-text-disabled" />
         </div>
-        <h2 className="text-3xl font-bold text-text-primary mb-2">Welcome to LedgerLens</h2>
+        <h2 className="text-3xl font-bold text-text-primary mb-2">Welcome to KhataLens</h2>
         <p className="text-text-secondary max-w-md mb-8">
-          How will you be using LedgerLens? Choose your account type to set up your workspace.
+          How will you be using KhataLens? Choose your account type to set up your workspace.
         </p>
         
         {clients.length === 0 ? (

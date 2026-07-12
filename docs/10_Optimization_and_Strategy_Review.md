@@ -1,6 +1,6 @@
-# LedgerLens Strategy & Optimization Review
+# KhataLens Strategy & Optimization Review
 
-This document serves as the master blueprint for the next phase of LedgerLens development. It evaluates various AI-suggested features and optimizations against our core goal: **maximizing value for Indian Chartered Accountants while keeping AI API costs as close to zero as possible.**
+This document serves as the master blueprint for the next phase of KhataLens development. It evaluates various AI-suggested features and optimizations against our core goal: **maximizing value for Indian Chartered Accountants while keeping AI API costs as close to zero as possible.**
 
 ---
 

@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 import re
 from tenacity import retry, stop_after_attempt, wait_exponential
+from utils import validate_file_content
 
 def compute_confidence(extracted: dict, computed_total: float) -> dict:
     score = 100.0
@@ -216,62 +217,88 @@ async def scan_invoice(file: UploadFile = File(...), authorization: str = Header
 
     content = await file.read()
     
-    # Check if it's a PDF and convert to image
-    mime_type = file.content_type
-    if mime_type == "application/pdf":
-        try:
+    # Security: Validate file content (magic bytes and size)
+    mime_type = validate_file_content(content, file.filename)
+    
+    def process_file_sync(c_bytes, m_type):
+        if m_type == "application/pdf":
             import fitz
-            doc = fitz.open(stream=content, filetype="pdf")
+            from PIL import Image
+            import io
+            doc = fitz.open(stream=c_bytes, filetype="pdf")
             if not doc:
-                raise HTTPException(status_code=400, detail="Could not read PDF pages.")
+                raise ValueError("Could not read PDF pages.")
             
-            best_page_index = 0
-            best_score = 0
-            gst_keywords = ["gstin", "invoice", "taxable", "cgst", "sgst", "igst", "hsn", "total"]
+            gst_keywords = ["gstin", "invoice", "taxable", "cgst", "sgst", "igst", "hsn", "total", "amount", "qty", "rate"]
+            valid_pages = []
             
             for i in range(len(doc)):
                 page = doc[i]
                 text = page.get_text().lower()
                 score = sum(text.count(kw) for kw in gst_keywords)
-                if score > best_score:
-                    best_score = score
-                    best_page_index = i
+                if score >= 2 or ("hsn" in text and "amount" in text):
+                    valid_pages.append(i)
             
-            best_page = doc[best_page_index]
-            pix = best_page.get_pixmap(dpi=150)
-            content = pix.tobytes("jpeg")
-            mime_type = "image/jpeg"
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to process PDF. Error: {str(e)}")
-            
-    else:
-        # Resize raw image uploads to save AI token costs
-        if mime_type.startswith("image/"):
-            try:
-                from PIL import Image
-                import io
-                img = Image.open(io.BytesIO(content))
+            if not valid_pages:
+                valid_pages = [0]
                 
-                # Skip secondary resize if already optimized by frontend (e.g., < 2048x2048 and already JPEG)
-                if img.width <= 2048 and img.height <= 2048 and img.format == 'JPEG':
-                    pass # Image is already small enough, no need to re-encode
-                else:
-                    if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
-                        bg = Image.new('RGB', img.size, (255, 255, 255))
-                        if img.mode == 'RGBA':
-                            bg.paste(img, mask=img.split()[3])
-                        else:
-                            bg.paste(img.convert('RGBA'), mask=img.convert('RGBA').split()[3])
-                        img = bg
-                    elif img.mode != 'RGB':
-                        img = img.convert('RGB')
-                    img.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
-                    output = io.BytesIO()
-                    img.save(output, format="JPEG", quality=85)
-                    content = output.getvalue()
-                    mime_type = "image/jpeg"
-            except Exception as e:
-                print(f"Failed to resize image, continuing with original: {e}")
+            images = []
+            for i in valid_pages:
+                pix = doc[i].get_pixmap(dpi=150)
+                img = Image.open(io.BytesIO(pix.tobytes("jpeg")))
+                images.append(img)
+                
+            if len(images) == 1:
+                output = io.BytesIO()
+                images[0].save(output, format="JPEG", quality=85)
+                return output.getvalue(), "image/jpeg"
+            else:
+                total_height = sum(img.height for img in images)
+                max_width = max(img.width for img in images)
+                combined = Image.new('RGB', (max_width, total_height), (255, 255, 255))
+                y_offset = 0
+                for img in images:
+                    combined.paste(img, (0, y_offset))
+                    y_offset += img.height
+                
+                output = io.BytesIO()
+                combined.save(output, format="JPEG", quality=85)
+                return output.getvalue(), "image/jpeg"
+        elif m_type.startswith("image/"):
+            from PIL import Image
+            import io
+            img = Image.open(io.BytesIO(c_bytes))
+            if img.width <= 2048 and img.height <= 2048 and img.format == 'JPEG':
+                return c_bytes, m_type
+            else:
+                if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+                    bg = Image.new('RGB', img.size, (255, 255, 255))
+                    if img.mode == 'RGBA':
+                        bg.paste(img, mask=img.split()[3])
+                    else:
+                        bg.paste(img.convert('RGBA'), mask=img.convert('RGBA').split()[3])
+                    img = bg
+                elif img.mode != 'RGB':
+                    img = img.convert('RGB')
+                img.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
+                output = io.BytesIO()
+                img.save(output, format="JPEG", quality=85)
+                return output.getvalue(), "image/jpeg"
+        return c_bytes, m_type
+
+    import asyncio
+    # Limit concurrent PDF/Image processing using a lazy global semaphore
+    global _file_processing_semaphore
+    if '_file_processing_semaphore' not in globals() or _file_processing_semaphore is None:
+        _file_processing_semaphore = asyncio.Semaphore(4)
+        
+    async with _file_processing_semaphore:
+        try:
+            content, mime_type = await asyncio.to_thread(process_file_sync, content, mime_type)
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to process file. Error: {str(e)}")
 
     base64_image = base64.b64encode(content).decode('utf-8')
     image_url = f"data:{mime_type};base64,{base64_image}"

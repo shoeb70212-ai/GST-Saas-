@@ -95,7 +95,7 @@ export default function CollaborationPortal() {
           </div>
           <h2 className="text-2xl font-bold text-text-primary mb-2">Documents Sent!</h2>
           <p className="text-text-secondary mb-8">
-            Your accountant has received the documents in their LedgerLens inbox and will process them shortly.
+            Your accountant has received the documents in their KhataLens inbox and will process them shortly.
           </p>
           <button onClick={() => setIsSuccess(false)} className="btn-primary w-full justify-center">
             Upload More Documents
@@ -118,7 +118,7 @@ export default function CollaborationPortal() {
           <div className="w-8 h-8 rounded-md bg-accent flex items-center justify-center shadow-sm">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
-          <span className="text-xl font-bold text-text-primary">LedgerLens Portal</span>
+          <span className="text-xl font-bold text-text-primary">KhataLens Portal</span>
         </div>
       </nav>
 
