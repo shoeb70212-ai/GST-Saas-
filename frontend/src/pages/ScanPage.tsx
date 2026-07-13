@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UploadCloud, CheckCircle2, FileText, Loader2, Sparkles, Download, Settings, X, File as FileIcon, ChevronDown, ChevronUp, Cloud, LogOut, RefreshCw, AlertCircle, AlertTriangle } from 'lucide-react';
+import { UploadCloud, CheckCircle2, FileText, Loader2, Sparkles, Download, Settings, X, File as FileIcon, ChevronDown, ChevronUp, Cloud, RefreshCw, AlertCircle, AlertTriangle } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import React from 'react';
@@ -266,7 +266,7 @@ const InvoiceRow = React.memo(function InvoiceRow({ fs, visibleColumns, onUpdate
  */
 export default function ScanPage() {
   const { fileStates, setFileStates, visibleColumns, setVisibleColumns } = useScanContext();
-  const { activeClientId, credits, refreshCredits } = useClient();
+  const { activeClientId, refreshCredits } = useClient();
 
   const [isExporting, setIsExporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);

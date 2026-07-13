@@ -7,6 +7,7 @@ import { useClient } from '../lib/ClientContext';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Skeleton } from '../components/ui/Skeleton';
+import AnalyticsCharts, { type AnalyticsData, AnalyticsSkeleton } from '../components/AnalyticsCharts';
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-IN', { 
@@ -82,6 +83,28 @@ export default function DashboardPage() {
     enabled: !!activeClientId,
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
+  });
+
+  const { data: analyticsData } = useQuery<AnalyticsData | null>({
+    queryKey: ['invoices', 'analytics', activeClientId],
+    queryFn: async () => {
+      if (!activeClientId) return null;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return null;
+
+      const { data, error } = await supabase.rpc('get_advanced_analytics', {
+        client_id_param: activeClientId,
+        user_id_param: session.user.id
+      });
+
+      if (error) {
+        console.error("Failed to fetch advanced analytics:", error);
+        return null;
+      }
+      return data as AnalyticsData;
+    },
+    enabled: !!activeClientId,
+    staleTime: 5 * 60 * 1000,
   });
 
   const metrics = dashboardData?.metrics || { totalTaxable: 0, totalCgst: 0, totalSgst: 0, totalIgst: 0, totalOutstanding: 0, invoiceCount: 0 };
@@ -241,6 +264,10 @@ export default function DashboardPage() {
             </div>
           ))}
         </div>
+        
+        {/* Analytics Skeletons */}
+        <AnalyticsSkeleton />
+
         <div className="card h-48 w-full mt-8">
           <Skeleton className="h-full w-full" />
         </div>
@@ -362,6 +389,9 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Advanced Analytics Hub */}
+      <AnalyticsCharts data={analyticsData ?? null} />
 
       <div className="space-y-4">
         <div className="flex items-center justify-between">
