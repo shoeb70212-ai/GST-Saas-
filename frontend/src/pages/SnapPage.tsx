@@ -35,7 +35,7 @@ const SnapPage: React.FC = () => {
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${apiUrl}/api/snap-upload`, {
+      const response = await fetch(`${apiUrl}/api/public/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -43,6 +43,9 @@ const SnapPage: React.FC = () => {
       const result = await response.json();
 
       if (!response.ok) {
+        if (response.status === 409) {
+          throw new Error('Duplicate file. This document has already been submitted.');
+        }
         throw new Error(result.detail || 'Failed to upload invoice');
       }
 

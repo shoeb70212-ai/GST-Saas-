@@ -56,6 +56,7 @@ export interface AnalyticsData {
   categories: { category: string; total_spend: number }[];
   vendors: { vendor: string; total_spend: number }[];
   recon: { status: string; count: number }[];
+  vendor_health?: { vendor_name: string; supplier_gstin: string; supplier_gstin_status: string; itc_at_risk: number; invoice_count: number }[];
 }
 
 export function AnalyticsSkeleton() {

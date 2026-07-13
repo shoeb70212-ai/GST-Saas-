@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { DollarSign, FileText, Settings, CheckCircle2, TrendingUp, Building2, Briefcase } from 'lucide-react';
+import { DollarSign, FileText, Settings, CheckCircle2, TrendingUp, Building2, Briefcase, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Link } from 'react-router-dom';
 import { useClient } from '../lib/ClientContext';
@@ -17,7 +17,7 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
-import * as XLSX from 'xlsx';
+
 
 export const AVAILABLE_WIDGETS = [
   { key: 'total_taxable', label: 'Total Taxable Amount', icon: DollarSign },
@@ -35,8 +35,9 @@ export default function DashboardPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [visibleWidgets, setVisibleWidgets] = useState<string[]>(DEFAULT_WIDGETS);
   
-  const [salesTaxCollected, setSalesTaxCollected] = useState<number>(0);
-  const [isSalesRegisterUploaded, setIsSalesRegisterUploaded] = useState(false);
+  const [estimatedSales, setEstimatedSales] = useState<number>(0);
+  const [taxRate, setTaxRate] = useState<number>(18);
+  const [isSavingSales, setIsSavingSales] = useState(false);
   
   const { data: dashboardData, isLoading } = useQuery({
     queryKey: ['invoices', 'dashboard', activeClientId],
@@ -78,7 +79,10 @@ export default function DashboardPage() {
         };
       }
       
-      return { metrics, recentInvoices: recent || [] };
+      // Fetch client details for estimated sales
+      const { data: clientData } = await supabase.from('clients').select('estimated_monthly_sales, estimated_sales_tax_rate').eq('id', activeClientId).single();
+      
+      return { metrics, recentInvoices: recent || [], clientData };
     },
     enabled: !!activeClientId,
     staleTime: 5 * 60 * 1000,
@@ -109,6 +113,36 @@ export default function DashboardPage() {
 
   const metrics = dashboardData?.metrics || { totalTaxable: 0, totalCgst: 0, totalSgst: 0, totalIgst: 0, totalOutstanding: 0, invoiceCount: 0 };
   const recentInvoices = dashboardData?.recentInvoices || [];
+  const clientData = dashboardData?.clientData;
+
+  useEffect(() => {
+    if (clientData) {
+      setEstimatedSales(clientData.estimated_monthly_sales || 0);
+      setTaxRate(clientData.estimated_sales_tax_rate || 18);
+    }
+  }, [clientData]);
+
+  const handleSaveSales = async () => {
+    if (!activeClientId) return;
+    setIsSavingSales(true);
+    try {
+      const { error } = await supabase.from('clients').update({
+        estimated_monthly_sales: estimatedSales,
+        estimated_sales_tax_rate: taxRate
+      }).eq('id', activeClientId);
+      if (error) throw error;
+      toast.success("Estimates updated");
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to save estimates");
+    } finally {
+      setIsSavingSales(false);
+    }
+  };
+  
+  const estimatedSalesTax = (estimatedSales * taxRate) / 100;
+  const totalITC = metrics.totalCgst + metrics.totalSgst + metrics.totalIgst;
+  const estimatedLiability = Math.max(0, estimatedSalesTax - totalITC);
 
   useEffect(() => {
     const saved = localStorage.getItem('khatalens_widgets');
@@ -139,55 +173,7 @@ export default function DashboardPage() {
     }
   };
 
-  const handleSalesRegisterUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws);
-        
-        let totalSalesTax = 0;
-        data.forEach((row: any) => {
-          let rowTax = 0;
-          const lowerKeys = Object.keys(row).map(k => k.toLowerCase());
-          
-          const hasSpecificTax = ['cgst', 'sgst', 'igst', 'utgst', 'cess'].some(t => lowerKeys.some(k => k.includes(t)));
-          
-          if (hasSpecificTax) {
-            Object.keys(row).forEach(key => {
-              const k = key.toLowerCase();
-              if (['cgst', 'sgst', 'igst', 'utgst', 'cess'].some(t => k.includes(t))) {
-                const val = parseFloat(row[key]);
-                if (!isNaN(val)) rowTax += val;
-              }
-            });
-          } else {
-            const totalTaxKey = Object.keys(row).find(k => {
-              const lower = k.toLowerCase();
-              return lower.includes('total tax') || lower.includes('tax amount') || lower.includes('gst amount') || lower === 'tax';
-            });
-            if (totalTaxKey) {
-              const val = parseFloat(row[totalTaxKey]);
-              if (!isNaN(val)) rowTax += val;
-            }
-          }
-          totalSalesTax += rowTax;
-        });
-        
-        setSalesTaxCollected(totalSalesTax);
-        setIsSalesRegisterUploaded(true);
-      } catch (err) {
-        console.error("Failed to parse Sales Register", err);
-      }
-    };
-    reader.readAsBinaryString(file);
-  };
 
   if (!activeClientId) {
     return (
@@ -330,13 +316,18 @@ export default function DashboardPage() {
         {AVAILABLE_WIDGETS.filter(w => visibleWidgets.includes(w.key)).map(widget => {
           const Icon = widget.icon;
           return (
-            <div key={widget.key} className="card space-y-2 p-5 hover:border-border transition-colors">
-              <div className="flex items-center gap-2 text-text-secondary">
-                <Icon className="w-4 h-4" />
-                <h3 className="font-medium text-sm">{widget.label}</h3>
+            <motion.div 
+              whileHover={{ y: -4, scale: 1.02 }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              key={widget.key} 
+              className="card space-y-3 p-6 hover:border-accent/30 transition-all cursor-default group"
+            >
+              <div className="flex items-center gap-2 text-text-secondary group-hover:text-accent transition-colors">
+                <Icon className="w-5 h-5" />
+                <h3 className="font-semibold text-xs tracking-widest uppercase">{widget.label}</h3>
               </div>
-              <p className="text-2xl font-bold text-text-primary font-mono">{getWidgetValue(widget.key)}</p>
-            </div>
+              <p className="text-3xl font-bold text-text-primary font-display tracking-tight">{getWidgetValue(widget.key)}</p>
+            </motion.div>
           );
         })}
         {visibleWidgets.length === 0 && (
@@ -347,25 +338,44 @@ export default function DashboardPage() {
       </div>
 
       {/* Tax Liability Predictor Widget */}
-      <div className="card bg-gradient-to-br from-bg-surface to-bg-sunken border-accent/20 relative overflow-hidden">
+      <motion.div 
+        whileHover={{ y: -2 }}
+        transition={{ type: "spring", stiffness: 400, damping: 25 }}
+        className="card bg-gradient-to-br from-bg-surface to-bg-sunken border-accent/20 relative overflow-hidden group hover:shadow-glow"
+      >
+        <div className="absolute inset-0 bg-gradient-to-r from-accent/0 via-accent/5 to-accent/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
         <div className="absolute top-0 right-0 w-64 h-64 bg-accent/5 rounded-full blur-[80px] pointer-events-none"></div>
         <div className="flex flex-col md:flex-row gap-8 justify-between items-start md:items-center relative z-10">
-          <div>
+          <div className="flex-1">
             <h2 className="text-xl font-bold text-text-primary mb-2 flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-accent" /> Tax Liability Predictor
             </h2>
-            <p className="text-sm text-text-secondary max-w-md">
-              Import your Sales Register (Excel) to instantly calculate your estimated GST cash liability for this period.
+            <p className="text-sm text-text-secondary max-w-md mb-4">
+              Enter your estimated monthly sales and average tax rate to instantly calculate your cash liability based on scanned ITC.
             </p>
             
-            <div className="mt-4 flex items-center gap-4">
-              <div className="relative">
-                <input type="file" accept=".xlsx,.xls,.csv" onChange={handleSalesRegisterUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                <button className="btn-secondary text-sm">Upload Sales Register</button>
+            <div className="flex flex-wrap items-end gap-4">
+              <div>
+                <label className="block text-xs text-text-secondary mb-1">Est. Monthly Sales (₹)</label>
+                <input 
+                  type="number" 
+                  className="input-field w-40" 
+                  value={estimatedSales} 
+                  onChange={(e) => setEstimatedSales(Number(e.target.value))} 
+                />
               </div>
-              {isSalesRegisterUploaded && (
-                <span className="text-success text-sm flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> Loaded</span>
-              )}
+              <div>
+                <label className="block text-xs text-text-secondary mb-1">Avg Tax Rate (%)</label>
+                <input 
+                  type="number" 
+                  className="input-field w-24" 
+                  value={taxRate} 
+                  onChange={(e) => setTaxRate(Number(e.target.value))} 
+                />
+              </div>
+              <button onClick={handleSaveSales} disabled={isSavingSales} className="btn-secondary h-10">
+                {isSavingSales ? 'Saving...' : 'Update'}
+              </button>
             </div>
           </div>
           
@@ -373,22 +383,63 @@ export default function DashboardPage() {
             <div className="space-y-2 mb-4 pb-4 border-b border-white/5">
               <div className="flex justify-between text-sm">
                 <span className="text-text-secondary">Sales Tax Collected:</span>
-                <span className="font-mono text-text-primary">{formatCurrency(salesTaxCollected)}</span>
+                <span className="font-mono text-text-primary">{formatCurrency(estimatedSalesTax)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-text-secondary">Purchase ITC (from DB):</span>
-                <span className="font-mono text-success">-{formatCurrency(metrics.totalCgst + metrics.totalSgst + metrics.totalIgst)}</span>
+                <span className="font-mono text-success">-{formatCurrency(totalITC)}</span>
               </div>
             </div>
-            <div className="flex justify-between font-bold">
+            <div className="flex justify-between font-bold text-lg">
               <span className="text-text-primary">Est. Cash Liability:</span>
-              <span className={`font-mono ${salesTaxCollected - (metrics.totalCgst + metrics.totalSgst + metrics.totalIgst) > 0 ? 'text-error' : 'text-success'}`}>
-                {formatCurrency(Math.max(0, salesTaxCollected - (metrics.totalCgst + metrics.totalSgst + metrics.totalIgst)))}
+              <span className={`font-mono ${estimatedSalesTax - totalITC > 0 ? 'text-error' : 'text-success'}`}>
+                {formatCurrency(estimatedLiability)}
               </span>
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
+
+      {/* Vendor Health Widget */}
+      {analyticsData?.vendor_health && analyticsData.vendor_health.length > 0 && (
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="card bg-error-subtle/30 border-error/20 relative overflow-hidden backdrop-blur-xl"
+        >
+          <div className="flex items-center gap-3 mb-4">
+             <AlertTriangle className="w-6 h-6 text-error" />
+             <h2 className="text-lg font-bold text-error">Vendor Compliance Alert</h2>
+          </div>
+          <p className="text-sm text-text-secondary mb-4">
+            The following vendors have 'Cancelled' or 'Suspended' GSTINs. The Input Tax Credit (ITC) from these vendors is at risk. You should consider holding their payments.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="text-xs uppercase text-text-secondary border-b border-border">
+                <tr>
+                  <th className="pb-2 font-medium">Vendor Name</th>
+                  <th className="pb-2 font-medium">GSTIN</th>
+                  <th className="pb-2 font-medium">Status</th>
+                  <th className="pb-2 font-medium text-right">ITC At Risk</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {analyticsData.vendor_health.map((v, i) => (
+                  <tr key={i}>
+                    <td className="py-3 font-medium text-text-primary">{v.vendor_name}</td>
+                    <td className="py-3 font-mono text-text-secondary">{v.supplier_gstin}</td>
+                    <td className="py-3">
+                      <span className="badge bg-error-subtle text-error border border-error/20">{v.supplier_gstin_status}</span>
+                    </td>
+                    <td className="py-3 font-mono font-bold text-error text-right">{formatCurrency(v.itc_at_risk)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </motion.div>
+      )}
 
       {/* Advanced Analytics Hub */}
       <AnalyticsCharts data={analyticsData ?? null} />
@@ -421,6 +472,11 @@ export default function DashboardPage() {
                         <span className="badge bg-success-subtle text-success border border-success/20">Processed</span>
                       ) : (
                         <span className="badge bg-warning-subtle text-warning border border-warning/20">Review</span>
+                      )}
+                      {inv.approval_status === 'pending_approval' && (
+                        <div className="mt-1">
+                          <span className="badge bg-warning-subtle text-warning border border-warning/20 text-[10px]">Pending Appr.</span>
+                        </div>
                       )}
                     </td>
                   </tr>

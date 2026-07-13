@@ -71,19 +71,42 @@ export default function CollaborationPortal() {
       return;
     }
     
+    if (files.length === 0) return;
+
     setIsUploading(true);
     toast.loading("Uploading documents to your accountant...", { id: "collab-upload" });
     
-    // Simulate upload delay for MVP
-    await new Promise(r => setTimeout(r, 2000));
-    
-    // In a real implementation, this would call a public backend endpoint like /api/public-upload 
-    // which validates the clientId and queues background extraction on behalf of the CA.
-    
-    toast.success("Documents successfully sent!", { id: "collab-upload" });
-    setIsUploading(false);
-    setIsSuccess(true);
-    setFiles([]);
+    try {
+      const formData = new FormData();
+      formData.append('client_id', clientId);
+      files.forEach(f => {
+        formData.append('files', f.file);
+      });
+
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${apiUrl}/api/public/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 409) {
+          throw new Error('Duplicate files detected. These documents have already been submitted.');
+        }
+        throw new Error(result.detail || 'Failed to upload documents.');
+      }
+
+      toast.success("Documents successfully sent!", { id: "collab-upload" });
+      setIsUploading(false);
+      setIsSuccess(true);
+      setFiles([]);
+    } catch (err: any) {
+      console.error('Upload error:', err);
+      toast.error(err.message || 'An unexpected error occurred.', { id: "collab-upload" });
+      setIsUploading(false);
+    }
   };
 
   if (isSuccess) {

@@ -29,7 +29,7 @@ async def get_semaphore():
 
 router = APIRouter()
 
-async def process_batch_worker(invoice_id: str, content: bytes, mime_type: str, user_id: str, token: str):
+async def process_batch_worker(invoice_id: str, content: bytes, mime_type: str, user_id: str, token: str, tally_ledgers: list = None):
     """
     Background task for processing invoices submitted via a ZIP batch.
     
@@ -44,7 +44,7 @@ async def process_batch_worker(invoice_id: str, content: bytes, mime_type: str, 
         # Rate limit concurrent AI calls to prevent 429s (OpenRouter/Gemini)
         sem = await get_semaphore()
         async with sem:
-            data_dict = await run_ai_extraction(content, mime_type)
+            data_dict = await run_ai_extraction(content, mime_type, tally_ledgers)
         
         # Deduct Credit
         supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -116,6 +116,9 @@ async def upload_batch(
         user_resp = await supabase_client.auth.get_user(token)
         user_id = user_resp.user.id
         supabase_client.postgrest.auth(token)
+        
+        profile_resp = await supabase_client.table("profiles").select("tally_ledgers").eq("id", user_id).execute()
+        tally_ledgers = profile_resp.data[0].get("tally_ledgers") if profile_resp.data else None
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid session token")
         
@@ -178,7 +181,8 @@ async def upload_batch(
                             content=file_details[i]["bytes"], 
                             mime_type=file_details[i]["mime"], 
                             user_id=user_id, 
-                            token=token
+                            token=token,
+                            tally_ledgers=tally_ledgers
                         )
                 else:
                     print("Failed to bulk insert pending invoices")

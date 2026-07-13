@@ -13,3 +13,4 @@ pandas
 openpyxl
 tenacity
 razorpay
+pymupdf4llm

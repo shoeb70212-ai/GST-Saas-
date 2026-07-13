@@ -1,6 +1,7 @@
 import os
 import uuid
 import re
+import hashlib
 from fastapi import HTTPException
 from supabase import create_async_client
 
@@ -45,3 +46,9 @@ def sanitize_filename(filename: str) -> str:
     if not clean_name:
         return f"{uuid.uuid4()}.bin"
     return clean_name
+
+def compute_file_hash(content: bytes) -> str:
+    """
+    Computes SHA-256 hash of file content for deduplication.
+    """
+    return hashlib.sha256(content).hexdigest()

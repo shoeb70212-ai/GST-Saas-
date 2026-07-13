@@ -12,6 +12,8 @@ export default function SettingsPage() {
 
   const [companyName, setCompanyName] = useState('My Company Ltd.');
   const [gstin, setGstin] = useState('');
+  const [tallyLedgers, setTallyLedgers] = useState('');
+  const [makerCheckerEnabled, setMakerCheckerEnabled] = useState(false);
 
   useEffect(() => {
     fetchUser();
@@ -24,13 +26,19 @@ export default function SettingsPage() {
         setUser(session.user);
         const { data: profile } = await supabase
           .from('profiles')
-          .select('company_name, default_gstin')
+          .select('company_name, default_gstin, tally_ledgers, maker_checker_enabled')
           .eq('id', session.user.id)
           .single();
           
         if (profile) {
           if (profile.company_name) setCompanyName(profile.company_name);
           if (profile.default_gstin) setGstin(profile.default_gstin);
+          if (profile.tally_ledgers && Array.isArray(profile.tally_ledgers)) {
+            setTallyLedgers(profile.tally_ledgers.join(', '));
+          }
+          if (profile.maker_checker_enabled !== undefined) {
+            setMakerCheckerEnabled(profile.maker_checker_enabled);
+          }
         }
       }
     } catch (error) {
@@ -55,7 +63,9 @@ export default function SettingsPage() {
       .from('profiles')
       .update({
         company_name: companyName,
-        default_gstin: gstin
+        default_gstin: gstin,
+        tally_ledgers: tallyLedgers.split(',').map(s => s.trim()).filter(Boolean),
+        maker_checker_enabled: makerCheckerEnabled
       })
       .eq('id', user.id);
       
@@ -135,6 +145,33 @@ export default function SettingsPage() {
                   placeholder="27AADCB2230M1Z2"
                   className="input-field w-full uppercase font-mono"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-1">Custom Tally Ledgers</label>
+                <textarea 
+                  value={tallyLedgers}
+                  onChange={(e) => setTallyLedgers(e.target.value)}
+                  placeholder="Printing & Stationery, Legal Fees, CGST Payable, SGST Payable"
+                  className="input-field w-full min-h-[80px] resize-y"
+                />
+                <p className="text-xs text-text-secondary mt-1">Comma separated list of your standard accounting ledgers. The AI will strictly map expenses to these categories.</p>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-bg-sunken rounded-lg border border-border">
+                <div>
+                  <h3 className="text-sm font-medium text-text-primary">Maker-Checker Workflow</h3>
+                  <p className="text-xs text-text-secondary mt-1">Require manual approval of AI extracted invoices before CAs can export them to Tally.</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    className="sr-only peer" 
+                    checked={makerCheckerEnabled}
+                    onChange={(e) => setMakerCheckerEnabled(e.target.checked)}
+                  />
+                  <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
+                </label>
               </div>
             </div>
 

@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
-import { X, Building2, Settings, MapPin, DollarSign, Loader2 } from 'lucide-react';
+import { X, Building2, Settings, MapPin, DollarSign, Loader2, CheckCircle2 } from 'lucide-react';
 import { isValidGSTIN } from '../utils/gstin';
 
 const formatCurrency = (amount: number) => {
@@ -18,6 +18,7 @@ interface InvoiceDetailsModalProps {
   closeModal: () => void;
   handleUpdateCategory: (invoiceId: string, category: string) => void;
   setSelectedInvoice: (invoice: any) => void;
+  handleApprove?: (invoiceId: string) => void;
 }
 
 export function InvoiceDetailsModal({
@@ -26,7 +27,8 @@ export function InvoiceDetailsModal({
   loadingDetails,
   closeModal,
   handleUpdateCategory,
-  setSelectedInvoice
+  setSelectedInvoice,
+  handleApprove
 }: InvoiceDetailsModalProps) {
   const [page, setPage] = useState(1);
   const itemsPerPage = 50;
@@ -55,12 +57,23 @@ export function InvoiceDetailsModal({
               <h2 className="text-xl font-bold text-text-primary mb-1">Invoice Details</h2>
               <p className="text-sm text-text-secondary font-mono">{selectedInvoice.invoice_number}</p>
             </div>
-            <button 
-              onClick={closeModal}
-              className="p-2 hover:bg-bg-sunken active:scale-[0.95] rounded-lg text-text-secondary transition-all"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-4">
+              {selectedInvoice.approval_status === 'pending_approval' && handleApprove && (
+                <button 
+                  onClick={() => handleApprove(selectedInvoice.id)}
+                  className="flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:bg-accent-hover transition-colors"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Approve Invoice
+                </button>
+              )}
+              <button 
+                onClick={closeModal}
+                className="p-2 hover:bg-bg-sunken active:scale-[0.95] rounded-lg text-text-secondary transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
           <div className="p-6 space-y-6">
             {/* Party Details */}

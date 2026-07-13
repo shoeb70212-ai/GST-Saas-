@@ -164,7 +164,6 @@ class LineItem(BaseModel):
     Tax_Rate: float | None = Field(description="GST tax rate percentage for this item if specified")
 
 class InvoiceData(BaseModel):
-    Expense_Category: str | None = Field(description="Suggested accounting ledger category (e.g., Office Supplies, IT Software, Travel, Legal Fees, etc.) based on the line items.")
     Supplier_Name: str | None = Field(description="Name of the supplier")
     Supplier_Address: str | None = Field(description="Full address of the supplier")
     Supplier_Phone: str | None = Field(description="Phone number of the supplier")
@@ -193,7 +192,8 @@ class InvoiceData(BaseModel):
     Current_Balance: float | None = Field(description="Current balance")
     Account_Holder: str | None = Field(description="Bank account holder name")
     Account_Number: str | None = Field(description="Bank account number")
-    Expense_Category: str | None = Field(description="One of: 'Travel', 'Office Supplies', 'IT Software', 'Professional Fees', 'Raw Materials', 'Rent', 'Utilities', 'Meals & Entertainment', 'Marketing', 'Other'. Infer from the line items.")
+    Expense_Category: str | None = Field(description="Suggested accounting ledger category. Must match one of the provided custom ledgers if available, otherwise infer from items.")
+    HSN_Audit_Warning: str | None = Field(description="If any extracted HSN code strongly mismatches the item description based on standard Indian GST rules, provide a brief warning here. Otherwise, leave null.")
     Bank_Name: str | None = Field(description="Bank name")
     Branch_Name: str | None = Field(description="Bank branch name")
     IFSC_Code: str | None = Field(description="Bank IFSC code")
@@ -248,11 +248,14 @@ async def scan_invoice(file: UploadFile = File(...), authorization: str = Header
         
         # Get Profile
         profile_resp = await http_client.get(
-            f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credits",
+            f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credits,tally_ledgers",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
         )
+        tally_ledgers = None
         if profile_resp.status_code == 200 and profile_resp.json():
-            credits = profile_resp.json()[0].get("credits", 0)
+            p_data = profile_resp.json()[0]
+            credits = p_data.get("credits", 0)
+            tally_ledgers = p_data.get("tally_ledgers")
         else:
             credits = 0 # Fallback if profile row is missing
         if credits <= 0:
@@ -271,6 +274,16 @@ async def scan_invoice(file: UploadFile = File(...), authorization: str = Header
             doc = fitz.open(stream=c_bytes, filetype="pdf")
             if not doc:
                 raise ValueError("Could not read PDF pages.")
+            
+            # AI COST OPTIMIZATION: Try extracting structured Markdown for digital PDFs
+            try:
+                import pymupdf4llm
+                md_text = pymupdf4llm.to_markdown(doc)
+                if md_text and "|" in md_text and len(md_text) > 100:
+                    # Successfully extracted tabular markdown, bypass JPEG rendering
+                    return md_text, "text/markdown"
+            except Exception as e:
+                print(f"Markdown extraction failed or skipped: {e}")
             
             gst_keywords = ["gstin", "invoice", "taxable", "cgst", "sgst", "igst", "hsn", "total", "amount", "qty", "rate"]
             valid_pages = []
@@ -343,11 +356,8 @@ async def scan_invoice(file: UploadFile = File(...), authorization: str = Header
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to process file. Error: {str(e)}")
 
-    base64_image = base64.b64encode(content).decode('utf-8')
-    image_url = f"data:{mime_type};base64,{base64_image}"
-
     try:
-        data_dict = await run_ai_extraction(content, mime_type)
+        data_dict = await run_ai_extraction(content, mime_type, tally_ledgers)
         
         # Verify GSTIN if it exists
         gstin = data_dict.get("Supplier_GSTIN")
@@ -357,6 +367,13 @@ async def scan_invoice(file: UploadFile = File(...), authorization: str = Header
             sc.postgrest.auth(token)
             from gstin_service import verify_gstin
             data_dict["Supplier_GSTIN_Status"] = await verify_gstin(sc, gstin)
+            
+            # Deep Duplicate Detection Check
+            inv_num = data_dict.get("Invoice_Number")
+            if inv_num:
+                dup_resp = await sc.table("invoices").select("id").eq("user_id", user_id).eq("supplier_gstin", gstin).eq("invoice_number", inv_num).execute()
+                if dup_resp.data and len(dup_resp.data) > 0:
+                    data_dict["Extraction_State"] = "duplicate_warning"
             
         # Deduct Credit (Atomic RPC)
         async with httpx.AsyncClient() as http_client:
@@ -373,17 +390,30 @@ async def scan_invoice(file: UploadFile = File(...), authorization: str = Header
         raise HTTPException(status_code=500, detail=str(e))
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-async def run_ai_extraction(content: bytes, mime_type: str):
-    base64_image = base64.b64encode(content).decode('utf-8')
-    image_url = f"data:{mime_type};base64,{base64_image}"
+async def run_ai_extraction(content: bytes | str, mime_type: str, tally_ledgers: list = None):
+    # Prepare LLM message content based on input type (text vs image)
+    messages_content = []
+    
+    if mime_type == "text/markdown" and isinstance(content, str):
+        messages_content.append({"type": "text", "text": f"Here is the raw text extracted from the invoice document:\n\n{content}"})
+    else:
+        # Fallback to image-based extraction
+        base64_image = base64.b64encode(content).decode('utf-8')
+        image_url = f"data:{mime_type};base64,{base64_image}"
+        messages_content.append({"type": "image_url", "image_url": {"url": image_url}})
 
-    prompt = """
+    ledger_instruction = ""
+    if tally_ledgers:
+        ledger_instruction = f"\nCRITICAL: For Expense_Category, you MUST choose exactly one of the following ledgers: {', '.join(tally_ledgers)}. If none fit, choose 'Other'."
+
+    prompt = f"""
     You are an expert Indian Chartered Accountant assistant. 
     Analyze the following invoice image and extract the requested fields perfectly, including all line items.
     DO NOT hallucinate optional fields like PO_Number, E_Way_Bill_Number, Vehicle_Number, or Bank details. If they are not explicitly printed, return null.
-    For the Expense_Category field, suggest a standard accounting ledger category based on the line items.
+    For the Expense_Category field, suggest a standard accounting ledger category based on the line items.{ledger_instruction}
     Only extract what is literally printed on the document for Invoice_Type, Reverse_Charge_Applicable, Cess_Amount, and IRN. Do not infer them.
     Only populate Original_Invoice_Number and Original_Invoice_Date for Credit/Debit Notes.
+    For HSN_Audit_Warning, check if the HSN codes mathematically and logically align with the item descriptions. Flag any obvious errors.
     """
 
     try:
@@ -392,10 +422,7 @@ async def run_ai_extraction(content: bytes, mime_type: str):
             messages=[
                 {
                     "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": image_url}}
-                    ]
+                    "content": [{"type": "text", "text": prompt}] + messages_content
                 }
             ],
             response_format=InvoiceData,
@@ -421,10 +448,7 @@ async def run_ai_extraction(content: bytes, mime_type: str):
                     messages=[
                         {
                             "role": "user",
-                            "content": [
-                                {"type": "text", "text": prompt},
-                                {"type": "image_url", "image_url": {"url": image_url}}
-                            ]
+                            "content": [{"type": "text", "text": prompt}] + messages_content
                         }
                     ],
                     response_format=InvoiceData,

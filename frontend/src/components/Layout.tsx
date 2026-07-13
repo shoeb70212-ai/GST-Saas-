@@ -74,6 +74,7 @@ export default function Layout() {
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Scan', path: '/scan', icon: ScanLine },
+    { name: 'Virtual CFO', path: '/cfo', icon: TrendingUp },
     { name: 'Invoices', path: '/invoices', icon: FileText },
     { name: 'GSTR-2B', path: '/reconcile', icon: FileText },
   ];
@@ -107,16 +108,20 @@ export default function Layout() {
         </div>
       </div>
 
-      {/* Desktop Sidebar */}
-      <div className="hidden md:flex inset-y-0 left-0 z-50 w-[240px] bg-bg-surface border-r border-border flex-col transition-transform duration-300 ease-in-out">
-        <div className="p-5 flex items-center gap-3 h-[70px]">
+      {/* Desktop Sidebar (Floating Glass) */}
+      <div className="hidden md:flex inset-y-0 left-0 z-50 w-[280px] flex-col p-4">
+        <div className="flex-1 bg-bg-surface/60 backdrop-blur-2xl border border-white/10 shadow-xl rounded-2xl flex flex-col overflow-hidden relative">
+          <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent pointer-events-none" />
+          <div className="p-5 flex items-center gap-3 h-[70px] relative z-10">
           <img src="/favicon.png" alt="KhataLens Logo" className="w-8 h-8 drop-shadow-sm" />
           <span className="text-xl font-bold text-text-primary tracking-tight">KhataLens</span>
         </div>
         
         {/* Client Switcher (Desktop) */}
-        <div className="px-4 pb-4 relative">
-          <button 
+        <div className="px-4 pb-4 relative z-10">
+          <motion.button 
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={() => setClientMenuOpen(!clientMenuOpen)}
             className="w-full flex items-center justify-between p-2.5 rounded-lg bg-bg-sunken border border-border hover:border-border-focus transition-colors shadow-sm"
           >
@@ -131,7 +136,7 @@ export default function Layout() {
               </span>
             </div>
             <ChevronDown className="w-4 h-4 text-text-secondary shrink-0" />
-          </button>
+          </motion.button>
 
           <AnimatePresence>
             {clientMenuOpen && (
@@ -141,7 +146,7 @@ export default function Layout() {
                 exit={{ opacity: 0, y: -5 }}
                 className="absolute left-4 right-4 top-[calc(100%+4px)] bg-bg-surface border border-border rounded-xl shadow-lg z-[60] overflow-hidden"
               >
-                <div className="max-h-48 overflow-y-auto custom-scrollbar p-1.5">
+                <div className="max-h-48 overflow-y-auto custom-scrollbar p-1.5 space-y-0.5">
                   {clients.length === 0 ? (
                     <div className="p-3 text-xs text-text-secondary text-center">No {isBusiness ? 'businesses' : 'clients'} found</div>
                   ) : (
@@ -178,8 +183,8 @@ export default function Layout() {
           </AnimatePresence>
         </div>
 
-        <div className="px-4 text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Menu</div>
-        <nav className="flex-1 px-3 space-y-1 overflow-y-auto">
+        <div className="px-5 text-[11px] font-bold text-text-secondary uppercase tracking-widest mb-3 mt-4 relative z-10">Menu</div>
+        <nav className="flex-1 px-3 space-y-1 overflow-y-auto relative z-10">
           {[...navItems, ...moreNavItems].map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
@@ -188,20 +193,27 @@ export default function Layout() {
                 key={item.path}
                 to={item.path}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all font-medium",
-                  isActive
-                    ? "bg-accent text-white shadow-sm"
-                    : "text-text-secondary hover:bg-bg-sunken hover:text-text-primary"
+                  "relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors group outline-none",
+                  isActive ? "text-accent" : "text-text-secondary hover:text-text-primary"
                 )}
               >
-                <Icon className="w-4 h-4" />
-                {item.name}
+                {isActive && (
+                  <motion.div
+                    layoutId="active-sidebar-nav"
+                    className="absolute inset-0 bg-accent-subtle rounded-xl"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                  />
+                )}
+                <Icon className={cn("w-[18px] h-[18px] relative z-10 transition-colors", isActive ? "text-accent" : "text-text-secondary group-hover:text-text-primary")} />
+                <span className="relative z-10">{item.name}</span>
               </Link>
             );
           })}
         </nav>
 
-        <div className="p-4 border-t border-border">
+        <div className="p-4 border-t border-white/5 relative z-10">
           <button 
             onClick={handleSignOut}
             className="flex w-full items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-text-secondary bg-bg-sunken border border-border hover:bg-bg-surface hover:text-text-primary transition-colors"
@@ -216,7 +228,7 @@ export default function Layout() {
       <div className="flex-1 flex flex-col overflow-hidden relative w-full">
         
         {/* Desktop Topbar */}
-        <div className="hidden md:flex h-[70px] items-center justify-between px-8 bg-bg-surface/80 backdrop-blur-md border-b border-border z-40 sticky top-0">
+        <div className="hidden md:flex h-[90px] items-center justify-between px-8 bg-transparent z-40 sticky top-0">
           <div className="flex items-center gap-4">
             <h1 className="text-xl font-bold text-text-primary capitalize tracking-tight">
               {location.pathname.replace('/', '') || 'Dashboard'}

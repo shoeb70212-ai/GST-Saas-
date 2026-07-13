@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import { Loader2, FileText, Search, Download, Filter, Settings, CheckCircle2, Trash2 } from 'lucide-react';
+import { Loader2, FileText, Search, Download, Filter, Settings, CheckCircle2, Trash2, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { clsx, type ClassValue } from 'clsx';
@@ -43,6 +43,18 @@ export default function SavedInvoicesPage() {
   useEffect(() => {
     setCurrentPage(0);
   }, [debouncedSearchTerm, sortField, sortDirection]);
+
+  const { data: profile } = useQuery({
+    queryKey: ['profile'],
+    queryFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return null;
+      const { data } = await supabase.from('profiles').select('tally_ledgers').eq('id', session.user.id).single();
+      return data;
+    }
+  });
+  const defaultLedgers = ['Travel', 'Office Supplies', 'IT Software', 'Professional Fees', 'Raw Materials', 'Rent', 'Utilities', 'Meals & Entertainment', 'Marketing', 'Other'];
+  const categoryOptions = profile?.tally_ledgers || defaultLedgers;
 
   const { data: rawInvoicesData, isLoading: invoicesLoading } = useQuery({
     queryKey: ['invoices', 'list', activeClientId, currentPage, debouncedSearchTerm, sortField, sortDirection],
@@ -140,10 +152,19 @@ export default function SavedInvoicesPage() {
   const filteredInvoices = invoices;
 
   const getInvoicesToExport = () => {
+    let toExport = filteredInvoices;
     if (selectedIds.size > 0) {
-      return filteredInvoices.filter(inv => selectedIds.has(inv.id));
+      toExport = filteredInvoices.filter(inv => selectedIds.has(inv.id));
     }
-    return filteredInvoices;
+    const isFirm = localStorage.getItem('accountType') === 'firm';
+    if (isFirm) {
+      const approvedOnly = toExport.filter(inv => inv.approval_status !== 'pending_approval');
+      if (approvedOnly.length < toExport.length) {
+         toast.error(`Skipped ${toExport.length - approvedOnly.length} invoice(s) pending approval.`);
+      }
+      return approvedOnly;
+    }
+    return toExport;
   };
 
   const handleExportExcel = async () => {
@@ -231,6 +252,22 @@ export default function SavedInvoicesPage() {
     } catch (e) {
       console.error("Failed to update category", e);
       toast.error("Failed to update category");
+    }
+  };
+
+  const handleApprove = async (invoiceId: string) => {
+    try {
+      const { error } = await supabase.from('invoices').update({ approval_status: 'approved' }).eq('id', invoiceId);
+      if (error) throw error;
+      toast.success("Invoice Approved");
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      // Update local state if modal is open
+      if (selectedInvoice && selectedInvoice.id === invoiceId) {
+        setSelectedInvoice({ ...selectedInvoice, approval_status: 'approved' });
+      }
+    } catch (e) {
+      console.error("Failed to approve", e);
+      toast.error("Failed to approve invoice");
     }
   };
 
@@ -389,8 +426,9 @@ export default function SavedInvoicesPage() {
             >
               <div className="flex justify-between items-start gap-2">
                 <div className="flex flex-col min-w-0 flex-1">
-                  <h3 className="font-semibold text-text-primary text-sm truncate">
+                  <h3 className="font-semibold text-text-primary text-sm truncate flex items-center gap-2">
                     {inv.supplier_name || 'Unknown Supplier'}
+                    {inv.hsn_audit_warning && <AlertTriangle className="w-4 h-4 text-error shrink-0" title={inv.hsn_audit_warning} />}
                   </h3>
                   <p className="text-xs text-text-secondary truncate mt-0.5">
                     {inv.invoice_number || 'No Inv#'} • {inv.invoice_date || '-'}
@@ -421,6 +459,9 @@ export default function SavedInvoicesPage() {
                     <span className="badge bg-warning-subtle text-warning border border-warning/20 text-[10px]">Review</span>
                   ) : (
                     <span className="badge bg-success-subtle text-success border border-success/20 text-[10px]">Processed</span>
+                  )}
+                  {inv.approval_status === 'pending_approval' && (
+                    <span className="badge bg-warning-subtle text-warning border border-warning/20 text-[10px] ml-2">Pending Appr.</span>
                   )}
                 </div>
               </div>
@@ -510,7 +551,10 @@ export default function SavedInvoicesPage() {
                     />
                   </td>
                   <td className="p-4 whitespace-nowrap text-text-primary text-sm font-medium">
-                    {inv.file_name || 'Unknown'}
+                    <div className="flex items-center gap-2">
+                      {inv.file_name || 'Unknown'}
+                      {inv.hsn_audit_warning && <AlertTriangle className="w-4 h-4 text-error shrink-0" title={inv.hsn_audit_warning} />}
+                    </div>
                   </td>
                   {visibleColumns.map(col => {
                     const isAmount = col.includes('Amount') || col === 'Round_Off';
@@ -525,6 +569,19 @@ export default function SavedInvoicesPage() {
                           ) : val ? (
                             <span className="badge bg-bg-sunken text-text-secondary border border-border px-2 py-0.5 rounded-full text-xs">{val}</span>
                           ) : '-'
+                        ) : col === 'Expense_Category' ? (
+                          <select
+                            onClick={(e) => e.stopPropagation()}
+                            value={val}
+                            onChange={(e) => handleUpdateCategory(inv.id, e.target.value)}
+                            className="bg-bg-sunken border border-border rounded px-2 py-1 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                          >
+                            <option value="">Select Category</option>
+                            {categoryOptions.map((cat: string) => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                            {!categoryOptions.includes(val) && val && <option value={val}>{val}</option>}
+                          </select>
                         ) : isAmount && val ? formatCurrency(Number(val)) : val || '-'}
                       </td>
                     );
@@ -536,6 +593,11 @@ export default function SavedInvoicesPage() {
                       <span className="badge bg-warning-subtle text-warning border border-warning/20">Review</span>
                     ) : (
                       <span className="badge bg-success-subtle text-success border border-success/20">Processed</span>
+                    )}
+                    {inv.approval_status === 'pending_approval' && (
+                      <div className="mt-1">
+                        <span className="badge bg-warning-subtle text-warning border border-warning/20 text-[10px]">Pending Appr.</span>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -588,6 +650,7 @@ export default function SavedInvoicesPage() {
         closeModal={closeModal}
         handleUpdateCategory={handleUpdateCategory}
         setSelectedInvoice={setSelectedInvoice}
+        handleApprove={handleApprove}
       />
     </div>
   );
