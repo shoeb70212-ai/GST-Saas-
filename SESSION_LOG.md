@@ -45,3 +45,38 @@
 - **Next Time**:
   - The accountant/user needs to add the `GSTIN_API_KEY` to Render environment variables.
   - Test monetization (Razorpay/Stripe) integration.
+
+## 2026-07-14
+- **Accomplished**:
+  - Completed the "Virtual CFO" Maker-Checker UI workflow.
+  - Added a toggleable setting for Maker-Checker in user profiles.
+  - Implemented 'Approve Invoice' buttons for pending invoices in `InvoiceDetailsModal.tsx`.
+  - Added 'Pending Appr.' visual badges on `SavedInvoicesPage.tsx` and `DashboardPage.tsx`.
+  - Prevented CAs from exporting unapproved invoices to Tally/Excel.
+  - Updated `save_invoice_atomic` RPC to default to `pending_approval` based on profile settings.
+  - Extracted markdown tables from digital PDFs to reduce LLM costs (`pymupdf4llm`).
+- **Pending/Open**:
+  - WhatsApp Bot Ingestion (Meta Cloud API vs Twilio, webhook routing, AI queuing).
+  - Automated Reminders (cron jobs, delivery channel selection).
+  - Payment Gateway Integration (Stripe/Razorpay).
+- **Decisions**:
+  - Decided to defer Payment Gateway integration for later.
+  - Decided to evaluate using Twilio vs Direct Meta Cloud API for WhatsApp bot/reminders next session.
+  - Discuss and begin implementation of the WhatsApp Bot Ingestion webhook and automated monthly reminders.
+
+## 2026-07-14 (E2E Testing Session)
+- **Accomplished**:
+  - Fixed syntax error in `Layout.tsx`.
+  - Configured Playwright and wrote 7 high-impact E2E test cases (`critical-flows.spec.ts`) targeting Core Revenue flows, Authentication Guards, Zero Credit guards, Multi-tenancy Data Isolation, Bulk Deletion, GSTR-2B reconciliation, and Wallet page UI.
+  - Set up programmatic Supabase Authentication in tests bypassing UI forms to improve test stability and isolation.
+  - Fixed ESM resolution errors (`__dirname` -> `import.meta.dirname`) and timeout issues caused by external scripts (Razorpay CDN blocking `networkidle`).
+- **Pending/Open**:
+  - **4 Tests are currently failing due to real UX edge cases found**: 
+    1. Scan page doesn't auto-scan on drop unless a client is selected (requires manual clicking or auto-trigger).
+    2. Dragging an unsupported file (like `.txt`) silently fails without any user error toast.
+    3. Reconciliation page completely hides the file upload dropzone if no client is selected, causing test locator timeouts.
+- **Decisions**:
+  - Tests are written from the perspective of a Solo Developer QA, focusing entirely on 'Golden Paths' and 'Revenue Protection' rather than exhaustive unit testing.
+- **Next Time**:
+  - Address the 4 E2E test failures by adding the necessary error toasts and UI adjustments in the React frontend.
+  - Proceed with the WhatsApp Bot Ingestion webhook task (Meta vs Twilio).

@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ScanLine, FileText, Settings, LogOut, Sparkles, Sun, Moon, Building2, ChevronDown, CreditCard, MoreHorizontal } from 'lucide-react';
+import { LayoutDashboard, ScanLine, FileText, Settings, LogOut, Sparkles, Sun, Moon, Building2, ChevronDown, CreditCard, MoreHorizontal, TrendingUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -222,6 +222,7 @@ export default function Layout() {
             Sign Out
           </button>
         </div>
+      </div>
       </div>
 
       {/* Main Content Area */}
