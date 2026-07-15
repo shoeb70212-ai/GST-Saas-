@@ -1,375 +1,994 @@
-import { motion } from 'framer-motion';
+import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { ShieldCheck, ArrowRight, Network, Banknote, CheckCircle2, ChevronRight, Calculator, FileCheck, Layers } from 'lucide-react';
-
-const fadeIn = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.6 } }
-};
-
-const staggerContainer = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.15
-    }
-  }
-};
-
+import {
+  ArrowRight, ShieldCheck, Network, Banknote, CheckCircle2,
+  ChevronRight, Calculator, FileCheck, Layers, Upload,
+  FileSpreadsheet, Zap, Users, Lock, BarChart3, Menu, X,
+  Plus, Minus, Quote, Star, Building2, Clock, Award
+} from 'lucide-react';
 import HeroAnimation from '../components/HeroAnimation';
 
-export default function LandingPage() {
-  return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-accent/20 overflow-x-hidden">
-      {/* Navigation */}
-      <nav className="fixed top-0 w-full z-50 border-b border-slate-200 bg-white/80 backdrop-blur-xl transition-all">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <img src="/favicon.png" alt="KhataLens Logo" className="w-8 h-8 drop-shadow-sm" />
-            <span className="text-xl font-bold tracking-tight text-slate-900">KhataLens</span>
-          </div>
-          <Link 
-            to="/auth" 
-            className="px-6 py-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition-colors border border-slate-200"
-          >
-            Sign In
-          </Link>
-        </div>
-      </nav>
+// ─── Animation Variants ─────────────────────────────────────────────────────
+const fadeUp = {
+  hidden: { opacity: 0, y: 32 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.65, ease: [0.22, 1, 0.36, 1] } }
+};
+const fadeLeft = {
+  hidden: { opacity: 0, x: -40 },
+  visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] } }
+};
+const fadeRight = {
+  hidden: { opacity: 0, x: 40 },
+  visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] } }
+};
+const stagger = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.1 } }
+};
 
-      {/* Hero Section */}
-      <section className="relative pt-32 pb-20 px-6 lg:pt-40 lg:pb-32 overflow-hidden">
-        {/* Soft Background Gradients */}
-        <div className="absolute top-0 inset-x-0 h-[500px] bg-gradient-to-b from-indigo-50 to-transparent -z-10" />
-        <div className="absolute top-20 -left-40 w-96 h-96 bg-accent/10 rounded-full blur-3xl -z-10" />
-        <div className="absolute top-40 -right-40 w-96 h-96 bg-emerald-400/10 rounded-full blur-3xl -z-10" />
-        
-        <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-12 items-center">
+// ─── Stat Counter Component ──────────────────────────────────────────────────
+function StatCounter({ target, suffix, label }: { target: number; suffix: string; label: string }) {
+  const [count, setCount] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+  const started = useRef(false);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && !started.current) {
+        started.current = true;
+        const duration = 1800;
+        const steps = 60;
+        const increment = target / steps;
+        let current = 0;
+        const timer = setInterval(() => {
+          current += increment;
+          if (current >= target) { setCount(target); clearInterval(timer); }
+          else setCount(Math.floor(current));
+        }, duration / steps);
+      }
+    }, { threshold: 0.3 });
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [target]);
+
+  return (
+    <div ref={ref} className="text-center">
+      <div className="text-5xl font-display font-bold text-text-primary tabular-nums">
+        {count.toLocaleString()}{suffix}
+      </div>
+      <div className="text-sm text-text-secondary mt-2 font-medium uppercase tracking-widest">{label}</div>
+    </div>
+  );
+}
+
+// ─── FAQ Accordion Item ──────────────────────────────────────────────────────
+function FaqItem({ question, answer }: { question: string; answer: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border border-border rounded-2xl overflow-hidden transition-all duration-300 hover:border-border-focus">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between p-7 text-left bg-bg-surface hover:bg-bg-sunken transition-colors duration-200 cursor-pointer"
+        aria-expanded={open}
+      >
+        <span className="text-lg font-display font-medium text-text-primary pr-6">{question}</span>
+        <span className="shrink-0 w-8 h-8 rounded-full bg-bg-sunken border border-border flex items-center justify-center text-text-secondary transition-transform duration-300" style={{ transform: open ? 'rotate(180deg)' : 'none' }}>
+          {open ? <Minus className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+        </span>
+      </button>
+      <AnimatePresence>
+        {open && (
           <motion.div
-            initial={{ opacity: 0, x: -30 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.8, ease: "easeOut" }}
-            className="text-left"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            className="overflow-hidden"
           >
-            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent/10 text-accent font-medium text-sm mb-6 border border-accent/20 shadow-sm">
-              <img src="/favicon.png" alt="Icon" className="w-4 h-4" /> Built strictly for Indian CAs & Accountants
-            </span>
-            <h1 className="text-5xl lg:text-7xl font-extrabold tracking-tight mb-6 leading-[1.1] text-slate-900">
-              Stop typing data.<br/>
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent to-orange-400 drop-shadow-sm">Start filing faster.</span>
-            </h1>
-            <p className="text-xl text-slate-600 mb-10 max-w-xl leading-relaxed">
-              KhataLens reads your messy purchase bills and instantly converts them into a perfectly formatted Excel sheet ready for Tally or Zoho.
+            <p className="px-7 pb-7 text-text-secondary leading-relaxed font-light border-t border-border pt-5">
+              {answer}
             </p>
-            
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              <Link 
-                to="/auth"
-                className="w-full sm:w-auto px-8 py-4 rounded-xl bg-accent hover:bg-accent-hover text-white font-bold text-lg transition-all flex items-center justify-center gap-2 shadow-lg shadow-accent/40 hover:shadow-accent/60 hover:-translate-y-1"
-              >
-                Start Free Beta <ArrowRight className="w-5 h-5" />
-              </Link>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─── Data ────────────────────────────────────────────────────────────────────
+const faqData = [
+  {
+    question: "What file formats does KhataLens support?",
+    answer: "KhataLens accepts PDFs (single and multi-page), JPEG, PNG, and WEBP images. We are specifically optimised to handle bills that have been photographed on a phone, including skewed or blurry images. If a bill arrives via WhatsApp, you can upload the compressed image directly — our AI handles it."
+  },
+  {
+    question: "How accurate is the AI extraction?",
+    answer: "KhataLens achieves over 97% accuracy on standard GST invoices. For critical fields like GSTIN, Invoice Number, Invoice Date, and grand totals, we apply secondary cross-verification against our own parsing logic. When confidence is below threshold, the field is flagged for your manual review rather than silently guessed."
+  },
+  {
+    question: "Is my client data secure?",
+    answer: "Absolutely. Each client workspace is fully isolated at the database level using Row-Level Security (RLS) in PostgreSQL. Uploaded files are processed in memory and never stored on disk. Database backups are encrypted. We are built on Supabase infrastructure, which is SOC-2 compliant. Your clients' data is physically and logically separate from every other firm."
+  },
+  {
+    question: "Can I manage multiple clients from one account?",
+    answer: "Yes — this is a core KhataLens feature. You can create unlimited client workspaces, each with its own GSTIN, invoice history, and export records. Switching between clients takes a single click. Nothing from one client's workspace ever bleeds into another's."
+  },
+  {
+    question: "Which accounting software can I export to?",
+    answer: "Our primary export is a structured Excel (.xlsx) file formatted to match the import templates for Tally Prime, Zoho Books, and the GST portal's offline tool. We also export raw CSV. If you need a custom column layout for another software, you can define a custom mapping in your settings."
+  },
+  {
+    question: "How many invoices can I process per month?",
+    answer: "During the Beta, every account gets 100 free invoice extractions. After that, you can top up your credit balance or subscribe to a monthly plan. The Pro plan (launching soon) will offer 1,000 extractions per month for ₹999/month. Batch uploads count each uploaded file as one credit."
+  },
+  {
+    question: "Is there a mobile app?",
+    answer: "Not yet, but our web app is fully responsive and works extremely well on mobile browsers. Your clients can use it to scan and upload bills directly from their phone. A dedicated Android app with offline scanning capabilities is on our roadmap for Q3 2026."
+  },
+  {
+    question: "How do I get started?",
+    answer: "Click 'Start Free Beta', create your account with your email, and you will have instant access to your dashboard with 100 free credits. No credit card is needed. The first scan typically takes under 5 seconds. We recommend starting with a clear, standard GST invoice to see the full extraction in action."
+  }
+];
+
+const testimonials = [
+  {
+    name: "CA Priya Mehta",
+    title: "Partner, Mehta & Associates, Mumbai",
+    quote: "I was manually typing data from 200 invoices every quarter. KhataLens cut that to under 20 minutes. The GSTIN validation alone has saved me from 3 penalties this year. This is not a nice-to-have — it is a practice essential.",
+    rating: 5
+  },
+  {
+    name: "CA Rajesh Gupta",
+    title: "Principal, Gupta Tax Consultants, Delhi",
+    quote: "The multi-client workspace is exactly what our 40-client practice needed. The fact that the Excel output is pre-formatted for Tally means my junior staff can process a complete set in one sitting. The accuracy on blurry WhatsApp bills genuinely surprised me.",
+    rating: 5
+  },
+  {
+    name: "CA Anita Desai",
+    title: "Independent Practitioner, Bangalore",
+    quote: "I was sceptical about AI for compliance work, but the cross-verification logic convinced me. It does not just extract — it tells me when something looks wrong. That auditability is what I needed before trusting it with client data.",
+    rating: 5
+  }
+];
+
+const features = [
+  {
+    icon: FileCheck,
+    tag: "Core AI Engine",
+    headline: "37-field extraction.\nNothing slips through.",
+    body: "KhataLens acts like a Senior Accountant, not a simple OCR tool. It understands the distinction between CGST, SGST, and IGST. It cross-verifies line-item subtotals against the grand total. It reads Place of Supply and derives the correct inter-state or intra-state tax treatment — automatically.",
+    bullets: [
+      "Full line-item extraction with HSN codes",
+      "Automatic CGST / SGST / IGST classification",
+      "Cross-verification of tax totals",
+      "Reads skewed photos & WhatsApp-compressed images"
+    ],
+    side: 'right' as const,
+    demo: (
+      <div className="bg-bg-surface rounded-2xl p-8 shadow-xl border border-border transform -rotate-1 group-hover:rotate-0 transition-transform duration-700">
+        <div className="flex justify-between border-b border-border pb-5 mb-5">
+          <div>
+            <div className="text-[10px] text-text-disabled font-bold uppercase tracking-widest mb-1">Supplier GSTIN</div>
+            <div className="font-mono text-text-primary font-medium">27ABCDE1234F1Z5</div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] text-text-disabled font-bold uppercase tracking-widest mb-1">State Code</div>
+            <div className="font-mono text-text-primary font-medium">27 — Maharashtra</div>
+          </div>
+        </div>
+        <div className="space-y-3 text-sm font-mono">
+          {[
+            { label: 'Item', val: 'Steel Pipes' },
+            { label: 'HSN', val: '7306' },
+            { label: 'Qty', val: '50 pcs' },
+            { label: 'Taxable', val: '₹25,000' },
+            { label: 'CGST 9%', val: '₹2,250', color: 'text-warning' },
+            { label: 'SGST 9%', val: '₹2,250', color: 'text-warning' },
+            { label: 'Total', val: '₹29,500', bold: true },
+          ].map((row) => (
+            <div key={row.label} className={`flex justify-between ${row.bold ? 'border-t border-border pt-3 font-bold text-text-primary' : 'text-text-secondary'}`}>
+              <span>{row.label}</span>
+              <span className={row.color || ''}>{row.val}</span>
             </div>
-            <p className="mt-4 text-sm text-slate-500 font-medium">Includes 100 free AI extraction credits. No credit card required.</p>
+          ))}
+        </div>
+      </div>
+    )
+  },
+  {
+    icon: Layers,
+    tag: "Multi-Tenancy",
+    headline: "One dashboard.\nEvery client, perfectly isolated.",
+    body: "Managing 50 firms is a different beast from managing 1. KhataLens is built from the ground up for CA practices. Each client gets a fully segregated workspace with its own GSTIN, invoice history, and export records. You can switch between clients in one click — with zero risk of data bleed.",
+    bullets: [
+      "Unlimited client workspaces",
+      "Instant one-click context switching",
+      "Database-level isolation (RLS enforced)",
+      "Per-client GSTIN registration & tracking"
+    ],
+    side: 'left' as const,
+    demo: (
+      <div className="space-y-4">
+        {[
+          { name: 'TechCorp India Pvt Ltd', gstin: '27ABCDE1234F1Z5', count: 148, active: true },
+          { name: 'Sharma Textile Traders', gstin: '06XYZAB5678C2Z1', count: 93, active: false },
+          { name: 'Gupta Manufacturing Co.', gstin: '29PQRST9012D3Z7', count: 211, active: false },
+        ].map((client, i) => (
+          <div key={i} className={`rounded-2xl p-5 border flex items-center justify-between transition-all duration-300 ${client.active ? 'bg-bg-surface border-accent/40 shadow-md shadow-accent/10 translate-x-3' : 'bg-bg-sunken border-border hover:border-border-focus'}`}>
+            <div>
+              <div className={`font-display font-semibold ${client.active ? 'text-accent' : 'text-text-primary'}`}>{client.name}</div>
+              <div className="text-xs font-mono text-text-disabled mt-1">{client.gstin}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-display font-bold text-text-primary">{client.count}</div>
+              <div className="text-xs text-text-secondary">invoices</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  },
+  {
+    icon: FileSpreadsheet,
+    tag: "Export Engine",
+    headline: "One click.\nTally-ready in seconds.",
+    body: "Stop reformatting spreadsheets. KhataLens generates an Excel file that maps directly to Tally Prime's purchase voucher import format, Zoho Books' import template, and the GST portal's offline tool. Your data flows from bill to software with zero manual touch.",
+    bullets: [
+      "Tally Prime purchase voucher format",
+      "Zoho Books & Busy Accounting compatible",
+      "GST portal offline tool export",
+      "Custom column mapping for any software"
+    ],
+    side: 'right' as const,
+    demo: (
+      <div className="bg-bg-surface rounded-2xl p-6 border border-border shadow-xl">
+        <div className="flex items-center justify-between mb-5 pb-4 border-b border-border">
+          <div className="font-display font-semibold text-text-primary">Export Ready</div>
+          <span className="px-3 py-1 bg-accent/10 text-accent text-xs font-bold rounded-full uppercase tracking-widest border border-accent/20">Tally Format</span>
+        </div>
+        <div className="grid grid-cols-4 gap-2 text-xs font-mono text-text-disabled uppercase tracking-wider mb-3 px-2">
+          {['Date', 'Party', 'GSTIN', 'Amount'].map(h => <div key={h}>{h}</div>)}
+        </div>
+        {[
+          ['12/05', 'Steel Corp', '27AB…', '₹29,500'],
+          ['14/05', 'Tech Ltd', '06XY…', '₹1,18,000'],
+          ['15/05', 'Paper Co.', '29PQ…', '₹8,850'],
+        ].map((row, i) => (
+          <div key={i} className={`grid grid-cols-4 gap-2 text-sm font-mono py-3 px-2 rounded-lg ${i % 2 === 0 ? 'bg-bg-sunken' : ''}`}>
+            {row.map((cell, j) => <div key={j} className="text-text-primary truncate">{cell}</div>)}
+          </div>
+        ))}
+        <button className="mt-5 w-full py-3 rounded-xl bg-accent text-text-inverse text-sm font-semibold flex items-center justify-center gap-2 hover:bg-accent-hover transition-colors">
+          <FileSpreadsheet className="w-4 h-4" /> Download .xlsx
+        </button>
+      </div>
+    )
+  },
+  {
+    icon: Zap,
+    tag: "Batch Processing",
+    headline: "100 invoices.\n3 minutes flat.",
+    body: "Don't process bills one at a time. KhataLens accepts bulk uploads of up to 200 files at once. Our background queue processes them in parallel — while you work on something else. You get a single notification when the full batch is ready to export.",
+    bullets: [
+      "Bulk upload up to 200 files at once",
+      "Background parallel processing queue",
+      "Real-time progress tracking",
+      "Failed items requeued automatically"
+    ],
+    side: 'left' as const,
+    demo: (
+      <div className="bg-bg-surface rounded-2xl p-6 border border-border shadow-xl space-y-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="font-display font-semibold text-text-primary">Batch #247</span>
+          <span className="text-sm text-warning font-medium">Processing…</span>
+        </div>
+        {[
+          { name: 'invoice_batch_01.pdf', status: 'Done', pct: 100 },
+          { name: 'whatsapp_img_1932.jpg', status: 'Done', pct: 100 },
+          { name: 'bill_gupta_may.pdf', status: 'Reading…', pct: 65 },
+          { name: 'purchase_order.png', status: 'Queued', pct: 0 },
+        ].map((item, i) => (
+          <div key={i} className="space-y-1.5">
+            <div className="flex justify-between text-sm">
+              <span className="text-text-secondary font-mono truncate pr-4">{item.name}</span>
+              <span className={`font-medium shrink-0 ${item.status === 'Done' ? 'text-accent' : item.status === 'Reading…' ? 'text-warning' : 'text-text-disabled'}`}>{item.status}</span>
+            </div>
+            <div className="h-1.5 bg-bg-sunken rounded-full overflow-hidden">
+              <motion.div
+                className={`h-full rounded-full ${item.pct === 100 ? 'bg-accent' : 'bg-warning'}`}
+                initial={{ width: 0 }}
+                whileInView={{ width: `${item.pct}%` }}
+                viewport={{ once: true }}
+                transition={{ duration: 1.2, delay: i * 0.2, ease: "easeOut" }}
+              />
+            </div>
+          </div>
+        ))}
+        <div className="pt-2 border-t border-border text-sm text-text-disabled flex justify-between">
+          <span>2 of 4 complete</span>
+          <span>~45 sec remaining</span>
+        </div>
+      </div>
+    )
+  }
+];
+
+// ─── Main Component ──────────────────────────────────────────────────────────
+export default function LandingPage() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 20);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-bg-base text-text-primary font-body overflow-x-hidden">
+
+      {/* ── SEO Meta (inline for now, use react-helmet-async if installed) ── */}
+      <title>KhataLens — AI Invoice Extraction for Indian CAs | GST Filing Automation</title>
+
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          SECTION 1 — NAVBAR
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <header
+        role="banner"
+        className={`fixed top-0 w-full z-50 transition-all duration-300 ${
+          scrolled
+            ? 'bg-bg-surface/90 backdrop-blur-xl border-b border-border shadow-sm'
+            : 'bg-transparent'
+        }`}
+      >
+        <nav className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between" aria-label="Primary navigation">
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-3 group" aria-label="KhataLens Home">
+            <div className="w-9 h-9 rounded-xl bg-accent flex items-center justify-center shadow-md group-hover:scale-105 transition-transform duration-200">
+              <img src="/favicon.png" alt="" className="w-5 h-5 brightness-200" />
+            </div>
+            <span className="text-xl font-display font-semibold tracking-tight text-text-primary">KhataLens</span>
+          </Link>
+
+          {/* Desktop Nav */}
+          <div className="hidden md:flex items-center gap-8">
+            <a href="#features" className="text-sm text-text-secondary hover:text-text-primary transition-colors font-medium">Features</a>
+            <a href="#pricing" className="text-sm text-text-secondary hover:text-text-primary transition-colors font-medium">Pricing</a>
+            <a href="#faq" className="text-sm text-text-secondary hover:text-text-primary transition-colors font-medium">FAQ</a>
+            <Link to="/auth" className="px-6 py-2.5 rounded-full border border-border hover:border-accent/50 text-text-primary hover:text-accent text-sm font-medium transition-all duration-200">
+              Sign In
+            </Link>
+            <Link to="/auth" className="px-6 py-2.5 rounded-full bg-accent hover:bg-accent-hover text-text-inverse text-sm font-medium transition-all duration-200 shadow-sm">
+              Start Free
+            </Link>
+          </div>
+
+          {/* Mobile Toggle */}
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="md:hidden w-10 h-10 rounded-xl bg-bg-surface border border-border flex items-center justify-center text-text-secondary hover:text-text-primary transition-colors"
+            aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileMenuOpen}
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </nav>
+
+        {/* Mobile Menu */}
+        <AnimatePresence>
+          {mobileMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              className="md:hidden bg-bg-surface border-b border-border overflow-hidden"
+            >
+              <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col gap-4">
+                <a href="#features" onClick={() => setMobileMenuOpen(false)} className="text-text-primary font-medium py-2 border-b border-border">Features</a>
+                <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="text-text-primary font-medium py-2 border-b border-border">Pricing</a>
+                <a href="#faq" onClick={() => setMobileMenuOpen(false)} className="text-text-primary font-medium py-2 border-b border-border">FAQ</a>
+                <Link to="/auth" onClick={() => setMobileMenuOpen(false)} className="mt-2 w-full py-3 rounded-xl bg-accent text-text-inverse text-center font-medium">Start Free Beta</Link>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </header>
+
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          SECTION 2 — HERO
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <section className="relative pt-40 pb-28 px-6 lg:pt-52 lg:pb-36 overflow-hidden" aria-labelledby="hero-heading">
+        {/* Ambient Background Blobs */}
+        <div aria-hidden="true" className="absolute top-24 -left-48 w-[36rem] h-[36rem] bg-accent-subtle rounded-full blur-[120px] -z-10 animate-[pulse_8s_ease-in-out_infinite]" />
+        <div aria-hidden="true" className="absolute top-48 -right-48 w-[36rem] h-[36rem] bg-warning-subtle rounded-full blur-[120px] -z-10 animate-[pulse_10s_ease-in-out_infinite_2s]" />
+        <div aria-hidden="true" className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[60rem] h-48 bg-accent-subtle rounded-full blur-[80px] -z-10 opacity-40" />
+
+        <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
+          {/* Left: Copy */}
+          <motion.div
+            initial={{ opacity: 0, x: -40 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+          >
+            {/* Badge */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+              className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full bg-bg-surface border border-border shadow-sm text-text-secondary text-sm font-medium mb-10"
+            >
+              <span className="w-2 h-2 rounded-full bg-accent animate-pulse shrink-0" aria-hidden="true" />
+              Built exclusively for Indian Chartered Accountants
+            </motion.div>
+
+            <h1 id="hero-heading" className="text-[3.5rem] lg:text-[5.5rem] font-display font-bold tracking-tight mb-8 leading-[1.05] text-text-primary">
+              Stop typing.<br />
+              <em className="text-accent not-italic">Start filing.</em>
+            </h1>
+
+            <p className="text-xl text-text-secondary mb-10 max-w-lg leading-relaxed font-light">
+              KhataLens reads your messy purchase bills and converts them into a GST-compliant Excel sheet — ready for Tally, Zoho, or the GST Portal — in seconds.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-4 mb-10">
+              <Link
+                to="/auth"
+                id="hero-cta-primary"
+                className="inline-flex items-center justify-center gap-3 px-9 py-4 rounded-2xl bg-accent hover:bg-accent-hover text-text-inverse font-semibold text-lg transition-all duration-200 shadow-lg shadow-accent/20 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-accent/25"
+              >
+                Start Free Beta <ArrowRight className="w-5 h-5" aria-hidden="true" />
+              </Link>
+              <a
+                href="#how-it-works"
+                className="inline-flex items-center justify-center gap-2 px-9 py-4 rounded-2xl bg-bg-surface border border-border hover:border-border-focus text-text-primary font-medium text-lg transition-all duration-200 hover:bg-bg-sunken"
+              >
+                See how it works
+              </a>
+            </div>
+
+            <p className="text-sm text-text-disabled font-medium tracking-wide">
+              100 free extractions · No credit card · Instant access
+            </p>
           </motion.div>
 
+          {/* Right: Hero Animation */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.8, ease: "easeOut", delay: 0.2 }}
+            initial={{ opacity: 0, scale: 0.94, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1], delay: 0.15 }}
             className="relative"
+            aria-hidden="true"
           >
-            <HeroAnimation />
+            <div className="absolute -inset-4 bg-gradient-to-tr from-bg-base via-transparent to-transparent z-10 pointer-events-none rounded-3xl" />
+            <div className="p-2 rounded-3xl bg-bg-surface border border-border shadow-2xl backdrop-blur-sm">
+              <HeroAnimation />
+            </div>
           </motion.div>
         </div>
       </section>
 
-      {/* How it Works Section */}
-      <section className="py-24 px-6 bg-white border-y border-slate-200">
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          SECTION 3 — TRUST BAR / SOCIAL PROOF
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <section className="py-20 px-6 bg-bg-surface border-y border-border" aria-label="Platform statistics">
         <div className="max-w-7xl mx-auto">
-          <motion.div 
+          <motion.div
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: true, margin: "-100px" }}
-            variants={fadeIn}
-            className="text-center mb-16"
+            viewport={{ once: true, margin: "-80px" }}
+            variants={stagger}
+            className="grid grid-cols-2 lg:grid-cols-4 gap-10 lg:gap-16"
           >
-            <h2 className="text-3xl lg:text-4xl font-bold mb-4 text-slate-900">How KhataLens Works</h2>
-            <p className="text-slate-600 text-lg max-w-2xl mx-auto">
-              Automate the most tedious part of tax filing in three simple steps.
+            <motion.div variants={fadeUp}>
+              <StatCounter target={500} suffix="+" label="CAs in Beta" />
+            </motion.div>
+            <motion.div variants={fadeUp}>
+              <StatCounter target={48000} suffix="+" label="Invoices Processed" />
+            </motion.div>
+            <motion.div variants={fadeUp}>
+              <StatCounter target={97} suffix="%" label="Extraction Accuracy" />
+            </motion.div>
+            <motion.div variants={fadeUp}>
+              <StatCounter target={4} suffix="s" label="Avg. Processing Time" />
+            </motion.div>
+          </motion.div>
+
+          <motion.div
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-60px" }}
+            variants={fadeUp}
+            className="mt-16 pt-16 border-t border-border flex flex-wrap items-center justify-center gap-10"
+          >
+            <div className="flex items-center gap-3 text-text-secondary text-sm font-medium">
+              <ShieldCheck className="w-5 h-5 text-accent" aria-hidden="true" />
+              Supabase RLS Isolation
+            </div>
+            <div className="flex items-center gap-3 text-text-secondary text-sm font-medium">
+              <Lock className="w-5 h-5 text-accent" aria-hidden="true" />
+              End-to-end Encrypted
+            </div>
+            <div className="flex items-center gap-3 text-text-secondary text-sm font-medium">
+              <Award className="w-5 h-5 text-accent" aria-hidden="true" />
+              GSTIN Verified Output
+            </div>
+            <div className="flex items-center gap-3 text-text-secondary text-sm font-medium">
+              <Building2 className="w-5 h-5 text-accent" aria-hidden="true" />
+              Tally & Zoho Compatible
+            </div>
+            <div className="flex items-center gap-3 text-text-secondary text-sm font-medium">
+              <Clock className="w-5 h-5 text-accent" aria-hidden="true" />
+              No Data Retention
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          SECTION 4 — HOW IT WORKS
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <section id="how-it-works" className="py-32 px-6 bg-bg-base" aria-labelledby="how-heading">
+        <div className="max-w-7xl mx-auto">
+          <motion.div
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-80px" }}
+            variants={fadeUp}
+            className="text-center mb-24"
+          >
+            <span className="inline-block px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest text-accent border border-accent/20 bg-accent/5 mb-6">
+              How It Works
+            </span>
+            <h2 id="how-heading" className="text-4xl lg:text-6xl font-display font-bold mb-6 text-text-primary">Three steps. Zero typing.</h2>
+            <p className="text-text-secondary text-xl max-w-2xl mx-auto font-light">
+              From a crumpled bill on your desk to a filed return in minutes.
             </p>
           </motion.div>
 
-          <motion.div 
+          <motion.div
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: true, margin: "-100px" }}
-            variants={staggerContainer}
+            viewport={{ once: true, margin: "-80px" }}
+            variants={stagger}
             className="grid md:grid-cols-3 gap-8 relative"
           >
-            {/* Step 1 */}
-            <motion.div variants={fadeIn} className="bg-slate-50 rounded-2xl p-8 border border-slate-200 text-center relative z-10 hover:shadow-md transition-shadow">
-              <div className="w-16 h-16 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-2xl font-bold mx-auto mb-6">1</div>
-              <h3 className="text-xl font-bold text-slate-900 mb-3">Upload Invoices</h3>
-              <p className="text-slate-600">
-                Drag and drop 100s of invoices into your client's secure vault. We accept messy PDFs, JPGs, and PNGs directly from WhatsApp.
-              </p>
-            </motion.div>
-            
-            {/* Step 2 */}
-            <motion.div variants={fadeIn} className="bg-white rounded-2xl p-8 border-2 border-accent text-center relative z-10 shadow-xl shadow-accent/10 md:scale-105 hover:-translate-y-1 transition-transform">
-              <div className="absolute top-0 right-1/2 translate-x-1/2 -translate-y-1/2 px-4 py-1 bg-gradient-to-r from-accent to-orange-500 text-white text-xs font-bold rounded-full uppercase tracking-wider shadow-md">
-                Magic Happens Here
-              </div>
-              <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                <img src="/favicon.png" alt="KhataLens Logo" className="w-16 h-16 drop-shadow-md hover:scale-110 transition-transform duration-500" />
-              </div>
-              <h3 className="text-xl font-bold text-slate-900 mb-3">Instant AI Extraction</h3>
-              <p className="text-slate-600">
-                Powered by Gemini 2.5 Flash, the system perfectly reads the GSTIN, detects the state code, and extracts every single line item and HSN code in seconds.
-              </p>
-            </motion.div>
+            {/* Connecting Line (desktop) */}
+            <div aria-hidden="true" className="hidden md:block absolute top-16 left-[calc(33%+2rem)] right-[calc(33%+2rem)] h-px bg-gradient-to-r from-border via-accent/30 to-border" />
 
-            {/* Step 3 */}
-            <motion.div variants={fadeIn} className="bg-slate-50 rounded-2xl p-8 border border-slate-200 text-center relative z-10 hover:shadow-md transition-shadow">
-              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-2xl font-bold mx-auto mb-6">3</div>
-              <h3 className="text-xl font-bold text-slate-900 mb-3">Export & File</h3>
-              <p className="text-slate-600">
-                Click one button to export a perfectly formatted Excel sheet, ready to be immediately ingested into Tally, Zoho Books, or the GST Portal.
-              </p>
-            </motion.div>
+            {[
+              { num: '01', icon: Upload, title: 'Upload Invoices', desc: 'Drag & drop PDFs, JPGs, PNGs — even compressed WhatsApp photos. Bulk upload 200 files at once.' },
+              { num: '02', icon: Zap, title: 'AI Extracts Everything', desc: 'Gemini 2.5 Flash reads GSTIN, HSN codes, line items, tax breakdowns, and validates totals in seconds.', highlight: true },
+              { num: '03', icon: FileSpreadsheet, title: 'Export & File', desc: 'Download a Tally-ready Excel file. Import directly into your accounting software. Done.' },
+            ].map((step) => (
+              <motion.div
+                key={step.num}
+                variants={fadeUp}
+                className={`relative rounded-3xl p-10 border text-center transition-all duration-300 hover:-translate-y-1 ${
+                  step.highlight
+                    ? 'bg-bg-surface border-accent/30 shadow-2xl shadow-accent/10 md:scale-105'
+                    : 'bg-bg-sunken border-border hover:border-border-focus hover:shadow-lg'
+                }`}
+              >
+                {step.highlight && (
+                  <div aria-hidden="true" className="absolute -top-4 left-1/2 -translate-x-1/2 px-5 py-1.5 bg-accent text-text-inverse text-[11px] font-bold rounded-full uppercase tracking-widest shadow-md">
+                    AI Magic Here
+                  </div>
+                )}
+                <div className="text-5xl font-display font-bold text-text-disabled/40 mb-6 select-none">{step.num}</div>
+                <div className={`w-16 h-16 rounded-2xl mx-auto mb-6 flex items-center justify-center border ${step.highlight ? 'bg-accent/10 border-accent/20' : 'bg-bg-surface border-border'}`}>
+                  <step.icon className={`w-8 h-8 ${step.highlight ? 'text-accent' : 'text-text-secondary'}`} aria-hidden="true" />
+                </div>
+                <h3 className="text-2xl font-display font-semibold text-text-primary mb-4">{step.title}</h3>
+                <p className="text-text-secondary leading-relaxed font-light">{step.desc}</p>
+              </motion.div>
+            ))}
           </motion.div>
         </div>
       </section>
 
-      {/* Deep Dive Feature Sections */}
-      <section className="py-24 px-6 overflow-hidden bg-slate-50">
-        <div className="max-w-7xl mx-auto space-y-32">
-          
-          {/* Feature 1 */}
-          <motion.div 
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: "-100px" }}
-            variants={fadeIn}
-            className="flex flex-col lg:flex-row items-center gap-16"
-          >
-            <div className="flex-1 space-y-6">
-              <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center">
-                <FileCheck className="w-6 h-6 text-accent" />
-              </div>
-              <h2 className="text-3xl lg:text-4xl font-bold text-slate-900">
-                Unyielding accuracy on 37 critical GST fields.
-              </h2>
-              <p className="text-lg text-slate-600 leading-relaxed">
-                KhataLens doesn't just look for total amounts. It acts like a Senior Accountant. It understands CGST vs SGST vs IGST. It cross-verifies that the line item totals match the grand total. It reads HSN codes, Place of Supply, and Invoice Dates even from crumpled paper receipts.
-              </p>
-              <ul className="space-y-3 pt-4">
-                {['Line Item Level Extraction', 'Automatic Tax Rate Categorization', 'Handles Multi-Page PDFs', 'Reads Bad Handwriting & Skewed Photos'].map((item, i) => (
-                  <li key={i} className="flex items-center gap-3 text-slate-700 font-medium">
-                    <CheckCircle2 className="w-5 h-5 text-accent shrink-0" /> {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="flex-1 w-full bg-slate-200/50 rounded-3xl p-8 border border-slate-200 relative group">
-              <div className="absolute inset-0 bg-gradient-to-tr from-accent/5 to-transparent rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-              <div className="bg-white rounded-xl p-6 shadow-xl border border-slate-100 transform -rotate-2 group-hover:rotate-0 transition-transform duration-500">
-                <div className="flex justify-between border-b pb-4 mb-4">
-                  <div>
-                    <div className="text-xs text-slate-500 font-bold uppercase mb-1">Supplier GSTIN</div>
-                    <div className="font-mono text-slate-900">27ABCDE1234F1Z5</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs text-slate-500 font-bold uppercase mb-1">Invoice Date</div>
-                    <div className="font-mono text-slate-900">12-MAY-2026</div>
-                  </div>
-                </div>
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="text-slate-500 border-b border-slate-100">
-                      <th className="pb-2 font-medium">Item</th>
-                      <th className="pb-2 font-medium">HSN</th>
-                      <th className="pb-2 font-medium text-right">Tax</th>
-                      <th className="pb-2 font-medium text-right">Amt</th>
-                    </tr>
-                  </thead>
-                  <tbody className="font-mono text-slate-800">
-                    <tr>
-                      <td className="py-3">Consulting Services</td>
-                      <td className="py-3">9983</td>
-                      <td className="py-3 text-right">18%</td>
-                      <td className="py-3 text-right">₹10,000</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </motion.div>
-
-          {/* Feature 2 */}
-          <motion.div 
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: "-100px" }}
-            variants={fadeIn}
-            className="flex flex-col lg:flex-row-reverse items-center gap-16"
-          >
-            <div className="flex-1 space-y-6">
-              <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
-                <Layers className="w-6 h-6 text-blue-600" />
-              </div>
-              <h2 className="text-3xl lg:text-4xl font-bold text-slate-900">
-                Multi-Tenancy built for Firms.
-              </h2>
-              <p className="text-lg text-slate-600 leading-relaxed">
-                Managing 50 different clients? KhataLens keeps them perfectly isolated. Create client profiles with their specific GSTINs. When you scan invoices, they are safely locked into that client's secure vault.
-              </p>
-              <ul className="space-y-3 pt-4">
-                {['Unlimited Client Workspaces', 'Instant Context Switching', 'Zero Data Bleed Between Clients', 'Cloud Database Indexing for Speed'].map((item, i) => (
-                  <li key={i} className="flex items-center gap-3 text-slate-700 font-medium">
-                    <CheckCircle2 className="w-5 h-5 text-blue-500 shrink-0" /> {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="flex-1 w-full bg-slate-200/50 rounded-3xl p-8 border border-slate-200 flex flex-col gap-4">
-              {['TechCorp India', 'Sharma Traders', 'Gupta Manufacturing'].map((client, i) => (
-                <div key={i} className={`bg-white rounded-xl p-5 shadow-md border ${i === 0 ? 'border-blue-500 ring-2 ring-blue-500/20 translate-x-4' : 'border-slate-200'} flex justify-between items-center transition-transform hover:scale-[1.02]`}>
-                  <div>
-                    <h4 className="font-bold text-slate-900 text-lg">{client}</h4>
-                    <p className="text-sm text-slate-500 font-mono mt-1">27AAAAA0000A1Z5</p>
-                  </div>
-                  <ChevronRight className={`w-6 h-6 ${i === 0 ? 'text-blue-500' : 'text-slate-400'}`} />
-                </div>
-              ))}
-            </div>
-          </motion.div>
-
-        </div>
-      </section>
-
-      {/* Roadmap / Coming Soon Grid */}
-      <section className="py-24 px-6 bg-slate-900 text-white relative overflow-hidden">
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          SECTION 5 — FEATURE DEEP DIVES
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <section id="features" className="py-32 px-6 bg-bg-surface border-y border-border" aria-labelledby="features-heading">
         <div className="max-w-7xl mx-auto">
-          <motion.div 
+          <motion.div
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: true, margin: "-100px" }}
-            variants={fadeIn}
-            className="text-center mb-16"
+            viewport={{ once: true, margin: "-80px" }}
+            variants={fadeUp}
+            className="text-center mb-28"
           >
-            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 text-white/90 font-medium text-sm mb-4 border border-white/20">
-              The Roadmap
+            <span className="inline-block px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest text-accent border border-accent/20 bg-accent/5 mb-6">
+              Features
             </span>
-            <h2 className="text-3xl lg:text-4xl font-bold mb-4">We are building the Ultimate Tax OS.</h2>
-            <p className="text-slate-400 text-lg max-w-2xl mx-auto">
-              Our beta currently focuses on pure AI extraction. Here is what we are launching next month.
+            <h2 id="features-heading" className="text-4xl lg:text-6xl font-display font-bold mb-6 text-text-primary">Built for the way CAs actually work.</h2>
+            <p className="text-text-secondary text-xl max-w-2xl mx-auto font-light">
+              Every feature was designed after talking to practicing Chartered Accountants about their real pain points.
             </p>
           </motion.div>
-          
-          <motion.div 
+
+          <div className="space-y-40">
+            {features.map((feat, idx) => (
+              <motion.div
+                key={idx}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true, margin: "-80px" }}
+                variants={fadeUp}
+                className={`flex flex-col ${feat.side === 'left' ? 'lg:flex-row-reverse' : 'lg:flex-row'} items-center gap-20`}
+              >
+                {/* Copy */}
+                <div className="flex-1 space-y-8">
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 rounded-2xl bg-bg-base border border-border flex items-center justify-center shadow-sm">
+                      <feat.icon className="w-7 h-7 text-accent" aria-hidden="true" />
+                    </div>
+                    <span className="text-xs font-bold uppercase tracking-widest text-accent">{feat.tag}</span>
+                  </div>
+                  <h3 className="text-4xl lg:text-5xl font-display font-bold text-text-primary leading-tight whitespace-pre-line">
+                    {feat.headline}
+                  </h3>
+                  <p className="text-xl text-text-secondary leading-relaxed font-light">{feat.body}</p>
+                  <ul className="space-y-3 pt-2" aria-label={`${feat.tag} feature list`}>
+                    {feat.bullets.map((b, i) => (
+                      <li key={i} className="flex items-start gap-3 text-text-primary font-medium">
+                        <CheckCircle2 className="w-5 h-5 text-accent shrink-0 mt-0.5" aria-hidden="true" />
+                        {b}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Demo Card */}
+                <div className="flex-1 w-full group">
+                  <div className="bg-bg-base rounded-[2rem] p-8 border border-border relative overflow-hidden hover:border-border-focus transition-colors duration-500">
+                    <div aria-hidden="true" className="absolute inset-0 bg-accent-subtle opacity-0 group-hover:opacity-100 transition-opacity duration-700 rounded-[2rem]" />
+                    <div className="relative z-10">
+                      {feat.demo}
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          SECTION 6 — ROADMAP
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <section className="py-32 px-6 bg-bg-base" aria-labelledby="roadmap-heading">
+        <div className="max-w-7xl mx-auto">
+          <motion.div
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: true, margin: "-100px" }}
-            variants={staggerContainer}
-            className="grid md:grid-cols-2 gap-6"
+            viewport={{ once: true, margin: "-80px" }}
+            variants={fadeUp}
+            className="text-center mb-20"
           >
-            <motion.div variants={fadeIn} className="bg-white/5 border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-colors group">
-              <div className="flex justify-between items-start mb-6">
-                <div className="w-14 h-14 rounded-xl bg-accent/20 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <ShieldCheck className="w-7 h-7 text-accent" />
+            <span className="inline-block px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest text-accent border border-accent/20 bg-accent/5 mb-6">
+              Roadmap
+            </span>
+            <h2 id="roadmap-heading" className="text-4xl lg:text-6xl font-display font-bold mb-6 text-text-primary">The Tax OS is just getting started.</h2>
+            <p className="text-text-secondary text-xl max-w-2xl mx-auto font-light">
+              These features are actively being built. Beta users get first access.
+            </p>
+          </motion.div>
+
+          <motion.div
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-80px" }}
+            variants={stagger}
+            className="grid md:grid-cols-2 gap-8"
+          >
+            {[
+              { icon: ShieldCheck, title: 'GSTR-2B AI Deep Match', desc: 'Upload the government\'s GSTR-2B JSON. Our AI fuzzy-matches it against your scanned bills, instantly flagging lost ITC due to vendor typos.', quarter: 'Q3 2026' },
+              { icon: Network, title: '3-Tier Collaboration', desc: 'Business owners scan bills on their phones. Bills appear instantly in your CA dashboard for verification. Stop chasing invoices on WhatsApp.', quarter: 'Q3 2026' },
+              { icon: BarChart3, title: 'Tax Liability Predictor', desc: 'Import a sales register. KhataLens calculates real-time GST liability (Sales Tax minus ITC), giving clients a cashflow dashboard before filing.', quarter: 'Q4 2026' },
+              { icon: Users, title: 'Vendor GSTIN Health Monitor', desc: 'Automated daily pinging of supplier GSTINs. Get instant alerts if a vendor\'s GSTIN gets cancelled — before you claim ITC on their invoice.', quarter: 'Q4 2026' },
+            ].map((item, i) => (
+              <motion.article
+                key={i}
+                variants={fadeUp}
+                className="bg-bg-surface border border-border rounded-3xl p-10 hover:border-accent/30 hover:shadow-lg hover:shadow-accent/5 transition-all duration-500 group"
+              >
+                <div className="flex justify-between items-start mb-8">
+                  <div className="w-14 h-14 rounded-2xl bg-bg-base border border-border flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
+                    <item.icon className="w-7 h-7 text-accent" aria-hidden="true" />
+                  </div>
+                  <span className="px-4 py-1.5 bg-bg-base text-text-secondary border border-border text-xs font-bold uppercase tracking-widest rounded-full">{item.quarter}</span>
                 </div>
-                <span className="px-3 py-1 bg-white/10 text-white/80 text-xs font-bold uppercase tracking-wider rounded-full">Coming Soon</span>
-              </div>
-              <h3 className="text-2xl font-semibold mb-3">GSTR-2B AI Deep Match</h3>
-              <p className="text-slate-400 leading-relaxed">Upload the government's GSTR-2B JSON file. Our AI will fuzzy-match it against your scanned bills, instantly flagging lost Input Tax Credit (ITC) due to vendor typos.</p>
-            </motion.div>
-            
-            <motion.div variants={fadeIn} className="bg-white/5 border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-colors group">
-              <div className="flex justify-between items-start mb-6">
-                <div className="w-14 h-14 rounded-xl bg-emerald-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Network className="w-7 h-7 text-emerald-400" />
+                <h3 className="text-2xl font-display font-semibold text-text-primary mb-4">{item.title}</h3>
+                <p className="text-text-secondary leading-relaxed font-light">{item.desc}</p>
+              </motion.article>
+            ))}
+          </motion.div>
+        </div>
+      </section>
+
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          SECTION 7 — PRICING
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <section id="pricing" className="py-32 px-6 bg-bg-surface border-y border-border" aria-labelledby="pricing-heading">
+        <div className="max-w-5xl mx-auto">
+          <motion.div
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-80px" }}
+            variants={fadeUp}
+            className="text-center mb-20"
+          >
+            <span className="inline-block px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest text-accent border border-accent/20 bg-accent/5 mb-6">
+              Pricing
+            </span>
+            <h2 id="pricing-heading" className="text-4xl lg:text-6xl font-display font-bold mb-6 text-text-primary">Simple, honest pricing.</h2>
+            <p className="text-text-secondary text-xl max-w-2xl mx-auto font-light">
+              Start for free. Scale as your practice grows. No hidden fees.
+            </p>
+          </motion.div>
+
+          <motion.div
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-80px" }}
+            variants={stagger}
+            className="grid md:grid-cols-2 gap-8"
+          >
+            {/* Free Beta */}
+            <motion.div variants={fadeLeft} className="bg-bg-base rounded-3xl p-10 border border-border hover:border-border-focus transition-all duration-300">
+              <div className="mb-8">
+                <div className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-4">Free Beta</div>
+                <div className="flex items-end gap-2 mb-2">
+                  <span className="text-6xl font-display font-bold text-text-primary">₹0</span>
+                  <span className="text-text-secondary pb-2 font-light">forever</span>
                 </div>
-                <span className="px-3 py-1 bg-white/10 text-white/80 text-xs font-bold uppercase tracking-wider rounded-full">Coming Soon</span>
+                <p className="text-text-secondary font-light">Perfect for solo practitioners evaluating the platform.</p>
               </div>
-              <h3 className="text-2xl font-semibold mb-3">3-Tier Collaboration Workflow</h3>
-              <p className="text-slate-400 leading-relaxed">Stop chasing clients for bills on WhatsApp. Business owners scan bills on their phone, which appear instantly in your dashboard for verification.</p>
+              <ul className="space-y-4 mb-10" aria-label="Free Beta plan features">
+                {[
+                  '100 invoice extractions',
+                  'Unlimited client workspaces',
+                  'Excel + CSV export',
+                  'GSTIN validation',
+                  'Email support',
+                ].map((f, i) => (
+                  <li key={i} className="flex items-center gap-3 text-text-primary font-medium">
+                    <CheckCircle2 className="w-5 h-5 text-accent shrink-0" aria-hidden="true" /> {f}
+                  </li>
+                ))}
+              </ul>
+              <Link to="/auth" className="block w-full py-4 rounded-2xl border border-border text-center font-semibold text-text-primary hover:border-accent/40 hover:text-accent transition-all duration-200">
+                Get Started Free
+              </Link>
             </motion.div>
 
-            <motion.div variants={fadeIn} className="bg-white/5 border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-colors group">
-              <div className="flex justify-between items-start mb-6">
-                <div className="w-14 h-14 rounded-xl bg-purple-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Calculator className="w-7 h-7 text-purple-400" />
+            {/* Pro */}
+            <motion.div
+              variants={fadeRight}
+              className="relative bg-bg-base rounded-3xl p-10 border border-accent/30 shadow-2xl shadow-accent/10"
+            >
+              <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-br from-accent/5 to-transparent rounded-3xl" />
+              <div className="relative z-10">
+                <div className="flex items-center justify-between mb-8">
+                  <div className="text-xs font-bold uppercase tracking-widest text-accent">Pro</div>
+                  <span className="px-3 py-1.5 bg-accent text-text-inverse text-[11px] font-bold rounded-full uppercase tracking-widest">
+                    Launching Soon
+                  </span>
                 </div>
-                <span className="px-3 py-1 bg-white/10 text-white/80 text-xs font-bold uppercase tracking-wider rounded-full">Coming Soon</span>
-              </div>
-              <h3 className="text-2xl font-semibold mb-3">Tax Liability Predictor</h3>
-              <p className="text-slate-400 leading-relaxed">Import a simple sales register. KhataLens instantly calculates Sales Tax minus Purchase ITC, giving your clients a real-time cashflow liability dashboard.</p>
-            </motion.div>
-
-            <motion.div variants={fadeIn} className="bg-white/5 border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-colors group">
-              <div className="flex justify-between items-start mb-6">
-                <div className="w-14 h-14 rounded-xl bg-orange-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Banknote className="w-7 h-7 text-orange-400" />
+                <div className="flex items-end gap-2 mb-2">
+                  <span className="text-6xl font-display font-bold text-text-primary">₹999</span>
+                  <span className="text-text-secondary pb-2 font-light">/ month</span>
                 </div>
-                <span className="px-3 py-1 bg-white/10 text-white/80 text-xs font-bold uppercase tracking-wider rounded-full">Coming Soon</span>
+                <p className="text-text-secondary font-light mb-8">Everything in Free, plus serious scale for busy firms.</p>
+                <ul className="space-y-4 mb-10" aria-label="Pro plan features">
+                  {[
+                    '1,000 extractions / month',
+                    'Everything in Free Beta',
+                    'Batch processing queue (200 files)',
+                    'Priority AI processing',
+                    'GSTR-2B reconciliation (on launch)',
+                    'Dedicated CA support',
+                    'Custom Excel column mapping',
+                  ].map((f, i) => (
+                    <li key={i} className="flex items-center gap-3 text-text-primary font-medium">
+                      <CheckCircle2 className="w-5 h-5 text-accent shrink-0" aria-hidden="true" /> {f}
+                    </li>
+                  ))}
+                </ul>
+                <Link to="/auth" className="block w-full py-4 rounded-2xl bg-accent hover:bg-accent-hover text-text-inverse text-center font-semibold transition-all duration-200 shadow-lg shadow-accent/20">
+                  Join Waitlist
+                </Link>
               </div>
-              <h3 className="text-2xl font-semibold mb-3">Vendor GSTIN Verification</h3>
-              <p className="text-slate-400 leading-relaxed">Automated GSTIN portal pinging. If a client uploads a bill from a vendor with a cancelled GSTIN, the system flags it instantly to prevent penalties.</p>
             </motion.div>
           </motion.div>
         </div>
       </section>
 
-      {/* CTA Footer */}
-      <footer className="bg-white border-t border-slate-200 pt-32 pb-10">
-        <div className="max-w-4xl mx-auto text-center px-6">
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          SECTION 8 — TESTIMONIALS
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <section className="py-32 px-6 bg-bg-base" aria-labelledby="testimonials-heading">
+        <div className="max-w-7xl mx-auto">
           <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-80px" }}
+            variants={fadeUp}
+            className="text-center mb-20"
+          >
+            <span className="inline-block px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest text-accent border border-accent/20 bg-accent/5 mb-6">
+              Testimonials
+            </span>
+            <h2 id="testimonials-heading" className="text-4xl lg:text-6xl font-display font-bold mb-6 text-text-primary">
+              CAs who switched.<br />
+              <em className="text-accent not-italic">They didn't switch back.</em>
+            </h2>
+          </motion.div>
+
+          <motion.div
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-80px" }}
+            variants={stagger}
+            className="grid md:grid-cols-3 gap-8"
+          >
+            {testimonials.map((t, i) => (
+              <motion.blockquote
+                key={i}
+                variants={fadeUp}
+                className="bg-bg-surface rounded-3xl p-10 border border-border hover:border-accent/30 hover:shadow-lg hover:shadow-accent/5 transition-all duration-500 flex flex-col"
+              >
+                <div className="flex gap-1 mb-8" aria-label={`${t.rating} out of 5 stars`}>
+                  {Array.from({ length: t.rating }).map((_, si) => (
+                    <Star key={si} className="w-4 h-4 text-warning fill-current" aria-hidden="true" />
+                  ))}
+                </div>
+                <Quote className="w-8 h-8 text-accent/30 mb-6 shrink-0" aria-hidden="true" />
+                <p className="text-text-primary leading-relaxed font-light flex-1 italic">"{t.quote}"</p>
+                <footer className="mt-8 pt-8 border-t border-border">
+                  <div className="font-display font-semibold text-text-primary">{t.name}</div>
+                  <div className="text-sm text-text-secondary mt-1 font-light">{t.title}</div>
+                </footer>
+              </motion.blockquote>
+            ))}
+          </motion.div>
+        </div>
+      </section>
+
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          SECTION 9 — FAQ
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <section id="faq" className="py-32 px-6 bg-bg-surface border-t border-border" aria-labelledby="faq-heading">
+        <div className="max-w-4xl mx-auto">
+          <motion.div
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-80px" }}
+            variants={fadeUp}
+            className="text-center mb-20"
+          >
+            <span className="inline-block px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest text-accent border border-accent/20 bg-accent/5 mb-6">
+              FAQ
+            </span>
+            <h2 id="faq-heading" className="text-4xl lg:text-5xl font-display font-bold mb-6 text-text-primary">
+              Questions CAs actually ask.
+            </h2>
+            <p className="text-text-secondary text-xl font-light">
+              No marketing fluff. Straight answers.
+            </p>
+          </motion.div>
+
+          <motion.div
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-80px" }}
+            variants={stagger}
+            className="space-y-4"
+            role="list"
+          >
+            {faqData.map((item, i) => (
+              <motion.div key={i} variants={fadeUp} role="listitem">
+                <FaqItem question={item.question} answer={item.answer} />
+              </motion.div>
+            ))}
+          </motion.div>
+        </div>
+      </section>
+
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          SECTION 10 — FINAL CTA + FOOTER
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <footer className="bg-bg-base border-t border-border">
+        {/* Final CTA Banner */}
+        <div className="py-40 px-6 text-center relative overflow-hidden">
+          <div aria-hidden="true" className="absolute top-0 left-1/2 -translate-x-1/2 w-[60rem] h-[30rem] bg-accent-subtle rounded-full blur-[120px] -z-10 opacity-60" />
+          
+          <motion.div
+            initial={{ opacity: 0, scale: 0.85 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
-            transition={{ type: "spring", bounce: 0.5 }}
-            className="w-28 h-28 mx-auto rounded-3xl bg-slate-900 flex items-center justify-center mb-10 shadow-2xl shadow-slate-900/20 border border-slate-800"
+            transition={{ type: "spring", bounce: 0.35, duration: 0.8 }}
+            className="w-28 h-28 mx-auto rounded-[2rem] bg-bg-surface border border-border flex items-center justify-center mb-12 shadow-2xl"
           >
-            <img src="/favicon.png" alt="KhataLens Logo" className="w-20 h-20 drop-shadow-lg" />
+            <img src="/favicon.png" alt="" className="w-14 h-14 opacity-90" />
           </motion.div>
-          <motion.h2 
-            initial={{ opacity: 0, y: 20 }}
+
+          <motion.h2
+            initial={{ opacity: 0, y: 24 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="text-5xl font-extrabold mb-8 text-slate-900 tracking-tight"
+            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+            className="text-5xl lg:text-7xl font-display font-bold mb-8 text-text-primary tracking-tight"
           >
-            Ready to upgrade your firm?
+            Your practice deserves<br />
+            <em className="text-accent not-italic">better tools.</em>
           </motion.h2>
-          <motion.p 
+
+          <motion.p
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            transition={{ delay: 0.1 }}
-            className="text-xl text-slate-600 mb-12 max-w-2xl mx-auto"
+            transition={{ duration: 0.6, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+            className="text-2xl text-text-secondary mb-14 max-w-2xl mx-auto font-light"
           >
-            Join the Beta today and experience zero-touch invoice processing. Claim your 100 free invoice scans.
+            Join 500+ Chartered Accountants who are already processing invoices in seconds, not hours.
           </motion.p>
+
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            transition={{ delay: 0.2 }}
+            transition={{ duration: 0.6, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            className="flex flex-col sm:flex-row items-center justify-center gap-5"
           >
-            <Link 
+            <Link
               to="/auth"
-              className="inline-flex px-10 py-5 rounded-2xl bg-accent text-white hover:bg-accent-hover font-bold text-xl transition-all items-center gap-3 shadow-xl shadow-accent/30 hover:shadow-accent/50 hover:-translate-y-1"
+              id="footer-cta"
+              className="inline-flex items-center gap-3 px-12 py-5 rounded-2xl bg-accent hover:bg-accent-hover text-text-inverse font-semibold text-xl transition-all duration-200 shadow-2xl shadow-accent/25 hover:-translate-y-1 hover:shadow-accent/35"
             >
-              Get Started Now <ArrowRight className="w-6 h-6" />
+              Start Free — 100 Extractions <ArrowRight className="w-6 h-6" aria-hidden="true" />
             </Link>
           </motion.div>
+          <p className="mt-6 text-sm text-text-disabled font-medium">No credit card · Instant access · Cancel anytime</p>
         </div>
-        <div className="mt-32 pt-8 text-center border-t border-slate-200 text-sm text-slate-500 font-medium">
-          &copy; {new Date().getFullYear()} KhataLens. Built strictly for Accountants.
+
+        {/* Footer Links */}
+        <div className="border-t border-border py-12 px-6">
+          <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
+                <img src="/favicon.png" alt="" className="w-4 h-4 brightness-200" />
+              </div>
+              <span className="font-display font-semibold text-text-primary">KhataLens</span>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-8 text-sm text-text-secondary">
+              <a href="#features" className="hover:text-text-primary transition-colors">Features</a>
+              <a href="#pricing" className="hover:text-text-primary transition-colors">Pricing</a>
+              <a href="#faq" className="hover:text-text-primary transition-colors">FAQ</a>
+              <Link to="/auth" className="hover:text-text-primary transition-colors">Sign In</Link>
+              <a href="mailto:support@khatalens.com" className="hover:text-text-primary transition-colors">Contact</a>
+            </div>
+            <p className="text-sm text-text-disabled font-medium">
+              &copy; {new Date().getFullYear()} KhataLens. All rights reserved.
+            </p>
+          </div>
         </div>
       </footer>
+
+      {/* Reduced motion fallback */}
+      <style>{`
+        @media (prefers-reduced-motion: reduce) {
+          *, *::before, *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

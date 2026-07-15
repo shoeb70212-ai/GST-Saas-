@@ -8,6 +8,7 @@ import Layout from './components/Layout';
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const ScanPage = lazy(() => import('./pages/ScanPage'));
 const AuthPage = lazy(() => import('./pages/AuthPage'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const SavedInvoicesPage = lazy(() => import('./pages/SavedInvoicesPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const ClientsPage = lazy(() => import('./pages/ClientsPage'));
@@ -92,6 +93,7 @@ export default function App() {
             <Route path="/portal/:clientId" element={<CollaborationPortal />} />
             <Route path="/auth" element={session ? <Navigate to="/dashboard" replace /> : <AuthPage />} />
             <Route path="/register" element={<AuthPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/snap/:clientId" element={<SnapPage />} />
             
             {/* Protected Routes */}

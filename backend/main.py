@@ -114,15 +114,37 @@ def apply_tax_calculations(data_dict: dict) -> dict:
 
 load_dotenv()
 
+from fastapi import FastAPI, File, UploadFile, HTTPException, Header, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+# ... (skipped unchanged lines) ...
+
 app = FastAPI(title="InvoiceScanner AI Backend")
 
+# 1. Strict Security Headers Middleware
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none';"
+    return response
 
-# Allow frontend to communicate with backend
+# 2. Strict CORS Middleware
+# Actively avoiding negative impact: Whitelisting localhost for development, but blocking everything else
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://gst-saas.vercel.app" # Placeholder for actual prod URL
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 

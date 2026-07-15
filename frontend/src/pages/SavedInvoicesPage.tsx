@@ -6,11 +6,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { AVAILABLE_COLUMNS, DEFAULT_COLUMNS } from '../lib/ScanContext';
+import { AVAILABLE_COLUMNS, DEFAULT_COLUMNS } from '../lib/constants';
 import { useClient } from '../lib/ClientContext';
 import { exportToExcelMultiSheet, exportToTallyXML } from '../lib/exportService';
 import { InvoiceDetailsModal } from '../components/InvoiceDetailsModal';
 import { Skeleton } from '../components/ui/Skeleton';
+import { ErrorState } from '../components/ui/ErrorState';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -56,7 +57,7 @@ export default function SavedInvoicesPage() {
   const defaultLedgers = ['Travel', 'Office Supplies', 'IT Software', 'Professional Fees', 'Raw Materials', 'Rent', 'Utilities', 'Meals & Entertainment', 'Marketing', 'Other'];
   const categoryOptions = profile?.tally_ledgers || defaultLedgers;
 
-  const { data: rawInvoicesData, isLoading: invoicesLoading } = useQuery({
+  const { data: rawInvoicesData, isLoading: invoicesLoading, isError: invoicesError, refetch: refetchInvoices } = useQuery({
     queryKey: ['invoices', 'list', activeClientId, currentPage, debouncedSearchTerm, sortField, sortDirection],
     queryFn: async () => {
       if (!activeClientId) return { data: [], count: 0 };
@@ -271,6 +272,18 @@ export default function SavedInvoicesPage() {
     }
   };
 
+
+  if (invoicesError) {
+    return (
+      <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 pb-20">
+        <ErrorState 
+          title="Failed to load invoices" 
+          message="There was a problem communicating with the server. Please try again."
+          onRetry={refetchInvoices}
+        />
+      </div>
+    );
+  }
 
   if (loading) {
     return (

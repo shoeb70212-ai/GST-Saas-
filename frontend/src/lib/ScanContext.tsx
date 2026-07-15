@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { DEFAULT_COLUMNS } from './constants';
 
 export type LineItem = {
   Description?: string;
@@ -70,68 +71,7 @@ export type FileState = {
   savedToCloud?: boolean;
 };
 
-export const AVAILABLE_COLUMNS = [
-  { key: 'Extraction_State', label: 'Status' },
-  { key: 'Expense_Category', label: 'Category' },
-  { key: 'HSN_Audit_Warning', label: 'HSN Warning' },
-  { key: 'Confidence_Score', label: 'Confidence %' },
-  { key: 'Supplier_Name', label: 'Supplier Name' },
-  { key: 'Supplier_Address', label: 'Supplier Address' },
-  { key: 'Supplier_Phone', label: 'Supplier Phone' },
-  { key: 'Supplier_Email', label: 'Supplier Email' },
-  { key: 'Supplier_GSTIN', label: 'Supplier GSTIN' },
-  { key: 'Supplier_GSTIN_Status', label: 'GSTIN Status' },
-  { key: 'Supplier_PAN', label: 'Supplier PAN' },
-  { key: 'Buyer_Name', label: 'Buyer Name' },
-  { key: 'Buyer_Address', label: 'Buyer Address' },
-  { key: 'Buyer_PIN', label: 'Buyer PIN' },
-  { key: 'Buyer_GSTIN', label: 'Buyer GSTIN' },
-  { key: 'Buyer_PAN', label: 'Buyer PAN' },
-  { key: 'Place_Of_Supply', label: 'Place of Supply' },
-  { key: 'Invoice_Date', label: 'Date' },
-  { key: 'Due_Date', label: 'Due Date' },
-  { key: 'Invoice_Number', label: 'Invoice #' },
-  { key: 'PO_Number', label: 'PO Number' },
-  { key: 'E_Way_Bill_Number', label: 'E-Way Bill' },
-  { key: 'Vehicle_Number', label: 'Vehicle Number' },
-  { key: 'Taxable_Amount', label: 'Taxable' },
-  { key: 'CGST_Amount', label: 'CGST' },
-  { key: 'SGST_Amount', label: 'SGST' },
-  { key: 'IGST_Amount', label: 'IGST' },
-  { key: 'Round_Off', label: 'Round Off' },
-  { key: 'Total_Amount', label: 'Total' },
-  { key: 'GST_Amount', label: 'GST Total' },
-  { key: 'Amount_In_Words', label: 'Amount in Words' },
-  { key: 'Received_Amount', label: 'Received' },
-  { key: 'Balance_Amount', label: 'Balance' },
-  { key: 'Previous_Balance', label: 'Prev Balance' },
-  { key: 'Current_Balance', label: 'Curr Balance' },
-  { key: 'Account_Holder', label: 'Acct Holder' },
-  { key: 'Account_Number', label: 'Acct Number' },
-  { key: 'Bank_Name', label: 'Bank Name' },
-  { key: 'Branch_Name', label: 'Branch Name' },
-  { key: 'IFSC_Code', label: 'IFSC Code' },
-  { key: 'UPI_ID', label: 'UPI ID' },
-  { key: 'Invoice_Type', label: 'Invoice Type' },
-  { key: 'Reverse_Charge_Applicable', label: 'Reverse Charge' },
-  { key: 'Cess_Amount', label: 'Cess' },
-  { key: 'IRN', label: 'IRN' },
-  { key: 'Original_Invoice_Number', label: 'Orig. Invoice #' },
-  { key: 'Original_Invoice_Date', label: 'Orig. Invoice Date' },
-];
 
-export const DEFAULT_COLUMNS = [
-  'Invoice_Type',
-  'Expense_Category',
-  'Confidence_Score',
-  'Supplier_Name',
-  'Supplier_GSTIN',
-  'Supplier_GSTIN_Status',
-  'Invoice_Date',
-  'Invoice_Number',
-  'Total_Amount',
-  'GST_Amount',
-];
 
 interface ScanContextType {
   fileStates: FileState[];
@@ -153,7 +93,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         const parsed = JSON.parse(saved);
         const allColumns = Array.from(new Set([...parsed, ...DEFAULT_COLUMNS]));
         setVisibleColumns(allColumns as string[]);
-      } catch (e) {}
+      } catch (_e) {}
     }
   }, []);
 
@@ -164,6 +104,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useScanContext() {
   const context = useContext(ScanContext);
   if (context === undefined) {

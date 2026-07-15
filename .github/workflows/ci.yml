@@ -45,6 +45,10 @@ jobs:
       working-directory: ./frontend
       run: npm ci
         
+    - name: Run Linter
+      working-directory: ./frontend
+      run: npm run lint
+        
     - name: Run Vitest
       working-directory: ./frontend
       run: npm run test -- --run
@@ -56,3 +60,13 @@ jobs:
     - name: Run Playwright tests
       working-directory: ./frontend
       run: npx playwright test
+      
+    - name: Upload Playwright Artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: playwright-report
+        path: |
+          frontend/playwright-report/
+          frontend/test-results/
+        retention-days: 14

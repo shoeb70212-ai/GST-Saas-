@@ -80,3 +80,20 @@
 - **Next Time**:
   - Address the 4 E2E test failures by adding the necessary error toasts and UI adjustments in the React frontend.
   - Proceed with the WhatsApp Bot Ingestion webhook task (Meta vs Twilio).
+
+## 2026-07-15 (Unrecorded Session Fixes)
+- **Accomplished**:
+  - Successfully addressed all 4 Playwright E2E UX edge cases that were failing in the previous session:
+    - Added automatic scanning trigger when files are dropped in `ScanPage.tsx`.
+    - Displayed error toasts when an unsupported file type is dropped in `ScanPage.tsx`.
+    - Updated `ReconciliationPage.tsx` to handle the empty state when no client is selected, preventing test timeouts and improving UX.
+  - Wrote and added several additional E2E test suites (e.g., `auth-flows.spec.ts`, `billing.spec.ts`, `client-management.spec.ts`, `network-resilience.spec.ts`, `reconciliation-edge-cases.spec.ts`, `scan-edge-cases.spec.ts`).
+  - Extensively refactored `LandingPage.tsx` (+1143 lines), `SettingsPage.tsx`, `AuthPage.tsx`, and `index.css` with a major structural and UI overhaul.
+  - Improved `ReconciliationPage.tsx` with proper React hooks (`useMemo`, `useCallback`) for performance optimization and added `ErrorState` and skeleton loaders for better UI feedback.
+  - Added new documentation files (e.g., historical walkthroughs and phase documentation).
+- **Pending/Open**:
+  - WhatsApp Bot Ingestion webhook task (Meta vs Twilio).
+- **Decisions**:
+  - Safely recover the progress after the abrupt machine shutdown by thoroughly committing the modified files and updating this log.
+- **Next Time**:
+  - Proceed with the WhatsApp Bot Ingestion webhook task.

@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useClient } from '../lib/ClientContext';
 import { UploadCloud, CheckCircle2, AlertTriangle, AlertCircle, Loader2, FileSearch } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { ErrorState } from '../components/ui/ErrorState';
+import { Skeleton } from '../components/ui/Skeleton';
 
 /**
  * ReconciliationPage compares local AI-extracted invoices against government GSTR-2B data.
@@ -15,12 +17,15 @@ import toast from 'react-hot-toast';
  * 3. The React Query hooks below automatically fetch the updated statuses (Matched, Mismatch, Missing).
  * 4. We calculate aggregate summary cards (Total PR vs Total 2B vs Matched) purely client-side.
  */
+
+const cleanStr = (s: string) => (s || '').toString().trim().toUpperCase().replace(/[-/\s]/g, '').replace(/(\D)0+(\d)/g, '$1$2');
+
 export default function ReconciliationPage() {
   const { activeClientId } = useClient();
   const [period, setPeriod] = useState('03-2024'); // Example default
   const [isUploading, setIsUploading] = useState(false);
 
-  const { data: invoices, refetch } = useQuery({
+  const { data: invoices, isLoading: invoicesLoading, isError: invoicesError, refetch: refetchInvoices } = useQuery({
     queryKey: ['reconciliation', activeClientId, period],
     queryFn: async () => {
       if (!activeClientId) return [];
@@ -35,7 +40,7 @@ export default function ReconciliationPage() {
     enabled: !!activeClientId,
   });
 
-  const { data: gstr2bRecords } = useQuery({
+  const { data: gstr2bRecords, isLoading: gstrLoading, isError: gstrError, refetch: refetchGstr } = useQuery({
     queryKey: ['gstr2b', activeClientId, period],
     queryFn: async () => {
       if (!activeClientId) return [];
@@ -50,9 +55,15 @@ export default function ReconciliationPage() {
     enabled: !!activeClientId,
   });
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !activeClientId) return;
+    if (!file) return;
+    
+    if (!activeClientId) {
+      toast.error("Please select a client first.");
+      e.target.value = '';
+      return;
+    }
 
     const formData = new FormData();
     formData.append('file', file);
@@ -75,41 +86,32 @@ export default function ReconciliationPage() {
       if (!response.ok) throw new Error("Failed to reconcile");
       const data = await response.json();
       toast.success(data.message, { id: 'recon' });
-      refetch();
+      refetchInvoices();
+      refetchGstr();
     } catch (err: any) {
       toast.error(err.message || "Reconciliation failed", { id: 'recon' });
     } finally {
       setIsUploading(false);
       e.target.value = '';
     }
-  };
+  }, [activeClientId, period, refetchInvoices, refetchGstr]);
 
-  if (!activeClientId) {
-    return <div className="p-8 text-center text-text-secondary h-[80vh] flex items-center justify-center">
-      <div className="card p-8 text-center max-w-md">
-        <AlertCircle className="w-12 h-12 text-accent mx-auto mb-4" />
-        <h2 className="text-xl font-bold text-text-primary mb-2">No Client Selected</h2>
-        <p>Please select a client from the sidebar to view GSTR-2B reconciliation.</p>
-      </div>
-    </div>;
-  }
 
-  const matched = invoices?.filter(i => i.recon_status === 'matched') || [];
-  const mismatched = invoices?.filter(i => i.recon_status === 'mismatch') || [];
-  const missingIn2B = invoices?.filter(i => i.recon_status === 'missing_in_2b') || [];
 
-  const cleanStr = (s: string) => (s || '').toString().trim().toUpperCase().replace(/[-/\s]/g, '').replace(/(\D)0+(\d)/g, '$1$2');
+  const matched = useMemo(() => invoices?.filter(i => i.recon_status === 'matched') || [], [invoices]);
+  const mismatched = useMemo(() => invoices?.filter(i => i.recon_status === 'mismatch') || [], [invoices]);
+  const missingIn2B = useMemo(() => invoices?.filter(i => i.recon_status === 'missing_in_2b') || [], [invoices]);
 
-  const invoiceKeys = new Set(
+  const invoiceKeys = useMemo(() => new Set(
     (invoices || []).map(inv => `${cleanStr(inv.supplier_gstin)}_${cleanStr(inv.invoice_number)}`)
-  );
+  ), [invoices]);
 
-  const missingInPR = gstr2bRecords?.filter(g2b => {
+  const missingInPR = useMemo(() => gstr2bRecords?.filter(g2b => {
     const g2bKey = `${cleanStr(g2b.supplier_gstin)}_${cleanStr(g2b.invoice_number)}`;
     return !invoiceKeys.has(g2bKey);
-  }) || [];
+  }) || [], [gstr2bRecords, invoiceKeys]);
 
-  const tableData = [
+  const tableData = useMemo(() => [
     ...(invoices || []).map(inv => ({
       id: inv.id,
       supplier_gstin: inv.supplier_gstin,
@@ -126,11 +128,11 @@ export default function ReconciliationPage() {
       taxable_amount: g2b.taxable_value,
       status: 'missing_in_pr'
     }))
-  ];
+  ], [invoices, missingInPR]);
 
   const [isDeepMatching, setIsDeepMatching] = useState(false);
 
-  const handleDeepMatch = async () => {
+  const handleDeepMatch = useCallback(async () => {
     if (!activeClientId) return;
     setIsDeepMatching(true);
     toast.loading("Running AI Deep Match...", { id: 'deep-match' });
@@ -158,13 +160,16 @@ export default function ReconciliationPage() {
       
       const data = await response.json();
       toast.success(data.message, { id: 'deep-match' });
-      refetch();
+      refetchInvoices();
     } catch (err: any) {
       toast.error(err.message || "AI Deep Match failed", { id: 'deep-match' });
     } finally {
       setIsDeepMatching(false);
     }
-  };
+  }, [activeClientId, period, refetchInvoices]);
+
+  const isLoading = invoicesLoading || gstrLoading;
+  const isError = invoicesError || gstrError;
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8 pb-20">
@@ -201,36 +206,66 @@ export default function ReconciliationPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="card border-t-4 border-t-success hover:border-border transition-colors">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-success flex items-center gap-2"><CheckCircle2 className="w-5 h-5"/> Matched</h3>
-            <span className="text-3xl font-bold text-text-primary">{matched.length}</span>
+      {!activeClientId ? (
+        <div className="p-8 text-center text-text-secondary h-[40vh] flex items-center justify-center">
+          <div className="card p-8 text-center max-w-md border-border">
+            <AlertCircle className="w-12 h-12 text-accent mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-text-primary mb-2">No Client Selected</h2>
+            <p>Please select a client from the sidebar to view and run GSTR-2B reconciliation.</p>
           </div>
-          <p className="text-sm text-text-secondary">Perfect match (±₹1 tolerance)</p>
         </div>
-        <div className="card border-t-4 border-t-warning hover:border-border transition-colors">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-warning flex items-center gap-2"><AlertTriangle className="w-5 h-5"/> Value Mismatch</h3>
-            <span className="text-3xl font-bold text-text-primary">{mismatched.length}</span>
+      ) : isError ? (
+        <ErrorState 
+          title="Failed to load reconciliation data"
+          message="There was an error communicating with the server."
+          onRetry={() => { refetchInvoices(); refetchGstr(); }}
+        />
+      ) : isLoading ? (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            {[1,2,3,4].map(i => (
+              <div key={i} className="card p-5 space-y-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-8 w-24" />
+              </div>
+            ))}
           </div>
-          <p className="text-sm text-text-secondary">Invoice exists but amounts differ</p>
+          <div className="card h-64"><Skeleton className="w-full h-full" /></div>
         </div>
-        <div className="card border-t-4 border-t-error hover:border-border transition-colors">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-error flex items-center gap-2"><AlertCircle className="w-5 h-5"/> Missing in 2B</h3>
-            <span className="text-3xl font-bold text-text-primary">{missingIn2B.length}</span>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="card border-t-4 border-t-success hover:border-border transition-colors">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-success flex items-center gap-2"><CheckCircle2 className="w-5 h-5"/> Matched</h3>
+                <span className="text-3xl font-bold text-text-primary">{matched.length}</span>
+              </div>
+              <p className="text-sm text-text-secondary">Perfect match (±₹1 tolerance)</p>
+            </div>
+            <div className="card border-t-4 border-t-warning hover:border-border transition-colors">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-warning flex items-center gap-2"><AlertTriangle className="w-5 h-5"/> Value Mismatch</h3>
+                <span className="text-3xl font-bold text-text-primary">{mismatched.length}</span>
+              </div>
+              <p className="text-sm text-text-secondary">Invoice exists but amounts differ</p>
+            </div>
+            <div className="card border-t-4 border-t-error hover:border-border transition-colors">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-error flex items-center gap-2"><AlertCircle className="w-5 h-5"/> Missing in 2B</h3>
+                <span className="text-3xl font-bold text-text-primary">{missingIn2B.length}</span>
+              </div>
+              <p className="text-sm text-text-secondary">ITC at risk! Vendor didn't file.</p>
+            </div>
+            <div className="card border-t-4 border-t-accent hover:border-border transition-colors">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-accent flex items-center gap-2"><FileSearch className="w-5 h-5"/> Missing in PR</h3>
+                <span className="text-3xl font-bold text-text-primary">{missingInPR.length}</span>
+              </div>
+              <p className="text-sm text-text-secondary">Vendor filed, but no scan</p>
+            </div>
           </div>
-          <p className="text-sm text-text-secondary">ITC at risk! Vendor didn't file.</p>
-        </div>
-        <div className="card border-t-4 border-t-accent hover:border-border transition-colors">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-accent flex items-center gap-2"><FileSearch className="w-5 h-5"/> Missing in PR</h3>
-            <span className="text-3xl font-bold text-text-primary">{missingInPR.length}</span>
-          </div>
-          <p className="text-sm text-text-secondary">Vendor filed, but no scan</p>
-        </div>
-      </div>
+        </>
+      )}
 
       {tableData.length > 0 && (
         <div className="card p-0 overflow-hidden shadow-sm">

@@ -1,38 +1,34 @@
-<!-- code-review-graph MCP tools -->
-## MCP Tools: code-review-graph
+# KhataLens Project Context (GST SAAS)
 
-**IMPORTANT: This project has a knowledge graph. ALWAYS use the
-code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
-the codebase.** The graph is faster, cheaper (fewer tokens), and gives
-you structural context (callers, dependents, test coverage) that file
-scanning cannot.
+## Overview
+KhataLens is an AI-powered invoice scanning and reconciliation platform tailored for Indian Chartered Accountants. It extracts tabular data from PDFs/Images using LLMs (OpenAI/Gemini) and matches them against GSTR-2B datasets.
 
-### When to use graph tools FIRST
+## Architecture Stack
+- **Frontend**: React 19, Vite, TailwindCSS v4, TanStack Query (`react-query`), React Router DOM v7.
+- **Backend**: Python 3.11, FastAPI.
+- **Database & Auth**: Supabase (PostgreSQL).
+- **Testing**: Playwright (E2E), Vitest.
 
-- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
-- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
-- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
-- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
-- **Architecture questions**: `get_architecture_overview` + `list_communities`
+## Development Commands
+- **Frontend**: 
+  - `cd frontend`
+  - `npm ci`
+  - `npm run dev`
+  - `npm run test:e2e` (Run Playwright E2E tests)
+  - `npm run lint` (Oxlint)
+- **Backend**:
+  - `cd backend`
+  - `pip install -r requirements.txt`
+  - `uvicorn main:app --reload` (or specific run command)
 
-Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+## Key Project Rules
+1. **Performance**: All complex data transformations (like the 1000+ row grids in `ReconciliationPage.tsx`) must be strictly memoized using `useMemo` and `useCallback` to prevent UI freezing on keystrokes.
+2. **Resilience**: Every `useQuery` fetch MUST destruct `isError` and conditionally render the `<ErrorState>` component (Phase 4). Do not leave the UI in an infinite loading state if the backend 500s.
+3. **Security**: 
+   - Never use `allow_origins=["*"]` in production FastAPI.
+   - Always validate inputs server-side.
+   - Avoid `dangerouslySetInnerHTML`.
+4. **Tailwind v4**: The project uses Tailwind v4 alpha via `@tailwindcss/vite`. CSS variables are stored in `index.css` under the `@theme` block.
 
-### Key Tools
-
-| Tool | Use when |
-|------|----------|
-| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
-| `get_review_context` | Need source snippets for review — token-efficient |
-| `get_impact_radius` | Understanding blast radius of a change |
-| `get_affected_flows` | Finding which execution paths are impacted |
-| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
-| `semantic_search_nodes` | Finding functions/classes by name or keyword |
-| `get_architecture_overview` | Understanding high-level codebase structure |
-| `refactor_tool` | Planning renames, finding dead code |
-
-### Workflow
-
-1. The graph auto-updates on file changes (via hooks).
-2. Use `detect_changes` for code review.
-3. Use `get_affected_flows` to understand impact.
-4. Use `query_graph` pattern="tests_for" to check coverage.
+## Testing Strategy
+The project enforces *Network Resilience Testing*. Playwright tests (e.g., `network-resilience.spec.ts`) mock 500 Internal Server Errors using `page.route` to verify the frontend gracefully recovers using the custom "Retry" mechanisms without a hard page refresh.

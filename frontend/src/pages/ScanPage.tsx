@@ -13,7 +13,8 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-import { useScanContext, AVAILABLE_COLUMNS } from '../lib/ScanContext';
+import { useScanContext } from '../lib/ScanContext';
+import { AVAILABLE_COLUMNS } from '../lib/constants';
 import type { FileState, InvoiceData, LineItem } from '../lib/ScanContext';
 import { useClient } from '../lib/ClientContext';
 import { isValidGSTIN } from '../utils/gstin';
@@ -293,7 +294,7 @@ export default function ScanPage() {
     });
   };
 
-  const fetchPendingBatchInvoices = async () => {
+  const fetchPendingBatchInvoices = useCallback(async () => {
     if (!activeClientId) return;
     const { data } = await supabase
       .from('invoices')
@@ -302,27 +303,27 @@ export default function ScanPage() {
       .eq('processing_status', 'pending');
       
     if (data && data.length > 0) {
-      // Map these pending DB records back to our frontend FileState
-      const newFiles = data.map(dbInv => {
-        // Only add if not already in our state
-        if (fileStates.some(f => f.id === dbInv.id)) return null;
-        return {
-          id: dbInv.id,
-          file: new File([""], dbInv.file_name || "batch_file"),
-          previewUrl: null,
-          isScanning: true, // Show scanning spinner since it's pending in background
-          extractedData: null,
-          error: null,
-          savedToCloud: false,
-          isBatch: true
-        };
-      }).filter(Boolean);
-      
-      if (newFiles.length > 0) {
-        setFileStates(prev => [...prev, ...newFiles as any]);
-      }
+      setFileStates(prev => {
+        const newFiles = data.map(dbInv => {
+          if (prev.some(f => f.id === dbInv.id)) return null;
+          return {
+            id: dbInv.id,
+            file: new File([""], dbInv.file_name || "batch_file"),
+            previewUrl: null,
+            isScanning: true,
+            extractedData: null,
+            error: null,
+            savedToCloud: false,
+            isBatch: true
+          };
+        }).filter(Boolean);
+        if (newFiles.length > 0) {
+          return [...prev, ...newFiles as any];
+        }
+        return prev;
+      });
     }
-  };
+  }, [activeClientId, setFileStates]);
 
   useEffect(() => {
     // Setup realtime listener for batch updates
@@ -368,7 +369,7 @@ export default function ScanPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [activeClientId]);
+  }, [activeClientId, fetchPendingBatchInvoices, setFileStates]);
 
   const handleZipUpload = async (file: File) => {
     if (!activeClientId) {
@@ -403,56 +404,6 @@ export default function ScanPage() {
     } catch (err: any) {
       toast.error(err.message || "Failed to upload ZIP", { id: "zip-upload" });
     }
-  };
-
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    const zipFiles = acceptedFiles.filter(f => f.name.toLowerCase().endsWith('.zip'));
-    if (zipFiles.length > 0) {
-      handleZipUpload(zipFiles[0]);
-      return;
-    }
-
-    const newFiles = acceptedFiles.map(file => {
-      let previewUrl = null;
-      if (file.type.startsWith('image/')) {
-        previewUrl = URL.createObjectURL(file);
-      }
-      return {
-        id: Math.random().toString(36).substring(7),
-        file,
-        previewUrl,
-        isScanning: false,
-        extractedData: null,
-        error: null,
-        savedToCloud: false,
-      };
-    });
-    setFileStates(prev => [...prev, ...newFiles]);
-  }, [activeClientId, fileStates]);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: uploadMode === 'single' ? {
-      'image/jpeg': ['.jpg', '.jpeg'],
-      'image/png': ['.png'],
-      'image/webp': ['.webp'],
-      'application/pdf': ['.pdf']
-    } : {
-      'application/zip': ['.zip', '.x-zip-compressed']
-    },
-    maxFiles: 50,
-  });
-
-  const removeFile = (id: string) => {
-    setFileStates(prev => prev.filter(f => f.id !== id));
-  };
-
-  const clearAll = () => {
-    setFileStates([]);
-  };
-
-  const updateExtractedData = (id: string, data: InvoiceData) => {
-    setFileStates(prev => prev.map(f => f.id === id ? { ...f, extractedData: data, savedToCloud: false } : f));
   };
 
   const compressImage = (file: File, maxWidth: number, maxHeight: number): Promise<File> => {
@@ -546,6 +497,70 @@ export default function ScanPage() {
         f.id === item.id ? { ...f, error: err.message || 'An error occurred.', isScanning: false } : f
       ));
     }
+  };
+
+  const onDrop = useCallback((acceptedFiles: File[], fileRejections: any[]) => {
+    const allDropped = [...acceptedFiles, ...fileRejections.map(r => r.file)];
+    const zipFiles = allDropped.filter(f => f && f.name && f.name.toLowerCase().endsWith('.zip'));
+    
+    if (zipFiles.length > 0) {
+      handleZipUpload(zipFiles[0]);
+      return;
+    }
+
+    if (fileRejections && fileRejections.length > 0) {
+      toast.error("Invalid or unsupported file type.");
+      if (acceptedFiles.length === 0) return;
+    }
+
+    const newFiles = acceptedFiles.map(file => {
+      let previewUrl = null;
+      if (file.type.startsWith('image/')) {
+        previewUrl = URL.createObjectURL(file);
+      }
+      return {
+        id: Math.random().toString(36).substring(7),
+        file,
+        previewUrl,
+        isScanning: true,
+        extractedData: null,
+        error: null,
+        savedToCloud: false,
+      };
+    });
+    setFileStates(prev => [...prev, ...newFiles]);
+    
+    // Auto-trigger extraction
+    newFiles.forEach(fs => {
+      scanFile(fs);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleZipUpload, setFileStates, scanFile]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: uploadMode === 'single' ? {
+      'image/jpeg': ['.jpg', '.jpeg'],
+      'image/png': ['.png'],
+      'image/webp': ['.webp'],
+      'application/pdf': ['.pdf']
+    } : {
+      'application/zip': ['.zip'],
+      'application/x-zip-compressed': ['.zip']
+    },
+    maxFiles: 50,
+  });
+
+  const removeFile = (id: string) => {
+    setFileStates(prev => prev.filter(f => f.id !== id));
+  };
+
+  const clearAll = () => {
+    setFileStates([]);
+  };
+
+  const updateExtractedData = (id: string, data: InvoiceData) => {
+    setFileStates(prev => prev.map(f => f.id === id ? { ...f, extractedData: data, savedToCloud: false } : f));
   };
 
   const saveSingleInvoiceToDb = async (_fileId: string, fs: FileState, data: any, userId: string) => {
@@ -958,24 +973,6 @@ export default function ScanPage() {
         </div>
 
       </main>
-
-      <style dangerouslySetInnerHTML={{__html: `
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
-          height: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(255, 255, 255, 0.02);
-          border-radius: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.2);
-        }
-      `}} />
     </div>
   );
 }

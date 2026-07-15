@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { DollarSign, FileText, Settings, CheckCircle2, TrendingUp, Building2, Briefcase, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Skeleton } from '../components/ui/Skeleton';
 import AnalyticsCharts, { type AnalyticsData, AnalyticsSkeleton } from '../components/AnalyticsCharts';
+import { ErrorState } from '../components/ui/ErrorState';
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-IN', { 
@@ -19,7 +20,7 @@ const formatCurrency = (amount: number) => {
 
 
 
-export const AVAILABLE_WIDGETS = [
+const AVAILABLE_WIDGETS = [
   { key: 'total_taxable', label: 'Total Taxable Amount', icon: DollarSign },
   { key: 'total_cgst', label: 'Total CGST', icon: TrendingUp },
   { key: 'total_sgst', label: 'Total SGST', icon: TrendingUp },
@@ -30,6 +31,8 @@ export const AVAILABLE_WIDGETS = [
 
 const DEFAULT_WIDGETS = ['total_taxable', 'total_cgst', 'total_sgst', 'invoice_count'];
 
+const DEFAULT_METRICS = { totalTaxable: 0, totalCgst: 0, totalSgst: 0, totalIgst: 0, totalOutstanding: 0, invoiceCount: 0 };
+
 export default function DashboardPage() {
   const { activeClientId, clients } = useClient();
   const [showSettings, setShowSettings] = useState(false);
@@ -39,7 +42,7 @@ export default function DashboardPage() {
   const [taxRate, setTaxRate] = useState<number>(18);
   const [isSavingSales, setIsSavingSales] = useState(false);
   
-  const { data: dashboardData, isLoading } = useQuery({
+  const { data: dashboardData, isLoading, isError: isDashboardError, refetch: refetchDashboard } = useQuery({
     queryKey: ['invoices', 'dashboard', activeClientId],
     queryFn: async () => {
       if (!activeClientId) return { metrics: null, recentInvoices: [] };
@@ -63,7 +66,7 @@ export default function DashboardPage() {
         user_id_param: session.user.id
       });
       
-      let metrics = { totalTaxable: 0, totalCgst: 0, totalSgst: 0, totalIgst: 0, totalOutstanding: 0, invoiceCount: 0 };
+      let metrics = { ...DEFAULT_METRICS };
       
       if (metricsError) {
         console.warn("RPC not found, falling back to client-side limit calculation");
@@ -89,7 +92,7 @@ export default function DashboardPage() {
     gcTime: 30 * 60 * 1000,
   });
 
-  const { data: analyticsData } = useQuery<AnalyticsData | null>({
+  const { data: analyticsData, isError: isAnalyticsError, refetch: refetchAnalytics } = useQuery<AnalyticsData | null>({
     queryKey: ['invoices', 'analytics', activeClientId],
     queryFn: async () => {
       if (!activeClientId) return null;
@@ -111,7 +114,7 @@ export default function DashboardPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const metrics = dashboardData?.metrics || { totalTaxable: 0, totalCgst: 0, totalSgst: 0, totalIgst: 0, totalOutstanding: 0, invoiceCount: 0 };
+  const metrics = dashboardData?.metrics || DEFAULT_METRICS;
   const recentInvoices = dashboardData?.recentInvoices || [];
   const clientData = dashboardData?.clientData;
 
@@ -140,16 +143,16 @@ export default function DashboardPage() {
     }
   };
   
-  const estimatedSalesTax = (estimatedSales * taxRate) / 100;
-  const totalITC = metrics.totalCgst + metrics.totalSgst + metrics.totalIgst;
-  const estimatedLiability = Math.max(0, estimatedSalesTax - totalITC);
+  const estimatedSalesTax = useMemo(() => (estimatedSales * taxRate) / 100, [estimatedSales, taxRate]);
+  const totalITC = useMemo(() => metrics.totalCgst + metrics.totalSgst + metrics.totalIgst, [metrics]);
+  const estimatedLiability = useMemo(() => Math.max(0, estimatedSalesTax - totalITC), [estimatedSalesTax, totalITC]);
 
   useEffect(() => {
     const saved = localStorage.getItem('khatalens_widgets');
     if (saved) {
       try {
         setVisibleWidgets(JSON.parse(saved));
-      } catch (e) {}
+      } catch (_e) {}
     }
   }, []);
 
@@ -229,6 +232,18 @@ export default function DashboardPage() {
              <Link to="/clients" className="btn-primary">Manage {localStorage.getItem('accountType') === 'business' ? 'Businesses' : 'Clients'}</Link>
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (isDashboardError) {
+    return (
+      <div className="p-4 md:p-8 max-w-7xl mx-auto h-[80vh] flex items-center justify-center">
+        <ErrorState 
+          title="Dashboard Failed to Load" 
+          message="We couldn't retrieve your dashboard metrics. Please check your connection."
+          onRetry={refetchDashboard}
+        />
       </div>
     );
   }
@@ -442,7 +457,15 @@ export default function DashboardPage() {
       )}
 
       {/* Advanced Analytics Hub */}
-      <AnalyticsCharts data={analyticsData ?? null} />
+      {isAnalyticsError ? (
+        <ErrorState 
+          title="Analytics Failed to Load" 
+          message="Could not load advanced analytics data."
+          onRetry={refetchAnalytics}
+        />
+      ) : (
+        <AnalyticsCharts data={analyticsData ?? null} />
+      )}
 
       <div className="space-y-4">
         <div className="flex items-center justify-between">

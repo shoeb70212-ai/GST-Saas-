@@ -23,6 +23,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -116,7 +117,7 @@ async function signUpTestUser(): Promise<{ access_token: string; user_id: string
  * then navigating to /dashboard. This bypasses the login form entirely
  * and is more reliable than form-based login for E2E setup.
  */
-async function loginViaSessionInjection(page: Page, accessToken: string) {
+async function loginViaSessionInjection(page: Page, _accessToken: string) {
   // First get a full session by signing in via API
   const signInRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
     method: 'POST',
@@ -260,6 +261,23 @@ test.describe('TEST 2: Invoice Scan — Core Revenue Flow', () => {
     await page.goto('/scan');
     await page.waitForLoadState('networkidle');
 
+    // Select a client if none is selected
+    const clientSwitcher = page.locator('button').filter({
+      has: page.locator('.lucide-building-2, .lucide-chevron-down'),
+    }).first();
+    try {
+      await clientSwitcher.waitFor({ state: 'visible', timeout: 5000 });
+      await clientSwitcher.click();
+      await page.waitForTimeout(500);
+      const clientButtons = page.locator('.max-h-48 button');
+      if (await clientButtons.count() > 0) {
+        await clientButtons.first().click({ force: true });
+        await page.waitForTimeout(1500);
+      }
+    } catch (_e) {
+      // client switcher not found, maybe 0 clients
+    }
+
     // Capture the credit count before scanning
     const creditBadge = page.locator('text=/\\d+\\s*Credit/i').first();
     let creditsBefore = 0;
@@ -269,9 +287,13 @@ test.describe('TEST 2: Invoice Scan — Core Revenue Flow', () => {
     }
 
     // Upload a sample invoice via the file input
-    const sampleInvoice = path.resolve(__dirname, '../../samples/Sample_Invoice_1.pdf');
+    const sampleInvoicePath = path.resolve(__dirname, '../../samples/Sample_Invoice_1.pdf');
     const fileInput = page.locator('input[type="file"]').first();
-    await fileInput.setInputFiles(sampleInvoice);
+    await fileInput.setInputFiles({
+      name: 'Sample_Invoice_1.pdf',
+      mimeType: 'application/pdf',
+      buffer: fs.readFileSync(sampleInvoicePath)
+    });
 
     // Wait for the AI extraction to complete (this can take 10-30 seconds)
     const extractionResult = page.locator('text=/Auto Accepted|Needs Review|Needs Retry|duplicate/i').first();
@@ -359,9 +381,13 @@ test.describe('TEST 3: Zero Credit Guard — Revenue Protection', () => {
     await page.waitForLoadState('networkidle');
 
     // Upload a valid file
-    const sampleInvoice = path.resolve(__dirname, '../../samples/Sample_Invoice_1.pdf');
+    const sampleInvoicePath = path.resolve(__dirname, '../../samples/Sample_Invoice_1.pdf');
     const fileInput = page.locator('input[type="file"]').first();
-    await fileInput.setInputFiles(sampleInvoice);
+    await fileInput.setInputFiles({
+      name: 'Sample_Invoice_1.pdf',
+      mimeType: 'application/pdf',
+      buffer: fs.readFileSync(sampleInvoicePath)
+    });
 
     // Wait for the error to surface
     const creditError = page.locator('text=/insufficient credits|recharge|wallet|credit/i').first();
@@ -396,7 +422,7 @@ test.describe('TEST 4: Client Data Isolation — Multi-Tenancy', () => {
       has: page.locator('.lucide-building-2, .lucide-chevron-down'),
     }).first();
 
-    const isVisible = await clientSwitcher.isVisible().catch(() => false);
+    const isVisible = await clientSwitcher.waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);
     if (!isVisible) {
       test.skip(true, 'No client switcher found — user may have 0 clients configured');
       return;
@@ -407,7 +433,7 @@ test.describe('TEST 4: Client Data Isolation — Multi-Tenancy', () => {
     await page.waitForTimeout(500);
 
     // Get all client buttons in the dropdown
-    const clientButtons = page.locator('[class*="rounded-md"]').filter({ hasText: /.+/ });
+    const clientButtons = page.locator('.max-h-48 button');
     const clientCount = await clientButtons.count();
 
     if (clientCount < 2) {

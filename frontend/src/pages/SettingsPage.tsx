@@ -1,19 +1,38 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { LogOut, User, Building2, Shield, Loader2, Save } from 'lucide-react';
+import { LogOut, User, Building2, Shield, Loader2, Save, Lock, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { motion, AnimatePresence } from 'framer-motion';
+
+type SettingsTab = 'profile' | 'company' | 'security';
+
+const tabSlide = {
+  hidden: { opacity: 0, y: 10 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] } },
+  exit: { opacity: 0, y: -10, transition: { duration: 0.15 } },
+};
 
 export default function SettingsPage() {
+  const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const navigate = useNavigate();
 
+  // Profile & Company fields
   const [companyName, setCompanyName] = useState('My Company Ltd.');
   const [gstin, setGstin] = useState('');
   const [tallyLedgers, setTallyLedgers] = useState('');
   const [makerCheckerEnabled, setMakerCheckerEnabled] = useState(false);
+
+  // Security / password fields
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [pwError, setPwError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchUser();
@@ -29,7 +48,7 @@ export default function SettingsPage() {
           .select('company_name, default_gstin, tally_ledgers, maker_checker_enabled')
           .eq('id', session.user.id)
           .single();
-          
+
         if (profile) {
           if (profile.company_name) setCompanyName(profile.company_name);
           if (profile.default_gstin) setGstin(profile.default_gstin);
@@ -56,9 +75,7 @@ export default function SettingsPage() {
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    
     setSaving(true);
-    
     const { error } = await supabase
       .from('profiles')
       .update({
@@ -68,138 +85,371 @@ export default function SettingsPage() {
         maker_checker_enabled: makerCheckerEnabled
       })
       .eq('id', user.id);
-      
     setSaving(false);
-    
     if (error) {
-      console.error('Error updating profile:', error);
       toast.error('Failed to update profile.');
     } else {
-      toast.success('Profile updated successfully!');
+      toast.success('Profile saved successfully!');
     }
   };
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwError(null);
+
+    if (newPassword.length < 8) {
+      setPwError('Password must be at least 8 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPwError('Passwords do not match.');
+      return;
+    }
+
+    setChangingPassword(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setChangingPassword(false);
+
+    if (error) {
+      setPwError(error.message || 'Failed to change password. Please try again.');
+    } else {
+      toast.success('Password updated successfully!');
+      setNewPassword('');
+      setConfirmPassword('');
+    }
+  };
+
+  const tabs: { key: SettingsTab; label: string; icon: React.ElementType }[] = [
+    { key: 'profile', label: 'Profile details', icon: User },
+    { key: 'company', label: 'Company defaults', icon: Building2 },
+    { key: 'security', label: 'Security', icon: Shield },
+  ];
+
   if (loading) {
-    return <div className="min-h-[80vh] flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>;
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
+      </div>
+    );
   }
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-8 pb-20">
       <div>
-        <h1 className="text-2xl font-bold text-text-primary mb-2">Account Settings</h1>
-        <p className="text-text-secondary">Manage your profile, company details, and preferences.</p>
+        <h1 className="text-2xl font-display font-bold text-text-primary mb-2">Account Settings</h1>
+        <p className="text-text-secondary">Manage your profile, company details, and security preferences.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        
-        {/* Left Nav */}
-        <div className="space-y-2">
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-md bg-bg-sunken border border-border text-text-primary font-medium">
-            <User className="w-4 h-4 text-accent" />
-            Profile details
-          </button>
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-md text-text-secondary hover:bg-bg-sunken hover:text-text-primary transition-colors">
-            <Building2 className="w-4 h-4" />
-            Company defaults
-          </button>
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-md text-text-secondary hover:bg-bg-sunken hover:text-text-primary transition-colors">
-            <Shield className="w-4 h-4" />
-            Security
-          </button>
-        </div>
 
-        {/* Main Content */}
-        <div className="md:col-span-2 space-y-6">
-          <form onSubmit={handleSaveProfile} className="card p-6 space-y-6">
-            <h2 className="text-lg font-semibold text-text-primary">Profile Details</h2>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">Email Address</label>
-                <input 
-                  type="email" 
-                  disabled 
-                  value={user?.email || ''} 
-                  className="input-field w-full opacity-60 cursor-not-allowed bg-bg-sunken"
-                />
-                <p className="text-xs text-text-secondary mt-1">Your email address cannot be changed.</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">Company Name</label>
-                <input 
-                  type="text" 
-                  required
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  className="input-field w-full"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">Default GSTIN</label>
-                <input 
-                  type="text" 
-                  value={gstin}
-                  onChange={(e) => setGstin(e.target.value.toUpperCase())}
-                  placeholder="27AADCB2230M1Z2"
-                  className="input-field w-full uppercase font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">Custom Tally Ledgers</label>
-                <textarea 
-                  value={tallyLedgers}
-                  onChange={(e) => setTallyLedgers(e.target.value)}
-                  placeholder="Printing & Stationery, Legal Fees, CGST Payable, SGST Payable"
-                  className="input-field w-full min-h-[80px] resize-y"
-                />
-                <p className="text-xs text-text-secondary mt-1">Comma separated list of your standard accounting ledgers. The AI will strictly map expenses to these categories.</p>
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-bg-sunken rounded-lg border border-border">
-                <div>
-                  <h3 className="text-sm font-medium text-text-primary">Maker-Checker Workflow</h3>
-                  <p className="text-xs text-text-secondary mt-1">Require manual approval of AI extracted invoices before CAs can export them to Tally.</p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    className="sr-only peer" 
-                    checked={makerCheckerEnabled}
-                    onChange={(e) => setMakerCheckerEnabled(e.target.checked)}
-                  />
-                  <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
-                </label>
-              </div>
-            </div>
-
-            <div className="pt-4 flex justify-end border-t border-border mt-6">
-              <button 
-                type="submit"
-                disabled={saving}
-                className="btn-primary"
+        {/* ── Sidebar Nav ── */}
+        <nav className="space-y-1" aria-label="Settings navigation">
+          {tabs.map(tab => {
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer text-left ${
+                  isActive
+                    ? 'bg-bg-sunken border border-border text-text-primary shadow-sm'
+                    : 'text-text-secondary hover:bg-bg-sunken hover:text-text-primary'
+                }`}
+                aria-current={isActive ? 'page' : undefined}
               >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Save Changes
+                <tab.icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-accent' : ''}`} aria-hidden="true" />
+                {tab.label}
               </button>
-            </div>
-          </form>
+            );
+          })}
 
-          <div className="card p-6 border-error-subtle bg-error-subtle/30 space-y-4">
-            <h2 className="text-lg font-semibold text-error">Danger Zone</h2>
-            <p className="text-sm text-text-secondary">Log out of your account on this device.</p>
-            <button 
+          <div className="pt-4 border-t border-border mt-4">
+            <button
               onClick={handleSignOut}
-              className="px-6 py-2 bg-error-subtle hover:bg-error/20 text-error border border-error/20 rounded-md font-medium flex items-center gap-2 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-error hover:bg-error-subtle transition-colors cursor-pointer"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-4 h-4 shrink-0" aria-hidden="true" />
               Sign Out
             </button>
           </div>
-        </div>
+        </nav>
 
+        {/* ── Main Panel ── */}
+        <div className="md:col-span-2">
+          <AnimatePresence mode="wait">
+
+            {/* ── PROFILE TAB ── */}
+            {activeTab === 'profile' && (
+              <motion.form
+                key="profile"
+                variants={tabSlide}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                onSubmit={handleSaveProfile}
+                className="card p-6 space-y-5"
+              >
+                <h2 className="text-lg font-display font-semibold text-text-primary">Profile Details</h2>
+
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1.5">Email Address</label>
+                  <input
+                    type="email"
+                    disabled
+                    value={user?.email || ''}
+                    className="input-field w-full opacity-60 cursor-not-allowed bg-bg-sunken"
+                  />
+                  <p className="text-xs text-text-secondary mt-1">Your email cannot be changed here.</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1.5">Display Name</label>
+                  <input
+                    type="text"
+                    disabled
+                    value={user?.user_metadata?.full_name || user?.email?.split('@')[0] || ''}
+                    className="input-field w-full opacity-60 cursor-not-allowed bg-bg-sunken"
+                    placeholder="Set via company details"
+                  />
+                </div>
+
+                <div className="pt-4 flex justify-end border-t border-border">
+                  <button type="submit" disabled={saving} className="btn-primary">
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    Save Changes
+                  </button>
+                </div>
+              </motion.form>
+            )}
+
+            {/* ── COMPANY TAB ── */}
+            {activeTab === 'company' && (
+              <motion.form
+                key="company"
+                variants={tabSlide}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                onSubmit={handleSaveProfile}
+                className="card p-6 space-y-5"
+              >
+                <h2 className="text-lg font-display font-semibold text-text-primary">Company Defaults</h2>
+
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1.5">Company Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={companyName}
+                    onChange={e => setCompanyName(e.target.value)}
+                    className="input-field w-full"
+                    placeholder="Your Firm Pvt. Ltd."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1.5">Default GSTIN</label>
+                  <input
+                    type="text"
+                    value={gstin}
+                    onChange={e => setGstin(e.target.value.toUpperCase())}
+                    placeholder="27AADCB2230M1Z2"
+                    className="input-field w-full uppercase font-mono tracking-widest"
+                  />
+                  <p className="text-xs text-text-secondary mt-1">Pre-filled on all new invoice scans for this account.</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1.5">Custom Tally Ledgers</label>
+                  <textarea
+                    value={tallyLedgers}
+                    onChange={e => setTallyLedgers(e.target.value)}
+                    placeholder="Printing & Stationery, Legal Fees, CGST Payable, SGST Payable"
+                    className="input-field w-full min-h-[80px] resize-y"
+                  />
+                  <p className="text-xs text-text-secondary mt-1">Comma-separated. The AI will map expenses strictly to these ledgers.</p>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-bg-sunken rounded-xl border border-border">
+                  <div>
+                    <h3 className="text-sm font-medium text-text-primary">Maker-Checker Workflow</h3>
+                    <p className="text-xs text-text-secondary mt-1">Require manual approval of AI-extracted invoices before export.</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer" aria-label="Toggle maker-checker workflow">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={makerCheckerEnabled}
+                      onChange={e => setMakerCheckerEnabled(e.target.checked)}
+                    />
+                    <div className="w-11 h-6 bg-border rounded-full peer peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent/30 peer-checked:bg-accent after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-bg-surface after:border after:border-border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full peer-checked:after:border-transparent" />
+                  </label>
+                </div>
+
+                <div className="pt-4 flex justify-end border-t border-border">
+                  <button type="submit" disabled={saving} className="btn-primary">
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    Save Changes
+                  </button>
+                </div>
+              </motion.form>
+            )}
+
+            {/* ── SECURITY TAB ── */}
+            {activeTab === 'security' && (
+              <motion.div
+                key="security"
+                variants={tabSlide}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="space-y-6"
+              >
+                {/* Password Change */}
+                <form onSubmit={handleChangePassword} className="card p-6 space-y-5">
+                  <div>
+                    <h2 className="text-lg font-display font-semibold text-text-primary">Change Password</h2>
+                    <p className="text-sm text-text-secondary mt-1 font-light">Set a new password for your account. Minimum 8 characters.</p>
+                  </div>
+
+                  <div>
+                    <label htmlFor="new-password-settings" className="block text-sm font-medium text-text-primary mb-1.5">
+                      New Password
+                    </label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-disabled pointer-events-none" aria-hidden="true" />
+                      <input
+                        id="new-password-settings"
+                        type={showNewPw ? 'text' : 'password'}
+                        value={newPassword}
+                        onChange={e => { setNewPassword(e.target.value); setPwError(null); }}
+                        className="input-field w-full !pl-10 !pr-10"
+                        placeholder="Min. 8 characters"
+                        required
+                        minLength={8}
+                        autoComplete="new-password"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPw(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-text-disabled hover:text-text-secondary transition-colors"
+                        aria-label={showNewPw ? 'Hide password' : 'Show password'}
+                      >
+                        {showNewPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    {/* Strength bar */}
+                    {newPassword.length > 0 && (
+                      <div className="flex gap-1 mt-2">
+                        {[1, 2, 3, 4].map(level => {
+                          const strength = Math.min(4, Math.floor(newPassword.length / 3));
+                          const colors: Record<number, string> = { 1: 'bg-error', 2: 'bg-warning', 3: 'bg-warning', 4: 'bg-accent' };
+                          return (
+                            <div
+                              key={level}
+                              className={`h-1 flex-1 rounded-full transition-all duration-300 ${level <= strength ? colors[strength] : 'bg-border'}`}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label htmlFor="confirm-password-settings" className="block text-sm font-medium text-text-primary mb-1.5">
+                      Confirm New Password
+                    </label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-disabled pointer-events-none" aria-hidden="true" />
+                      <input
+                        id="confirm-password-settings"
+                        type={showConfirmPw ? 'text' : 'password'}
+                        value={confirmPassword}
+                        onChange={e => { setConfirmPassword(e.target.value); setPwError(null); }}
+                        className={`input-field w-full !pl-10 !pr-10 ${
+                          confirmPassword && confirmPassword !== newPassword ? '!border-error/50' : ''
+                        }`}
+                        placeholder="Repeat your new password"
+                        required
+                        autoComplete="new-password"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPw(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-text-disabled hover:text-text-secondary transition-colors"
+                        aria-label={showConfirmPw ? 'Hide password' : 'Show password'}
+                      >
+                        {showConfirmPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    {confirmPassword && confirmPassword !== newPassword && (
+                      <p className="text-xs text-error mt-1">Passwords do not match.</p>
+                    )}
+                  </div>
+
+                  {pwError && (
+                    <p role="alert" className="text-sm text-center py-2.5 px-4 rounded-lg bg-error-subtle border border-error/20 text-error">
+                      {pwError}
+                    </p>
+                  )}
+
+                  <div className="pt-4 flex justify-end border-t border-border">
+                    <button
+                      type="submit"
+                      disabled={changingPassword || !newPassword || !confirmPassword || newPassword !== confirmPassword}
+                      className="btn-primary"
+                      id="settings-change-password-btn"
+                    >
+                      {changingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
+                      Update Password
+                    </button>
+                  </div>
+                </form>
+
+                {/* Session / Account Info */}
+                <div className="card p-6 space-y-4">
+                  <h2 className="text-lg font-display font-semibold text-text-primary">Account Information</h2>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between items-center py-2 border-b border-border">
+                      <span className="text-text-secondary">Email</span>
+                      <span className="text-text-primary font-mono text-xs">{user?.email}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b border-border">
+                      <span className="text-text-secondary">User ID</span>
+                      <span className="text-text-primary font-mono text-xs truncate max-w-[200px]">{user?.id}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b border-border">
+                      <span className="text-text-secondary">Account Created</span>
+                      <span className="text-text-primary text-xs">
+                        {user?.created_at ? new Date(user.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center py-2">
+                      <span className="text-text-secondary">Last Sign In</span>
+                      <span className="text-text-primary text-xs">
+                        {user?.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Danger Zone */}
+                <div className="card p-6 border border-error/20 bg-error-subtle/20 space-y-4">
+                  <h2 className="text-lg font-display font-semibold text-error">Danger Zone</h2>
+                  <p className="text-sm text-text-secondary">Sign out of your account on this device.</p>
+                  <button
+                    onClick={handleSignOut}
+                    className="px-6 py-2.5 bg-error-subtle hover:bg-error/20 text-error border border-error/20 rounded-xl font-medium flex items-center gap-2 transition-colors text-sm cursor-pointer"
+                  >
+                    <LogOut className="w-4 h-4" aria-hidden="true" />
+                    Sign Out
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );
