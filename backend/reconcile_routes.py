@@ -6,6 +6,8 @@ from datetime import date
 from fastapi import APIRouter, File, UploadFile, HTTPException, Header, Form
 import httpx
 from main import SUPABASE_URL, SUPABASE_ANON_KEY
+from collections import defaultdict
+import rapidfuzz
 
 router = APIRouter()
 
@@ -23,17 +25,29 @@ def period_to_date_range(period: str):
     except Exception:
         return None, None
 
+def clean_str(s):
+    """
+    Normalizes invoice numbers and GSTINs by stripping whitespace, hyphens, 
+    slashes, and stripping leading zeros from numeric sequences. 
+    """
+    if not s: return ""
+    import re
+    s = str(s).strip().upper().replace("-", "").replace("/", "").replace(" ", "")
+    return re.sub(r'(\D)0+(\d)', r'\1\2', s)
+
 @router.post("/api/reconcile")
 async def reconcile_gstr2b(
     file: UploadFile = File(...),
     client_id: str = Form(...),
     period: str = Form(...),
+    tolerance: str = Form("1.0"),
     authorization: str = Header(None)
 ):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")
         
     token = authorization.split(" ")[1]
+    tol_val = float(tolerance)
     
     async with httpx.AsyncClient() as http_client:
         user_resp = await http_client.get(
@@ -78,8 +92,7 @@ async def reconcile_gstr2b(
         inv_col = col_mapping.get('invoice_num')
         if not gstin_col or not inv_col: continue
             
-        if pd.isna(row.get(gstin_col)):
-            continue
+        if pd.isna(row.get(gstin_col)): continue
             
         gstin = str(row.get(gstin_col, '')).strip()
         inv_num = str(row.get(inv_col, '')).strip()
@@ -101,20 +114,17 @@ async def reconcile_gstr2b(
         })
         
     async with httpx.AsyncClient() as http_client:
-        # 1. Fetch old records for rollback
         fetch_resp = await http_client.get(
             f"{SUPABASE_URL}/rest/v1/gstr2b_records?client_id=eq.{client_id}&period=eq.{period}",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
         )
         old_records = fetch_resp.json() if fetch_resp.status_code == 200 else []
 
-        # 2. Delete old records
         await http_client.delete(
             f"{SUPABASE_URL}/rest/v1/gstr2b_records?client_id=eq.{client_id}&period=eq.{period}",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
         )
         
-        # 3. Insert new records in chunks
         chunk_size = 500
         insert_success = True
         for i in range(0, len(records), chunk_size):
@@ -128,13 +138,10 @@ async def reconcile_gstr2b(
                 insert_success = False
                 break
                 
-        # 4. Rollback if insert failed
         if not insert_success and old_records:
-            # Re-insert the old records (stripping IDs if auto-generated)
             for r in old_records:
                 r.pop('id', None)
                 r.pop('created_at', None)
-            
             for i in range(0, len(old_records), chunk_size):
                 await http_client.post(
                     f"{SUPABASE_URL}/rest/v1/gstr2b_records",
@@ -143,11 +150,6 @@ async def reconcile_gstr2b(
                 )
             raise HTTPException(status_code=500, detail="Failed to insert new reconciliation records. Original records were restored.")
             
-        # Scope to invoices dated inside the reconciled month only. Without this, every
-        # never-reconciled invoice from *any* earlier month (recon_status is NULL until its
-        # own period is first reconciled) would get swept into whichever period you happen to
-        # run next and mislabeled "missing_in_2b" for the wrong month - the first reconciliation
-        # run on a client with existing history would flag its entire back-catalog incorrectly.
         period_start, period_end = period_to_date_range(period)
         base_url = (
             f"{SUPABASE_URL}/rest/v1/invoices?client_id=eq.{client_id}"
@@ -161,77 +163,98 @@ async def reconcile_gstr2b(
         )
         pr_invoices = pr_resp.json()
         
-    def clean_str(s):
-        """
-        Normalizes invoice numbers and GSTINs by stripping whitespace, hyphens, 
-        slashes, and stripping leading zeros from numeric sequences. 
-        This is necessary because vendors often write 'INV-001' on paper, 
-        but file it as 'INV/1' in the government GSTR-2B portal.
-        """
-        if not s: return ""
-        import re
-        s = str(s).strip().upper().replace("-", "").replace("/", "").replace(" ", "")
-        return re.sub(r'(\D)0+(\d)', r'\1\2', s)
-        
-    # Dictionary of GSTR-2B records keyed by a normalized string: "GSTIN_INVOICENUMBER"
-    two_b_dict = {f"{clean_str(r['supplier_gstin'])}_{clean_str(r['invoice_number'])}": r for r in records}
-    updates = []
-    
-    # We use RapidFuzz for fuzzy string matching on the invoice numbers.
-    # This catches typos or slight OCR mistakes (e.g. '0' vs 'O').
-    import rapidfuzz
+    # Phase 1: Hash Map Grouping O(N)
+    pr_by_gstin = defaultdict(list)
+    b2b_by_gstin = defaultdict(list)
     
     for inv in pr_invoices:
-        my_gstin = clean_str(inv.get('supplier_gstin'))
-        my_inv_num = clean_str(inv.get('invoice_number'))
-        scanned_tax = float(inv.get('taxable_amount') or 0)
+        gstin = clean_str(inv.get('supplier_gstin'))
+        pr_by_gstin[gstin].append(inv)
         
-        best_match_key = None
-        best_score = 0
-        best_b2b_rec = None
+    for rec in records:
+        gstin = clean_str(rec.get('supplier_gstin'))
+        b2b_by_gstin[gstin].append(rec)
+
+    updates = []
+    
+    # Phase 2: Reconciliation Engine
+    for gstin, pr_list in pr_by_gstin.items():
+        b2b_list = b2b_by_gstin.get(gstin, [])
         
-        for key, b2b_rec in two_b_dict.items():
-            b2b_gstin, b2b_inv_num = key.split('_', 1)
-            if my_gstin != b2b_gstin:
-                continue
+        # Consolidation Check (O(N) Summation)
+        sum_pr = sum(float(inv.get('taxable_amount') or 0) for inv in pr_list)
+        sum_b2b = sum(float(rec.get('taxable_value') or 0) for rec in b2b_list)
+        
+        if len(pr_list) != len(b2b_list) and len(b2b_list) > 0:
+            if abs(sum_pr - sum_b2b) <= tol_val:
+                # Consolidation Detected! Flag all PRs in this group
+                for inv in pr_list:
+                    updates.append({
+                        "id": inv['id'],
+                        "recon_status": "mismatch",
+                        "recon_period": period,
+                        "error_message": f"Consolidation Detected: {len(pr_list)} PRs vs {len(b2b_list)} GSTR2B"
+                    })
+                continue # Skip 1-to-1 matching for this consolidated group
                 
-            score = rapidfuzz.fuzz.ratio(my_inv_num, b2b_inv_num)
-            if score > best_score:
-                best_score = score
-                best_match_key = key
-                best_b2b_rec = b2b_rec
-                
-        if best_match_key and best_score >= 75.0:
-            b2b_tax = float(best_b2b_rec['taxable_value'] or 0)
+        # 1-to-1 Match Logic (Only for non-consolidated or mismatched groups)
+        two_b_dict = {f"{clean_str(r['invoice_number'])}": r for r in b2b_list}
+        
+        for inv in pr_list:
+            my_inv_num = clean_str(inv.get('invoice_number'))
+            scanned_tax = float(inv.get('taxable_amount') or 0)
             
-            if best_score >= 90.0 and abs(scanned_tax - b2b_tax) <= 1.0:
-                status = "matched"
-            else:
-                status = "mismatch"
+            best_match_key = None
+            best_score = 0
+            best_b2b_rec = None
+            
+            for b2b_inv_num, b2b_rec in two_b_dict.items():
+                score = rapidfuzz.fuzz.ratio(my_inv_num, b2b_inv_num)
+                if score > best_score:
+                    best_score = score
+                    best_match_key = b2b_inv_num
+                    best_b2b_rec = b2b_rec
+                    
+            if best_match_key and best_score >= 75.0:
+                b2b_tax = float(best_b2b_rec['taxable_value'] or 0)
                 
-            updates.append({
-                "id": inv['id'],
-                "recon_status": status,
-                "recon_period": period
-            })
-            del two_b_dict[best_match_key]
-        else:
-            if not inv.get('recon_status') or inv.get('recon_status') in ['unreconciled', 'missing_in_2b']:
+                # Use User's Configurable Tolerance
+                if best_score >= 90.0 and abs(scanned_tax - b2b_tax) <= tol_val:
+                    status = "matched"
+                    error_msg = None
+                else:
+                    status = "mismatch"
+                    error_msg = "Amount/Invoice Mismatch"
+                    
                 updates.append({
                     "id": inv['id'],
-                    "recon_status": "missing_in_2b",
-                    "recon_period": period
+                    "recon_status": status,
+                    "recon_period": period,
+                    "error_message": error_msg
                 })
+                del two_b_dict[best_match_key]
+            else:
+                if not inv.get('recon_status') or inv.get('recon_status') in ['unreconciled', 'missing_in_2b']:
+                    updates.append({
+                        "id": inv['id'],
+                        "recon_status": "missing_in_2b",
+                        "recon_period": period,
+                        "error_message": None
+                    })
                 
     if updates:
         async with httpx.AsyncClient() as http_client:
-            await http_client.post(
-                f"{SUPABASE_URL}/rest/v1/rpc/bulk_update_invoices_recon",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json={"updates": updates}
-            )
+            # Chunk the RPC updates as well to prevent huge payloads
+            update_chunk_size = 500
+            for i in range(0, len(updates), update_chunk_size):
+                await http_client.post(
+                    f"{SUPABASE_URL}/rest/v1/rpc/bulk_update_invoices_recon",
+                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json={"updates": updates[i:i+update_chunk_size]}
+                )
             
-    return {"status": "success", "message": f"Reconciled {len(records)} records from 2B against {len(pr_invoices)} Purchase Register invoices."}
+    return {"status": "success", "message": f"Reconciled {len(records)} records from 2B against {len(pr_invoices)} Purchase Register invoices using {tol_val} tolerance."}
+
 
 import json
 
@@ -239,59 +262,62 @@ import json
 async def deep_match_reconcile(
     client_id: str = Form(...),
     period: str = Form(...),
+    tolerance: str = Form("1.0"),
     authorization: str = Header(None)
 ):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")
         
     token = authorization.split(" ")[1]
-    supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+    tol_val = float(tolerance)
     
-    try:
-        user_resp = await supabase_client.auth.get_user(token)
-        user_id = user_resp.user.id
-        supabase_client.postgrest.auth(token)
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid session token")
-
-    # Fetch PR invoices
-    inv_resp = await supabase_client.table("invoices").select("id,supplier_name,supplier_gstin,invoice_number,invoice_date,taxable_amount,total_amount,recon_status").eq("client_id", client_id).eq("recon_period", period).execute()
-    pr_invoices = inv_resp.data if inv_resp.data else []
-    
-    missing_in_2b = [inv for inv in pr_invoices if inv.get("recon_status") == "missing_in_2b"]
-    matched_invoices = [inv for inv in pr_invoices if inv.get("recon_status") in ["matched", "mismatch"]]
-    
-    if not missing_in_2b:
-        return {"status": "success", "message": "No unmatched Purchase Register invoices found for Deep Match."}
-        
-    # Fetch 2B records
-    b2b_resp = await supabase_client.table("gstr2b_records").select("*").eq("client_id", client_id).eq("period", period).execute()
-    b2b_records = b2b_resp.data if b2b_resp.data else []
-    
-    if not b2b_records:
-        return {"status": "success", "message": "No GSTR-2B records found for this period."}
-        
-    # Filter unmatched 2B records (those not already linked to matched_invoices)
-    def clean_str(s):
-        if not s: return ""
-        import re
-        s = str(s).strip().upper().replace("-", "").replace("/", "").replace(" ", "")
-        return re.sub(r'(\D)0+(\d)', r'\1\2', s)
-        
-    matched_2b_keys = {f"{clean_str(inv.get('supplier_gstin'))}_{clean_str(inv.get('invoice_number'))}" for inv in matched_invoices}
-    
-    unmatched_2b = []
-    for rec in b2b_records:
-        key = f"{clean_str(rec.get('supplier_gstin'))}_{clean_str(rec.get('invoice_number'))}"
-        if key not in matched_2b_keys:
-            unmatched_2b.append(rec)
-            
-    if not unmatched_2b:
-        return {"status": "success", "message": "No unmatched GSTR-2B records available for Deep Match."}
-        
-    # Deduct Credit for Deep Match
+    # We must use httpx instead of create_async_client to keep dependencies light
     import httpx
+    
     async with httpx.AsyncClient() as http_client:
+        user_resp = await http_client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if user_resp.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid session token")
+        user_id = user_resp.json().get("id")
+        
+        # Fetch PR Invoices
+        pr_resp = await http_client.get(
+            f"{SUPABASE_URL}/rest/v1/invoices?client_id=eq.{client_id}&recon_period=eq.{period}&select=id,supplier_name,supplier_gstin,invoice_number,invoice_date,taxable_amount,total_amount,recon_status",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        pr_invoices = pr_resp.json() if pr_resp.status_code == 200 else []
+        
+        missing_in_2b = [inv for inv in pr_invoices if inv.get("recon_status") == "missing_in_2b"]
+        matched_invoices = [inv for inv in pr_invoices if inv.get("recon_status") in ["matched", "mismatch"]]
+        
+        if not missing_in_2b:
+            return {"status": "success", "message": "No unmatched Purchase Register invoices found for Deep Match."}
+            
+        # Fetch 2B records
+        b2b_resp = await http_client.get(
+            f"{SUPABASE_URL}/rest/v1/gstr2b_records?client_id=eq.{client_id}&period=eq.{period}",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        b2b_records = b2b_resp.json() if b2b_resp.status_code == 200 else []
+        
+        if not b2b_records:
+            return {"status": "success", "message": "No GSTR-2B records found for this period."}
+            
+        matched_2b_keys = {f"{clean_str(inv.get('supplier_gstin'))}_{clean_str(inv.get('invoice_number'))}" for inv in matched_invoices}
+        
+        unmatched_2b = []
+        for rec in b2b_records:
+            key = f"{clean_str(rec.get('supplier_gstin'))}_{clean_str(rec.get('invoice_number'))}"
+            if key not in matched_2b_keys:
+                unmatched_2b.append(rec)
+                
+        if not unmatched_2b:
+            return {"status": "success", "message": "No unmatched GSTR-2B records available for Deep Match."}
+            
+        # Deduct Credit
         rpc_resp = await http_client.post(
             f"{SUPABASE_URL}/rest/v1/rpc/decrement_credits",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
@@ -300,30 +326,9 @@ async def deep_match_reconcile(
         if rpc_resp.status_code != 200:
             raise HTTPException(status_code=402, detail="Insufficient credits for AI Deep Match.")
             
-    # Call Gemini for Deep Match
+    # Prepare Gemini Payloads
     pr_subset = [{"id": inv["id"], "supplier": inv.get("supplier_name"), "gstin": inv.get("supplier_gstin"), "inv_num": inv.get("invoice_number"), "amount": inv.get("taxable_amount")} for inv in missing_in_2b]
     b2b_subset = [{"id": rec["id"], "gstin": rec.get("supplier_gstin"), "inv_num": rec.get("invoice_number"), "amount": rec.get("taxable_value")} for rec in unmatched_2b]
-    
-    prompt = f"""
-    You are an expert AI data reconciliation engine for Indian GST.
-    I have a list of 'Purchase Register' invoices and a list of 'GSTR-2B' government records.
-    They failed exact matching due to severe typos, OCR errors, or missing prefixes in invoice numbers or supplier names.
-    Your task is to logically match PR invoices to GSTR-2B records using fuzzy entity resolution.
-    
-    Purchase Register (PR) Invoices:
-    {json.dumps(pr_subset)}
-    
-    GSTR-2B Records:
-    {json.dumps(b2b_subset)}
-    
-    Return ONLY a valid JSON array of objects. Each object should have:
-    - "pr_invoice_id": The ID from the Purchase Register
-    - "b2b_record_id": The ID from the GSTR-2B Records that it matches
-    - "confidence_score": 0.0 to 1.0 indicating your confidence in the match
-    - "reason": A brief 1-sentence reason why they match despite the typos
-    
-    Do NOT include markdown formatting like ```json.
-    """
     
     import os
     from openai import AsyncOpenAI
@@ -333,37 +338,70 @@ async def deep_match_reconcile(
     if not gemini_client:
         raise HTTPException(status_code=500, detail="Gemini API Key not configured for Deep Match.")
         
-    try:
-        response = await gemini_client.chat.completions.create(
-            model="gemini-2.5-flash",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0
-        )
+    # AI Token Limit Protection: Chunk PR Invoices into batches of 50
+    pr_chunks = [pr_subset[i:i + 50] for i in range(0, len(pr_subset), 50)]
+    all_matches = []
+    
+    async def process_chunk(chunk):
+        prompt = f"""
+        You are an expert AI data reconciliation engine for Indian GST.
+        I have a list of 'Purchase Register' invoices and a list of 'GSTR-2B' government records.
+        They failed exact matching due to severe typos, OCR errors, or missing prefixes.
+        Your task is to logically match PR invoices to GSTR-2B records using fuzzy entity resolution.
         
-        result_text = response.choices[0].message.content.strip()
-        if result_text.startswith("```json"): result_text = result_text[7:]
-        if result_text.endswith("```"): result_text = result_text[:-3]
+        The user has set an absolute tax discrepancy tolerance of ₹{tol_val}. You MAY match them if amounts are within this tolerance.
         
-        matches = json.loads(result_text)
+        Purchase Register (PR) Invoices:
+        {json.dumps(chunk)}
         
-        # Apply updates
-        updates = []
-        for match in matches:
-            if match.get("confidence_score", 0) > 0.8:
-                updates.append({
-                    "id": match["pr_invoice_id"],
-                    "recon_status": "matched"
-                })
-                
-        if updates:
-            # Use bulk update RPC
-            # In deep match we might not have recon_period populated in updates yet, so we ensure it
-            for u in updates:
-                u['recon_period'] = period
-            await supabase_client.rpc("bulk_update_invoices_recon", {"updates": updates}).execute()
-                
-        return {"status": "success", "message": f"AI Deep Match found {len(updates)} matches out of {len(missing_in_2b)} unmatched invoices.", "matches": matches}
+        GSTR-2B Records:
+        {json.dumps(b2b_subset)}
         
-    except Exception as e:
-        print(f"Gemini Deep Match failed: {e}")
-        raise HTTPException(status_code=500, detail=f"AI Deep Match failed: {str(e)}")
+        Return ONLY a valid JSON array of objects. Each object should have:
+        - "pr_invoice_id": The ID from the Purchase Register
+        - "b2b_record_id": The ID from the GSTR-2B Records that it matches
+        - "confidence_score": 0.0 to 1.0 indicating your confidence in the match
+        - "reason": A brief 1-sentence reason why they match despite the typos
+        
+        Do NOT include markdown formatting like ```json.
+        """
+        try:
+            response = await gemini_client.chat.completions.create(
+                model="gemini-2.5-flash",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0
+            )
+            
+            result_text = response.choices[0].message.content.strip()
+            if result_text.startswith("```json"): result_text = result_text[7:]
+            if result_text.endswith("```"): result_text = result_text[:-3]
+            
+            return json.loads(result_text)
+        except Exception as e:
+            print(f"Chunk failed: {e}")
+            return []
+
+    # Process all chunks in parallel using asyncio.gather
+    chunk_results = await asyncio.gather(*(process_chunk(chunk) for chunk in pr_chunks))
+    for res in chunk_results:
+        all_matches.extend(res)
+        
+    updates = []
+    for match in all_matches:
+        if match.get("confidence_score", 0) > 0.8:
+            updates.append({
+                "id": match["pr_invoice_id"],
+                "recon_status": "matched",
+                "recon_period": period,
+                "error_message": None
+            })
+            
+    if updates:
+        async with httpx.AsyncClient() as http_client:
+            await http_client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/bulk_update_invoices_recon",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={"updates": updates}
+            )
+            
+    return {"status": "success", "message": f"AI Deep Match found {len(updates)} matches across {len(pr_chunks)} parallel processing chunks.", "matches": all_matches}

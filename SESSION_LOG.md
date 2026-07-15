@@ -97,3 +97,47 @@
   - Safely recover the progress after the abrupt machine shutdown by thoroughly committing the modified files and updating this log.
 - **Next Time**:
   - Proceed with the WhatsApp Bot Ingestion webhook task.
+
+## 2026-07-15 (Session Wrap-Up)
+- **Accomplished**: Verified all unrecorded work (E2E test fixes, UI overhauls) from the aborted session, properly documented them in this log, and safely committed them to the repository (`a4ff1e8`).
+- **Pending/Open**: WhatsApp Bot Ingestion (Meta vs Twilio).
+- **Decisions**: Confirmed the commit of recovered changes to secure progress.
+- **Next Time**: Start fresh on the WhatsApp Bot Ingestion webhook task.
+
+## 2026-07-16 (WhatsApp Bot Ingestion)
+- **Accomplished**:
+  - Investigated API pricing (Meta Direct vs Twilio) and chose Meta Direct Cloud API to avoid Twilio spam trap and per-message markup costs.
+  - Wrote SQL migration (`migration_phase32_whatsapp.sql`) to add `whatsapp_number` and `active_whatsapp_client_id` to user profiles.
+  - Designed the webhook integration in FastAPI. Created `whatsapp_routes.py` and `whatsapp_service.py`.
+  - Used FastAPI `BackgroundTasks` to offload the AI extraction to a background thread to instantly return a `200 OK` to Meta's webhook (avoiding Meta's 20s retry loop).
+  - Implemented secure downloading of WhatsApp media natively using `httpx` and piped the bytes directly into the existing `run_ai_extraction` pipeline.
+  - Added "WhatsApp Integration" UI to `SettingsPage.tsx` allowing accountants to specify their registered phone number and a default routing client for uploaded invoices.
+- **Pending/Open**:
+  - Run the SQL migration manually on production Supabase.
+  - Meta Developer Console setup (configuring Webhook URL, verify token, and permissions).
+  - Environment variable setup in production (`META_WEBHOOK_VERIFY_TOKEN`, `META_ACCESS_TOKEN`, `META_PHONE_NUMBER_ID`).
+  - E2E or manual testing of the webhook via Ngrok.
+- **Decisions**:
+  - Selected direct Meta integration over a BSP (like Twilio) to leverage the free 24-hour Service window, since 90% of our workflow is user-initiated inbound ingestion.
+  - Offloaded background tasks to FastAPI's built-in `BackgroundTasks` as a lean MVP instead of setting up Redis/Celery immediately.
+- **Next Time**:
+  - Deploy to production, run the migration, and test live WhatsApp ingestion via the Meta Developer Console.
+
+## 2026-07-16 (CI/CD, Monetization, & Roadmap Planning)
+- **Accomplished**:
+  - Engineered an Automated CI/CD Testing Pipeline via GitHub Actions (ci.yml) to run both Pytest and Playwright test suites on every pull request, securely pulling API keys from GitHub Secrets.
+  - Designed and deployed the Razorpay Monetization Engine for the Indian B2B market, choosing Prepaid SaaS Passes (Starter ₹999 / Pro ₹2,499) to bypass RBI e-mandate failure rates.
+  - Implemented a secure Postgres RPC (upgrade_user_tier) with atomic idempotency checks in migration_phase37_monetization.sql.
+  - Built a sleek <ProGate> React component to lock advanced tools (CFO Dashboard, Tax Liability Predictor) behind the Pro subscription wall.
+  - Updated the backend (payment_routes.py) and frontend (WalletPage.tsx) to process Razorpay checkouts flawlessly.
+  - Successfully documented the entire system state, updating KhataLens_Master_Document.md and creating 13_Monetization_Architecture.md.
+  - Brainstormed and documented 10 high-value expansion concepts for V2.0 (e.g., Tally XML Export, AA API Bank Feeds, AI Fraud Detection) in 14_Future_Expansion_Ideas.md.
+- **Pending/Open**:
+  - The actual .sql migration files generated today (phase37_monetization) still need to be executed manually in Supabase because the local Docker daemon was offline.
+  - GitHub Secrets must be populated by the user before the CI/CD pipeline will pass its authentications.
+- **Decisions**:
+  - Decided to pivot from recurring subscriptions to Prepaid Passes for Razorpay due to the high churn/failure rates of RBI-mandated 3D secure checks.
+  - Chosen to lock entire React routes using a Higher-Order Component (<ProGate>) rather than just hiding buttons, ensuring robust UX.
+- **Next Time**:
+  - Run the migrations on the production Supabase instance.
+  - Populate GitHub Secrets and verify the CI/CD pipeline runs green.

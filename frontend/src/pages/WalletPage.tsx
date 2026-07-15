@@ -52,9 +52,8 @@ export default function WalletPage() {
   }, []);
 
   const plans = [
-    { id: 1, name: "Starter Bundle", credits: 500, price: 499, popular: false },
-    { id: 2, name: "Pro Firm Bundle", credits: 2500, price: 1999, popular: true },
-    { id: 3, name: "Enterprise Bulk", credits: 10000, price: 6999, popular: false }
+    { id: 1, name: "Starter Pass", credits: 1000, price: 999, popular: false, type: "starter" },
+    { id: 2, name: "Pro Pass", credits: 5000, price: 2499, popular: true, type: "pro" }
   ];
 
   const handlePurchase = async (plan: typeof plans[0]) => {
@@ -74,7 +73,7 @@ export default function WalletPage() {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ amount: plan.price, credits: plan.credits }),
+        body: JSON.stringify({ amount: plan.price, credits: plan.credits, plan_type: plan.type }),
       });
 
       if (!orderRes.ok) throw new Error("Failed to create order");
@@ -107,7 +106,8 @@ export default function WalletPage() {
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_signature: response.razorpay_signature,
                 credits: plan.credits,
-                amount: plan.price
+                amount: plan.price,
+                plan_type: plan.type
               }),
             });
             
@@ -163,7 +163,10 @@ export default function WalletPage() {
               <Zap className="w-8 h-8 text-accent" />
             </div>
             <h2 className="text-text-secondary font-medium mb-2">Available Credits</h2>
-            <div className="text-5xl font-bold text-text-primary mb-4">{profile?.credits || 0}</div>
+            <div className="text-5xl font-bold text-text-primary mb-2">{profile?.credits || 0}</div>
+            <div className="text-sm font-bold text-accent uppercase tracking-wider mb-4 border border-accent/30 bg-accent/10 px-3 py-1 rounded-full">
+              {profile?.tier || 'Free'} Tier
+            </div>
             <p className="text-sm text-text-disabled">1 Credit = 1 AI Invoice Scan</p>
           </div>
         </div>

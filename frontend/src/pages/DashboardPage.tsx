@@ -352,7 +352,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Tax Liability Predictor Widget */}
+      {/* Tax Liability Predictor Widget (Redirect Banner) */}
       <motion.div 
         whileHover={{ y: -2 }}
         transition={{ type: "spring", stiffness: 400, damping: 25 }}
@@ -366,51 +366,11 @@ export default function DashboardPage() {
               <TrendingUp className="w-5 h-5 text-accent" /> Tax Liability Predictor
             </h2>
             <p className="text-sm text-text-secondary max-w-md mb-4">
-              Enter your estimated monthly sales and average tax rate to instantly calculate your cash liability based on scanned ITC.
+              Upload your GSTR-1 Excel to instantly calculate your cash liability against eligible ITC with carry-forward support.
             </p>
-            
-            <div className="flex flex-wrap items-end gap-4">
-              <div>
-                <label className="block text-xs text-text-secondary mb-1">Est. Monthly Sales (₹)</label>
-                <input 
-                  type="number" 
-                  className="input-field w-40" 
-                  value={estimatedSales} 
-                  onChange={(e) => setEstimatedSales(Number(e.target.value))} 
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-text-secondary mb-1">Avg Tax Rate (%)</label>
-                <input 
-                  type="number" 
-                  className="input-field w-24" 
-                  value={taxRate} 
-                  onChange={(e) => setTaxRate(Number(e.target.value))} 
-                />
-              </div>
-              <button onClick={handleSaveSales} disabled={isSavingSales} className="btn-secondary h-10">
-                {isSavingSales ? 'Saving...' : 'Update'}
-              </button>
-            </div>
-          </div>
-          
-          <div className="flex-1 w-full md:w-auto md:max-w-xs card bg-bg-base/50 border border-white/5 backdrop-blur-sm">
-            <div className="space-y-2 mb-4 pb-4 border-b border-white/5">
-              <div className="flex justify-between text-sm">
-                <span className="text-text-secondary">Sales Tax Collected:</span>
-                <span className="font-mono text-text-primary">{formatCurrency(estimatedSalesTax)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-text-secondary">Purchase ITC (from DB):</span>
-                <span className="font-mono text-success">-{formatCurrency(totalITC)}</span>
-              </div>
-            </div>
-            <div className="flex justify-between font-bold text-lg">
-              <span className="text-text-primary">Est. Cash Liability:</span>
-              <span className={`font-mono ${estimatedSalesTax - totalITC > 0 ? 'text-error' : 'text-success'}`}>
-                {formatCurrency(estimatedLiability)}
-              </span>
-            </div>
+            <Link to="/tax-liability" className="btn-primary inline-flex items-center gap-2">
+              Open Predictor <TrendingUp className="w-4 h-4" />
+            </Link>
           </div>
         </div>
       </motion.div>

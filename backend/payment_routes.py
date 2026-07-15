@@ -17,6 +17,7 @@ if RAZORPAY_KEY_ID != "rzp_test_mock":
 class OrderRequest(BaseModel):
     amount: int # Amount in INR
     credits: int
+    plan_type: str # 'starter' or 'pro'
 
 @router.post("/api/create-order")
 async def create_order(req: OrderRequest, authorization: str = Header(None)):
@@ -120,6 +121,7 @@ async def verify_payment(
     signature = data.get("razorpay_signature")
     credits_to_add = data.get("credits", 0)
     amount_paid = data.get("amount", 0)
+    plan_type = data.get("plan_type", "free")
     
     if rzp_client:
         try:
@@ -131,43 +133,34 @@ async def verify_payment(
         except Exception as e:
             raise HTTPException(status_code=400, detail="Invalid payment signature")
             
-    # Atomic DB Update
+    # Atomic DB Update via RPC
     try:
-        # Check if transaction already exists (idempotency)
-        existing = await supabase_client.table("transactions").select("id").eq("payment_id", payment_id).execute()
-        if existing.data:
-            return {"status": "success", "message": "Payment already verified."}
-            
-        # Record transaction
-        await supabase_client.table("transactions").insert({
-            "user_id": user_id,
-            "amount_paid": amount_paid,
-            "credits_added": credits_to_add,
-            "payment_id": payment_id,
-            "order_id": order_id,
-            "status": "success"
-        }).execute()
-        
-        # We need an RPC to increment credits, or we can just update since RLS allows it if we bypass or use RPC.
-        # Actually RLS might block direct profile update. 
-        # Let's use RPC 'increment_credits'. Wait, we don't have 'increment_credits' RPC.
-        # The frontend user can't update their own credits directly due to security.
-        # We will use the service role key to update the credits.
         import httpx
         async with httpx.AsyncClient() as http_client:
             service_role = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
             if service_role:
-                # Use atomic RPC to prevent race conditions
-                await http_client.post(
-                    f"{SUPABASE_URL}/rest/v1/rpc/increment_credits",
+                # Use atomic RPC upgrade_user_tier defined in phase 37
+                rpc_response = await http_client.post(
+                    f"{SUPABASE_URL}/rest/v1/rpc/upgrade_user_tier",
                     headers={
                         "apikey": service_role, 
                         "Authorization": f"Bearer {service_role}", 
                         "Content-Type": "application/json"
                     },
-                    json={"user_id_param": user_id, "amount": credits_to_add}
+                    json={
+                        "user_id_param": user_id,
+                        "plan_type_param": plan_type,
+                        "credits_param": credits_to_add,
+                        "amount_paid_param": amount_paid,
+                        "payment_id_param": payment_id,
+                        "order_id_param": order_id
+                    }
                 )
+                if rpc_response.status_code >= 400:
+                    raise HTTPException(status_code=500, detail=f"Database update failed: {rpc_response.text}")
+            else:
+                raise HTTPException(status_code=500, detail="Missing Service Role Key")
             
-        return {"status": "success", "message": "Credits added successfully."}
+        return {"status": "success", "message": f"Successfully upgraded to {plan_type} and added {credits_to_add} credits."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -127,3 +127,9 @@ export async function clearSession(page: Page) {
   });
   await page.context().clearCookies();
 }
+
+export async function injectActiveClientContext(page: Page, clientId: string = 'test-client-123') {
+  await page.evaluate((id) => {
+    localStorage.setItem('khatalens-active-client-id', id);
+  }, clientId);
+}

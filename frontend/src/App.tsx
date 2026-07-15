@@ -13,13 +13,17 @@ const SavedInvoicesPage = lazy(() => import('./pages/SavedInvoicesPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const ClientsPage = lazy(() => import('./pages/ClientsPage'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
+const BankStatementsPage = lazy(() => import('./pages/BankStatementsPage'));
 const ReconciliationPage = lazy(() => import('./pages/ReconciliationPage'));
+const BankReconcilePage = lazy(() => import('./pages/BankReconcilePage'));
 const VirtualCfoPage = lazy(() => import('./pages/VirtualCfoPage'));
+const TaxLiabilityPage = lazy(() => import('./pages/TaxLiabilityPage'));
 const CollaborationPortal = lazy(() => import('./pages/CollaborationPortal'));
 const SnapPage = lazy(() => import('./pages/SnapPage'));
 const PlatformAdminPage = lazy(() => import('./pages/PlatformAdminPage'));
 const WalletPage = lazy(() => import('./pages/WalletPage'));
 import PlatformAdminLayout from './components/PlatformAdminLayout';
+import ProGate from './components/ProGate';
 import { ScanProvider } from './lib/ScanContext';
 import { ClientProvider } from './lib/ClientContext';
 import { Toaster } from 'react-hot-toast';
@@ -105,8 +109,11 @@ export default function App() {
             <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="scan" element={<ScanPage />} />
-              <Route path="cfo" element={<VirtualCfoPage />} />
+              <Route path="cfo" element={<ProGate><VirtualCfoPage /></ProGate>} />
+              <Route path="tax-liability" element={<ProGate><TaxLiabilityPage /></ProGate>} />
               <Route path="invoices" element={<SavedInvoicesPage />} />
+              <Route path="bank-statements" element={<BankStatementsPage />} />
+              <Route path="bank-reconcile" element={<BankReconcilePage />} />
               <Route path="reconcile" element={<ReconciliationPage />} />
               <Route path="clients" element={<ClientsPage />} />
               <Route path="settings" element={<SettingsPage />} />

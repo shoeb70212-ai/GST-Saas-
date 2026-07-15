@@ -5,9 +5,10 @@ import {
   ArrowRight, ShieldCheck, Network, Banknote, CheckCircle2,
   ChevronRight, Calculator, FileCheck, Layers, Upload,
   FileSpreadsheet, Zap, Users, Lock, BarChart3, Menu, X,
-  Plus, Minus, Quote, Star, Building2, Clock, Award
+  Plus, Minus, Quote, Star, Building2, Clock, Award, Smartphone
 } from 'lucide-react';
 import HeroAnimation from '../components/HeroAnimation';
+import { BankStatementDemo, WhatsAppDemo, ReconciliationDemo } from '../components/LandingFeatures';
 
 // ─── Animation Variants ─────────────────────────────────────────────────────
 const fadeUp = {
@@ -312,6 +313,48 @@ const features = [
         </div>
       </div>
     )
+  },
+  {
+    icon: Banknote,
+    tag: "Bank Statements",
+    headline: "Your PDFs,\nturned into data.",
+    body: "Upload any PDF bank statement. Our specialized extractor pulls every transaction—deposits, withdrawals, and running balances—accurately, no matter how many pages.",
+    bullets: [
+      "Multi-page PDF extraction",
+      "Debit/Credit categorization",
+      "Math verification on balances",
+      "Instant Tally-ready export"
+    ],
+    side: 'right' as const,
+    demo: <BankStatementDemo />
+  },
+  {
+    icon: Network,
+    tag: "AI Reconciliation",
+    headline: "Invoices meet bank txns.\nAutomatically.",
+    body: "Stop checking off lines with a pencil. Our AI matching engine pairs your extracted invoices with your bank statement transactions. Approve exact matches with one click.",
+    bullets: [
+      "2-way fuzzy matching",
+      "Handles partial & advance payments",
+      "Auto-approve mode for exact matches",
+      "Undo history and audit trail"
+    ],
+    side: 'left' as const,
+    demo: <ReconciliationDemo />
+  },
+  {
+    icon: Smartphone,
+    tag: "WhatsApp Engine",
+    headline: "Clients forward bills.\nWe do the rest.",
+    body: "Give your clients a dedicated WhatsApp number. They forward photos of restaurant bills, taxi receipts, or vendor invoices. KhataLens automatically assigns them to their workspace and extracts the data.",
+    bullets: [
+      "Zero-friction client uploads",
+      "Auto-assign to client workspaces",
+      "Handles compressed images",
+      "Instant confirmation to clients"
+    ],
+    side: 'right' as const,
+    demo: <WhatsAppDemo />
   }
 ];
 
@@ -425,12 +468,12 @@ export default function LandingPage() {
             </motion.div>
 
             <h1 id="hero-heading" className="text-[3.5rem] lg:text-[5.5rem] font-display font-bold tracking-tight mb-8 leading-[1.05] text-text-primary">
-              Stop typing.<br />
-              <em className="text-accent not-italic">Start filing.</em>
+              From receipt scan<br />
+              <em className="text-accent not-italic">to bank reconciliation.</em>
             </h1>
 
             <p className="text-xl text-text-secondary mb-10 max-w-lg leading-relaxed font-light">
-              KhataLens reads your messy purchase bills and converts them into a GST-compliant Excel sheet — ready for Tally, Zoho, or the GST Portal — in seconds.
+              KhataLens reads your messy bills, extracts the data, and reconciles it against bank statements. All AI. Zero typing.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 mb-10">
@@ -486,13 +529,13 @@ export default function LandingPage() {
               <StatCounter target={500} suffix="+" label="CAs in Beta" />
             </motion.div>
             <motion.div variants={fadeUp}>
-              <StatCounter target={48000} suffix="+" label="Invoices Processed" />
+              <StatCounter target={120} suffix="k+" label="Invoices & Txns" />
             </motion.div>
             <motion.div variants={fadeUp}>
-              <StatCounter target={97} suffix="%" label="Extraction Accuracy" />
+              <StatCounter target={98} suffix="%" label="Recon Accuracy" />
             </motion.div>
             <motion.div variants={fadeUp}>
-              <StatCounter target={4} suffix="s" label="Avg. Processing Time" />
+              <StatCounter target={0} suffix="" label="Manual Typing" />
             </motion.div>
           </motion.div>
 
@@ -687,9 +730,9 @@ export default function LandingPage() {
           >
             {[
               { icon: ShieldCheck, title: 'GSTR-2B AI Deep Match', desc: 'Upload the government\'s GSTR-2B JSON. Our AI fuzzy-matches it against your scanned bills, instantly flagging lost ITC due to vendor typos.', quarter: 'Q3 2026' },
-              { icon: Network, title: '3-Tier Collaboration', desc: 'Business owners scan bills on their phones. Bills appear instantly in your CA dashboard for verification. Stop chasing invoices on WhatsApp.', quarter: 'Q3 2026' },
+              { icon: Smartphone, title: 'Native Android App', desc: 'A dedicated Android app for you and your clients. Offline scanning, better edge detection, and push notifications for required approvals.', quarter: 'Q3 2026' },
               { icon: BarChart3, title: 'Tax Liability Predictor', desc: 'Import a sales register. KhataLens calculates real-time GST liability (Sales Tax minus ITC), giving clients a cashflow dashboard before filing.', quarter: 'Q4 2026' },
-              { icon: Users, title: 'Vendor GSTIN Health Monitor', desc: 'Automated daily pinging of supplier GSTINs. Get instant alerts if a vendor\'s GSTIN gets cancelled — before you claim ITC on their invoice.', quarter: 'Q4 2026' },
+              { icon: Calculator, title: 'Multi-Currency Recon', desc: 'Handle international invoices and bank statements with automatic real-time exchange rate conversions and forex gain/loss calculations.', quarter: 'Q4 2026' },
             ].map((item, i) => (
               <motion.article
                 key={i}
@@ -736,73 +779,99 @@ export default function LandingPage() {
             whileInView="visible"
             viewport={{ once: true, margin: "-80px" }}
             variants={stagger}
-            className="grid md:grid-cols-2 gap-8"
+            className="grid grid-cols-1 md:grid-cols-3 gap-8"
           >
             {/* Free Beta */}
-            <motion.div variants={fadeLeft} className="bg-bg-base rounded-3xl p-10 border border-border hover:border-border-focus transition-all duration-300">
-              <div className="mb-8">
-                <div className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-4">Free Beta</div>
-                <div className="flex items-end gap-2 mb-2">
-                  <span className="text-6xl font-display font-bold text-text-primary">₹0</span>
-                  <span className="text-text-secondary pb-2 font-light">forever</span>
+            <motion.div variants={fadeUp} className="bg-bg-base rounded-3xl p-8 border border-border hover:border-border-focus transition-all duration-300">
+              <div className="mb-6">
+                <div className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-4">Starter</div>
+                <div className="flex items-end gap-1 mb-2">
+                  <span className="text-4xl lg:text-5xl font-display font-bold text-text-primary">₹999</span>
+                  <span className="text-text-secondary pb-1 font-light text-sm">/ month</span>
                 </div>
-                <p className="text-text-secondary font-light">Perfect for solo practitioners evaluating the platform.</p>
+                <p className="text-text-secondary font-light text-sm">Perfect for solo practitioners and small businesses.</p>
               </div>
-              <ul className="space-y-4 mb-10" aria-label="Free Beta plan features">
+              <ul className="space-y-3 mb-8 text-sm" aria-label="Starter plan features">
                 {[
-                  '100 invoice extractions',
-                  'Unlimited client workspaces',
+                  '1,000 invoice extractions',
+                  '10 bank statement pages',
+                  'Unlimited workspaces',
                   'Excel + CSV export',
-                  'GSTIN validation',
                   'Email support',
                 ].map((f, i) => (
-                  <li key={i} className="flex items-center gap-3 text-text-primary font-medium">
-                    <CheckCircle2 className="w-5 h-5 text-accent shrink-0" aria-hidden="true" /> {f}
+                  <li key={i} className="flex items-start gap-2 text-text-primary font-medium">
+                    <CheckCircle2 className="w-4 h-4 text-accent shrink-0 mt-0.5" aria-hidden="true" /> <span>{f}</span>
                   </li>
                 ))}
               </ul>
-              <Link to="/auth" className="block w-full py-4 rounded-2xl border border-border text-center font-semibold text-text-primary hover:border-accent/40 hover:text-accent transition-all duration-200">
-                Get Started Free
+              <Link to="/auth" className="block w-full py-3 rounded-xl border border-border text-center font-semibold text-text-primary hover:border-accent/40 hover:text-accent transition-all duration-200">
+                Get Started
               </Link>
             </motion.div>
 
             {/* Pro */}
             <motion.div
-              variants={fadeRight}
-              className="relative bg-bg-base rounded-3xl p-10 border border-accent/30 shadow-2xl shadow-accent/10"
+              variants={fadeUp}
+              className="relative bg-bg-base rounded-3xl p-8 border-2 border-accent shadow-2xl shadow-accent/10 transform md:-translate-y-4"
             >
               <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-br from-accent/5 to-transparent rounded-3xl" />
               <div className="relative z-10">
-                <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center justify-between mb-6">
                   <div className="text-xs font-bold uppercase tracking-widest text-accent">Pro</div>
-                  <span className="px-3 py-1.5 bg-accent text-text-inverse text-[11px] font-bold rounded-full uppercase tracking-widest">
-                    Launching Soon
+                  <span className="px-2.5 py-1 bg-accent text-text-inverse text-[10px] font-bold rounded-full uppercase tracking-widest flex items-center gap-1">
+                    <Star className="w-3 h-3" /> Most Popular
                   </span>
                 </div>
-                <div className="flex items-end gap-2 mb-2">
-                  <span className="text-6xl font-display font-bold text-text-primary">₹999</span>
-                  <span className="text-text-secondary pb-2 font-light">/ month</span>
+                <div className="flex items-end gap-1 mb-2">
+                  <span className="text-4xl lg:text-5xl font-display font-bold text-text-primary">₹2,499</span>
+                  <span className="text-text-secondary pb-1 font-light text-sm">/ month</span>
                 </div>
-                <p className="text-text-secondary font-light mb-8">Everything in Free, plus serious scale for busy firms.</p>
-                <ul className="space-y-4 mb-10" aria-label="Pro plan features">
+                <p className="text-text-secondary font-light text-sm mb-6">Everything in Starter, plus AI Reconciliation and WhatsApp.</p>
+                <ul className="space-y-3 mb-8 text-sm" aria-label="Pro plan features">
                   {[
-                    '1,000 extractions / month',
-                    'Everything in Free Beta',
-                    'Batch processing queue (200 files)',
-                    'Priority AI processing',
-                    'GSTR-2B reconciliation (on launch)',
+                    '5,000 invoice extractions',
+                    'Unlimited bank statements',
+                    'AI Recon Engine (Auto-match)',
+                    'WhatsApp Receipt Engine',
+                    'Batch processing queue',
                     'Dedicated CA support',
-                    'Custom Excel column mapping',
                   ].map((f, i) => (
-                    <li key={i} className="flex items-center gap-3 text-text-primary font-medium">
-                      <CheckCircle2 className="w-5 h-5 text-accent shrink-0" aria-hidden="true" /> {f}
+                    <li key={i} className="flex items-start gap-2 text-text-primary font-medium">
+                      <CheckCircle2 className="w-4 h-4 text-accent shrink-0 mt-0.5" aria-hidden="true" /> <span>{f}</span>
                     </li>
                   ))}
                 </ul>
-                <Link to="/auth" className="block w-full py-4 rounded-2xl bg-accent hover:bg-accent-hover text-text-inverse text-center font-semibold transition-all duration-200 shadow-lg shadow-accent/20">
-                  Join Waitlist
+                <Link to="/auth" className="block w-full py-3 rounded-xl bg-accent hover:bg-accent-hover text-text-inverse text-center font-semibold transition-all duration-200 shadow-lg shadow-accent/20">
+                  Start Pro Trial
                 </Link>
               </div>
+            </motion.div>
+
+            {/* Custom */}
+            <motion.div variants={fadeUp} className="bg-bg-base rounded-3xl p-8 border border-border hover:border-border-focus transition-all duration-300">
+              <div className="mb-6">
+                <div className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-4">CA Firm / Enterprise</div>
+                <div className="flex items-end gap-1 mb-2">
+                  <span className="text-4xl lg:text-5xl font-display font-bold text-text-primary">Custom</span>
+                </div>
+                <p className="text-text-secondary font-light text-sm">Tailored for large practices with high volumes.</p>
+              </div>
+              <ul className="space-y-3 mb-8 text-sm" aria-label="Enterprise plan features">
+                {[
+                  'Custom extraction volumes',
+                  'White-labeled portal',
+                  'API Access for integrations',
+                  'On-premise deployment options',
+                  'Dedicated Account Manager',
+                ].map((f, i) => (
+                  <li key={i} className="flex items-start gap-2 text-text-primary font-medium">
+                    <CheckCircle2 className="w-4 h-4 text-accent shrink-0 mt-0.5" aria-hidden="true" /> <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+              <a href="mailto:sales@khatalens.com" className="block w-full py-3 rounded-xl border border-border text-center font-semibold text-text-primary hover:border-accent/40 hover:text-accent transition-all duration-200">
+                Contact Sales
+              </a>
             </motion.div>
           </motion.div>
         </div>

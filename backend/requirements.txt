@@ -14,3 +14,9 @@ openpyxl
 tenacity
 razorpay
 pymupdf4llm
+Pillow
+pillow-heif
+pytest
+pytest-asyncio
+pytest-cov
+pytest-mock

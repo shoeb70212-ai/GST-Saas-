@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ScanLine, FileText, Settings, LogOut, Sparkles, Sun, Moon, Building2, ChevronDown, CreditCard, MoreHorizontal, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, ScanLine, FileText, Settings, LogOut, Sparkles, Sun, Moon, Building2, ChevronDown, CreditCard, MoreHorizontal, TrendingUp, Banknote, Network } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -74,12 +74,15 @@ export default function Layout() {
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Scan', path: '/scan', icon: ScanLine },
-    { name: 'Virtual CFO', path: '/cfo', icon: TrendingUp },
+    { name: 'Tax Liability', path: '/tax-liability', icon: TrendingUp },
+    { name: 'Virtual CFO', path: '/cfo', icon: Sparkles },
     { name: 'Invoices', path: '/invoices', icon: FileText },
     { name: 'GSTR-2B', path: '/reconcile', icon: FileText },
   ];
   
   const moreNavItems = [
+    { name: 'Bank Stmts', path: '/bank-statements', icon: Banknote },
+    { name: 'Bank Match', path: '/bank-reconcile', icon: Network },
     { name: isBusiness ? 'Businesses' : 'Clients', path: '/clients', icon: Building2 },
     { name: 'Wallet & Billing', path: '/wallet', icon: CreditCard },
     { name: 'Settings', path: '/settings', icon: Settings },

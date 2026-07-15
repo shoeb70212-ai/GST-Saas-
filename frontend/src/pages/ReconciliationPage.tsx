@@ -23,6 +23,7 @@ const cleanStr = (s: string) => (s || '').toString().trim().toUpperCase().replac
 export default function ReconciliationPage() {
   const { activeClientId } = useClient();
   const [period, setPeriod] = useState('03-2024'); // Example default
+  const [tolerance, setTolerance] = useState(1.0);
   const [isUploading, setIsUploading] = useState(false);
 
   const { data: invoices, isLoading: invoicesLoading, isError: invoicesError, refetch: refetchInvoices } = useQuery({
@@ -69,6 +70,7 @@ export default function ReconciliationPage() {
     formData.append('file', file);
     formData.append('client_id', activeClientId);
     formData.append('period', period);
+    formData.append('tolerance', tolerance.toString());
 
     setIsUploading(true);
     toast.loading("Reconciling with GSTR-2B...", { id: 'recon' });
@@ -118,7 +120,8 @@ export default function ReconciliationPage() {
       invoice_number: inv.invoice_number,
       invoice_date: inv.invoice_date,
       taxable_amount: inv.taxable_amount,
-      status: inv.recon_status
+      status: inv.recon_status,
+      error_message: inv.error_message
     })),
     ...missingInPR.map(g2b => ({
       id: g2b.id,
@@ -126,7 +129,8 @@ export default function ReconciliationPage() {
       invoice_number: g2b.invoice_number,
       invoice_date: g2b.invoice_date,
       taxable_amount: g2b.taxable_value,
-      status: 'missing_in_pr'
+      status: 'missing_in_pr',
+      error_message: null
     }))
   ], [invoices, missingInPR]);
 
@@ -140,6 +144,7 @@ export default function ReconciliationPage() {
       const formData = new FormData();
       formData.append('client_id', activeClientId);
       formData.append('period', period);
+      formData.append('tolerance', tolerance.toString());
       
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       const { data: { session } } = await supabase.auth.getSession();
@@ -188,6 +193,17 @@ export default function ReconciliationPage() {
             }}
             className="px-4 py-2 bg-bg-surface border border-border rounded-lg text-sm text-text-primary focus:border-accent outline-none" 
           />
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-text-secondary hidden sm:inline">Tolerance: ₹</span>
+            <input 
+              type="number" 
+              min="0" max="10" step="0.5"
+              value={tolerance} 
+              onChange={(e) => setTolerance(parseFloat(e.target.value) || 0)}
+              className="w-16 px-2 py-2 bg-bg-surface border border-border rounded-lg text-sm text-text-primary focus:border-accent outline-none" 
+              title="Allowed discrepancy amount"
+            />
+          </div>
           <div className="relative">
             <input type="file" accept=".xlsx,.xls" onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={isUploading || isDeepMatching} />
             <button className="btn-primary flex items-center gap-2" disabled={isUploading || isDeepMatching}>
@@ -295,7 +311,9 @@ export default function ReconciliationPage() {
                     {row.status === 'matched' ? (
                       <span className="badge bg-success-subtle text-success border border-success/20 text-[10px]">Matched</span>
                     ) : row.status === 'mismatch' ? (
-                      <span className="badge bg-warning-subtle text-warning border border-warning/20 text-[10px]">Mismatch</span>
+                      <span className="badge bg-warning-subtle text-warning border border-warning/20 text-[10px]" title={row.error_message || "Mismatch"}>
+                        {row.error_message?.includes('Consolidation') ? 'Consolidation' : 'Mismatch'}
+                      </span>
                     ) : row.status === 'missing_in_pr' ? (
                       <span className="badge bg-accent/10 text-accent border border-accent/20 text-[10px]">Missing in PR</span>
                     ) : (
@@ -330,7 +348,11 @@ export default function ReconciliationPage() {
                       {row.status === 'matched' ? (
                         <span className="badge bg-success-subtle text-success border border-success/20">Matched</span>
                       ) : row.status === 'mismatch' ? (
-                        <span className="badge bg-warning-subtle text-warning border border-warning/20">Mismatch</span>
+                        <span className="badge bg-warning-subtle text-warning border border-warning/20" title={row.error_message || "Mismatch"}>
+                          {row.error_message?.includes('Consolidation') ? (
+                            <span className="flex items-center gap-1 cursor-help"><AlertTriangle className="w-3 h-3"/> Grouped</span>
+                          ) : 'Mismatch'}
+                        </span>
                       ) : row.status === 'missing_in_pr' ? (
                         <span className="badge bg-accent/10 text-accent border border-accent/20">Missing in PR</span>
                       ) : (

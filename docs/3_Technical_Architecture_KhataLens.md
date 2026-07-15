@@ -2,51 +2,50 @@
 
 ## Stack Overview
 - **Frontend:** React 19 + Vite + Tailwind CSS + Lucide Icons + React Query (PWA Optimized)
-- **Backend/API:** FastAPI (Python) - Handles secure AI communication and PDF processing.
+- **Frontend Testing:** Playwright Pro (Web-First assertions, local Vite webServer integration)
+- **Backend/API:** FastAPI (Python) - Handles secure AI communication, PDF processing, and math reconciliation.
+- **Backend Testing:** Pytest with `pytest-asyncio` and deep Supabase/OpenAI mocking.
 - **Database:** Supabase (PostgreSQL)
-- **Authentication:** Supabase Auth (Email/Password)
-- **AI Processing:** Google Gemini 2.5 Flash / OpenRouter (Server-side execution)
-- **Cron / Uptime:** GitHub Actions workflow (`.github/workflows/keep-supabase-awake.yml`)
+- **Authentication:** Supabase Auth (Email/Password & JWT)
+- **AI Processing:** Google Gemini 2.5 Flash (Server-side execution with `response_format` JSON Schema)
+- **Cron / Background:** Render Background Workers (for WhatsApp ingestion and bulk processing) & GitHub Actions.
+
+## Infrastructure Strategy
+- **Frontend:** Statically compiled, hosted on Vercel.
+- **Backend:** FastAPI containerized for deployment on Render.
+- **Database:** Supabase Postgres with Realtime capabilities.
+
+## The AI Orchestration Architecture
+KhataLens uses a sophisticated multi-stage AI pipeline to ensure data accuracy and control LLM costs.
+
+1. **PDF Parsing (PyMuPDF):** Before any file touches the LLM, the FastAPI backend uses PyMuPDF (`fitz`) to extract raw text and images. This strips out heavy binary data, drastically reducing token payloads.
+2. **Structured Outputs (JSON Schema):** We never rely on standard markdown text responses. All LLM calls use strict JSON schemas ensuring exactly 37 fields for invoices, or precise column arrays for bank statements.
+3. **The Hybrid Reconciliation Engine:**
+   - *Tier 1 (Deterministic Math):* Runs purely in Python. Instantly matches bank withdrawal amounts to invoice totals within a ₹1.00 tolerance. Costs ₹0.00 and has 0% hallucination risk.
+   - *Tier 2 (AI Fuzzy Match):* Sent to Gemini 2.5 Flash. Used for resolving partial payments or names that don't perfectly align (e.g., "NEFT-AMZ" to "Amazon India").
 
 ## Database Schema (Supabase)
 The system is built on a heavily normalized multi-tenant structure to ensure 100% data isolation between clients.
 
-### 1. `auth.users`
-The core Supabase authentication table. Represents the Accountant/CA using the software.
+### Core Architecture Tables
+- **`auth.users` / `profiles`**: The CA using the software. `profiles` holds their `credits` wallet.
+- **`clients`**: The businesses managed by the CA. Data is sharded logically via Row-Level Security (RLS) on `client_id`.
 
-### 2. `profiles`
-- Extends the auth user.
-- Holds the `credits` wallet balance (default 100 on signup).
-- Tracked via an automatic Supabase Trigger on user creation.
-- **Graceful Fallback:** If the trigger fails, both frontend and backend gracefully default to 100 credits without crashing.
-
-### 3. `clients`
-- Represents the individual businesses managed by the accountant.
-- Fields: `id`, `user_id` (Accountant), `client_name`, `gstin`, `pan`.
-- RLS Policy: Accountant can only view/edit their own clients.
-
-### 4. `invoices` & `invoice_line_items`
-- The core ledger of scanned invoices.
-- **Foreign Keys:** Linked to `user_id` (the accountant) AND `client_id` (the specific business).
-- Fields: All 37 extracted data points (supplier details, buyer details, item financials, E-Way bills).
-- Indexed heavily (`idx_invoices_client`, `idx_invoices_user`, etc.) to scale to 10k+ rows effortlessly.
-- RLS Policy: Restricted by `user_id`.
+### Ledger Tables
+- **`invoices` & `invoice_line_items`**: The core ledger of scanned purchase/sales invoices.
+- **`bank_statements` & `bank_transactions`**: Stores parsed PDF bank statement data. Tracks whether an entry is a deposit or withdrawal and its current `status` (unreconciled, matched).
+- **`reconciliation_suggestions`**: The bridge table. Stores the output of both Tier 1 and Tier 2 matching engines. Fields include `match_type` (EXACT, AI_FUZZY, MANUAL) and `status` (SUGGESTED, APPROVED, REJECTED). This table enforces the "Human-in-the-Loop" requirement.
 
 ## UI Architecture & Global State
-- **`ClientContext.tsx`:** Manages the globally `activeClientId`. This context wraps the entire application.
-- **React Query (`@tanstack/react-query`):** Manages server state caching. Invoices and clients are fetched once and cached in memory for instantaneous tab switching without loading spinners.
-- **Data Filtering:** Every page (Dashboard, Saved Invoices, Scanner) explicitly reads `activeClientId` and appends `.eq('client_id', activeClientId)` to all Supabase queries. This guarantees that an accountant never sees Client A's invoices mixed with Client B's invoices.
-- **Mobile Responsive Logic:**
-  - Layout structures use `min-h` instead of strict `100vh` bounds on mobile to prevent grid crushing.
-  - Hover actions on desktop fallback to permanent visibility on mobile touch screens.
-
-## Infrastructure Strategy
-- **Frontend:** Fully statically compiled and can run for free on Vercel, Netlify, or Cloudflare Pages.
-- **Backend:** FastAPI containerized for deployment on Render, Railway, or Google Cloud Run.
-- **Database:** Supabase Postgres.
+- **`ClientContext.tsx`:** Manages the globally `activeClientId`.
+- **React Query (`@tanstack/react-query`):** Manages server state caching for instantaneous tab switching.
+- **Data Filtering:** Every page (Dashboard, Reconcile, Bank Statements) strictly enforces `.eq('client_id', activeClientId)` to guarantee isolated views.
 
 ## 🛑 Immutable Technical Decisions
 ### AI Image Pre-Processing (Resolution Rules)
-**Rule:** The frontend image compressor (`ScanPage.tsx`) downscales images to a maximum of **1536x1536 pixels** at **80% JPEG quality** before sending to the backend API.
-**Why this must NOT be changed:** 
-GST invoices contain incredibly dense, tiny text (HSN codes, decimal points, PAN numbers). Any resolution lower than 1536x1536 causes the OCR/AI extraction accuracy to drop. A 3-5 second upload wait time is an acceptable trade-off for near-perfect data accuracy. Do not attempt to "optimize" this by lowering the resolution.
+**Rule:** The frontend image compressor downscales images to a maximum of **1536x1536 pixels** at **80% JPEG quality** before sending to the backend API.
+**Why this must NOT be changed:** GST invoices contain incredibly dense, tiny text. Any resolution lower than 1536x1536 causes the OCR accuracy to plummet.
+
+### Human-in-the-Loop Reconciliation
+**Rule:** AI matches (`reconciliation_suggestions`) must ALWAYS be created with `status = 'SUGGESTED'`. They cannot be auto-approved into the ledger.
+**Why this must NOT be changed:** A single hallucinated match during tax season can cause severe compliance issues (GSTR mismatches). The CA must explicitly click "Approve" in the UI.

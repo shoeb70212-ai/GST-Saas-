@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { LogOut, User, Building2, Shield, Loader2, Save, Lock, Eye, EyeOff } from 'lucide-react';
+import { LogOut, User, Building2, Shield, Loader2, Save, Lock, Eye, EyeOff, MessageCircle, Zap, Network, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useClient } from '../lib/ClientContext';
 
-type SettingsTab = 'profile' | 'company' | 'security';
+type SettingsTab = 'profile' | 'company' | 'automation' | 'security';
 
 const tabSlide = {
   hidden: { opacity: 0, y: 10 },
@@ -19,12 +20,18 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const navigate = useNavigate();
+  const { activeClientId } = useClient();
 
   // Profile & Company fields
   const [companyName, setCompanyName] = useState('My Company Ltd.');
   const [gstin, setGstin] = useState('');
   const [tallyLedgers, setTallyLedgers] = useState('');
   const [makerCheckerEnabled, setMakerCheckerEnabled] = useState(false);
+
+  // WhatsApp fields
+  const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [activeWhatsappClientId, setActiveWhatsappClientId] = useState('');
+  const [clients, setClients] = useState<any[]>([]);
 
   // Security / password fields
   const [newPassword, setNewPassword] = useState('');
@@ -34,9 +41,42 @@ export default function SettingsPage() {
   const [changingPassword, setChangingPassword] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
 
+  // Automation fields
+  const [autoApprove, setAutoApprove] = useState(false);
+  const [runTime, setRunTime] = useState('02:00');
+  const [fetchingAutomation, setFetchingAutomation] = useState(false);
+
   useEffect(() => {
     fetchUser();
   }, []);
+
+  useEffect(() => {
+    if (activeClientId) {
+      fetchAutomationSettings();
+    }
+  }, [activeClientId]);
+
+  const fetchAutomationSettings = async () => {
+    try {
+      setFetchingAutomation(true);
+      const { data, error } = await supabase
+        .from('clients')
+        .select('auto_approve_exact_matches, reconciliation_run_time')
+        .eq('id', activeClientId)
+        .single();
+      if (!error && data) {
+        setAutoApprove(!!data.auto_approve_exact_matches);
+        if (data.reconciliation_run_time) {
+          // run_time is stored as TIME (e.g. '02:00:00'), format it to 'HH:MM'
+          setRunTime(data.reconciliation_run_time.substring(0, 5));
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setFetchingAutomation(false);
+    }
+  };
 
   const fetchUser = async () => {
     try {
@@ -45,7 +85,7 @@ export default function SettingsPage() {
         setUser(session.user);
         const { data: profile } = await supabase
           .from('profiles')
-          .select('company_name, default_gstin, tally_ledgers, maker_checker_enabled')
+          .select('company_name, default_gstin, tally_ledgers, maker_checker_enabled, whatsapp_number, active_whatsapp_client_id')
           .eq('id', session.user.id)
           .single();
 
@@ -58,6 +98,16 @@ export default function SettingsPage() {
           if (profile.maker_checker_enabled !== undefined) {
             setMakerCheckerEnabled(profile.maker_checker_enabled);
           }
+          if (profile.whatsapp_number) setWhatsappNumber(profile.whatsapp_number);
+          if (profile.active_whatsapp_client_id) setActiveWhatsappClientId(profile.active_whatsapp_client_id);
+        }
+
+        const { data: clientsData } = await supabase
+          .from('clients')
+          .select('id, client_name')
+          .eq('user_id', session.user.id);
+        if (clientsData) {
+          setClients(clientsData);
         }
       }
     } catch (error) {
@@ -82,7 +132,9 @@ export default function SettingsPage() {
         company_name: companyName,
         default_gstin: gstin,
         tally_ledgers: tallyLedgers.split(',').map(s => s.trim()).filter(Boolean),
-        maker_checker_enabled: makerCheckerEnabled
+        maker_checker_enabled: makerCheckerEnabled,
+        whatsapp_number: whatsappNumber || null,
+        active_whatsapp_client_id: activeWhatsappClientId || null
       })
       .eq('id', user.id);
     setSaving(false);
@@ -90,6 +142,28 @@ export default function SettingsPage() {
       toast.error('Failed to update profile.');
     } else {
       toast.success('Profile saved successfully!');
+    }
+  };
+
+  const handleSaveAutomation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeClientId) {
+      toast.error('Please select a client first.');
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase
+      .from('clients')
+      .update({
+        auto_approve_exact_matches: autoApprove,
+        reconciliation_run_time: runTime
+      })
+      .eq('id', activeClientId);
+    setSaving(false);
+    if (error) {
+      toast.error('Failed to save automation settings.');
+    } else {
+      toast.success('Automation settings saved successfully!');
     }
   };
 
@@ -122,6 +196,7 @@ export default function SettingsPage() {
   const tabs: { key: SettingsTab; label: string; icon: React.ElementType }[] = [
     { key: 'profile', label: 'Profile details', icon: User },
     { key: 'company', label: 'Company defaults', icon: Building2 },
+    { key: 'automation', label: 'Automation', icon: Zap },
     { key: 'security', label: 'Security', icon: Shield },
   ];
 
@@ -213,6 +288,41 @@ export default function SettingsPage() {
                   />
                 </div>
 
+                <div className="pt-4 border-t border-border">
+                  <h3 className="text-md font-display font-semibold text-text-primary mb-4 flex items-center gap-2">
+                    <MessageCircle className="w-4 h-4 text-accent" /> WhatsApp Integration
+                  </h3>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-text-primary mb-1.5">WhatsApp Number</label>
+                      <input
+                        type="text"
+                        value={whatsappNumber}
+                        onChange={e => setWhatsappNumber(e.target.value)}
+                        className="input-field w-full"
+                        placeholder="e.g. +919876543210"
+                      />
+                      <p className="text-xs text-text-secondary mt-1">Include country code (e.g. +91). This number will be used to identify your uploaded invoices.</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-text-primary mb-1.5">Default Client for WhatsApp Uploads</label>
+                      <select
+                        value={activeWhatsappClientId}
+                        onChange={e => setActiveWhatsappClientId(e.target.value)}
+                        className="input-field w-full cursor-pointer"
+                      >
+                        <option value="">-- Select a Client --</option>
+                        {clients.map(client => (
+                          <option key={client.id} value={client.id}>{client.client_name}</option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-text-secondary mt-1">Invoices forwarded via WhatsApp will be assigned to this client.</p>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="pt-4 flex justify-end border-t border-border">
                   <button type="submit" disabled={saving} className="btn-primary">
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -290,6 +400,90 @@ export default function SettingsPage() {
                   <button type="submit" disabled={saving} className="btn-primary">
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                     Save Changes
+                  </button>
+                </div>
+              </motion.form>
+            )}
+
+            {/* ── AUTOMATION TAB ── */}
+            {activeTab === 'automation' && (
+              <motion.form
+                key="automation"
+                variants={tabSlide}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                onSubmit={handleSaveAutomation}
+                className="card p-6 space-y-5"
+              >
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 rounded-xl bg-accent-subtle text-accent flex items-center justify-center">
+                    <Zap className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-display font-semibold text-text-primary">Automation Settings</h2>
+                    <p className="text-sm text-text-secondary font-light">Configure AI reconciliation behavior for the active client.</p>
+                  </div>
+                </div>
+
+                {!activeClientId ? (
+                  <div className="p-4 bg-warning-subtle text-warning border border-warning/20 rounded-xl text-sm">
+                    Please select a client from the top navigation to configure their automation settings.
+                  </div>
+                ) : fetchingAutomation ? (
+                  <div className="flex justify-center p-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-accent" />
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="flex items-start justify-between p-4 bg-bg-sunken rounded-xl border border-border transition-colors hover:border-accent/30">
+                      <div className="flex gap-3">
+                        <Network className="w-5 h-5 text-accent shrink-0 mt-0.5" />
+                        <div>
+                          <h3 className="text-sm font-medium text-text-primary">Auto-Approve Exact Matches</h3>
+                          <p className="text-xs text-text-secondary mt-1 leading-relaxed max-w-sm">
+                            When the AI Engine finds a 100% exact match between an invoice and a bank transaction, automatically approve it and update ledgers without manual review.
+                          </p>
+                        </div>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4" aria-label="Toggle auto approve">
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={autoApprove}
+                          onChange={e => setAutoApprove(e.target.checked)}
+                        />
+                        <div className="w-11 h-6 bg-border rounded-full peer peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent/30 peer-checked:bg-accent after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-bg-surface after:border after:border-border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full peer-checked:after:border-transparent" />
+                      </label>
+                    </div>
+
+                    <div className="p-4 border border-border rounded-xl">
+                      <div className="flex items-center gap-3 mb-4">
+                        <Clock className="w-5 h-5 text-text-secondary" />
+                        <div>
+                          <h3 className="text-sm font-medium text-text-primary">Daily Scheduled Run</h3>
+                          <p className="text-xs text-text-secondary mt-1">
+                            Set a time for the AI to automatically sweep new invoices and bank statements.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4 pl-8">
+                        <input
+                          type="time"
+                          value={runTime}
+                          onChange={e => setRunTime(e.target.value)}
+                          className="input-field"
+                        />
+                        <span className="text-sm font-medium text-text-secondary">IST (GMT+5:30)</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-4 flex justify-end border-t border-border">
+                  <button type="submit" disabled={saving || !activeClientId || fetchingAutomation} className="btn-primary">
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    Save Automation
                   </button>
                 </div>
               </motion.form>
