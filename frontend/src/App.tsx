@@ -12,6 +12,7 @@ const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const SavedInvoicesPage = lazy(() => import('./pages/SavedInvoicesPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const ClientsPage = lazy(() => import('./pages/ClientsPage'));
+const AuditLogsPage = lazy(() => import('./pages/AuditLogsPage'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
 const BankStatementsPage = lazy(() => import('./pages/BankStatementsPage'));
 const ReconciliationPage = lazy(() => import('./pages/ReconciliationPage'));
@@ -116,6 +117,7 @@ export default function App() {
               <Route path="bank-reconcile" element={<BankReconcilePage />} />
               <Route path="reconcile" element={<ReconciliationPage />} />
               <Route path="clients" element={<ClientsPage />} />
+              <Route path="audit-logs" element={<AuditLogsPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="wallet" element={<WalletPage />} />
             </Route>

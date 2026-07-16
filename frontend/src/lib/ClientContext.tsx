@@ -32,9 +32,13 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
-      const { data } = await supabase.from('profiles').select('credits').eq('id', session.user.id).single();
-      if (data) {
-        setCredits(data.credits);
+      
+      const { data: orgData } = await supabase.rpc('get_user_orgs');
+      if (orgData && orgData.length > 0) {
+        const { data: org } = await supabase.from('organizations').select('credits').eq('id', orgData[0].org_id).single();
+        if (org) {
+          setCredits(org.credits);
+        }
       }
     } catch (e) {
       console.error("Failed to fetch credits", e);
@@ -50,7 +54,6 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       const { data, error } = await supabase
         .from('clients')
         .select('*')
-        .eq('user_id', session.user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;

@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { LogOut, User, Building2, Shield, Loader2, Save, Lock, Eye, EyeOff, MessageCircle, Zap, Network, Clock } from 'lucide-react';
+import { LogOut, User, Building2, Shield, Loader2, Save, Lock, Eye, EyeOff, MessageCircle, Zap, Network, Clock, Users, UserPlus, Copy, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useClient } from '../lib/ClientContext';
 
-type SettingsTab = 'profile' | 'company' | 'automation' | 'security';
+type SettingsTab = 'profile' | 'company' | 'team' | 'automation' | 'security';
 
 const tabSlide = {
   hidden: { opacity: 0, y: 10 },
@@ -45,6 +45,14 @@ export default function SettingsPage() {
   const [autoApprove, setAutoApprove] = useState(false);
   const [runTime, setRunTime] = useState('02:00');
   const [fetchingAutomation, setFetchingAutomation] = useState(false);
+
+  // Team fields
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [joinCode, setJoinCode] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string>('owner');
+  const [inputJoinCode, setInputJoinCode] = useState('');
+  const [joiningFirm, setJoiningFirm] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
 
   useEffect(() => {
     fetchUser();
@@ -108,6 +116,27 @@ export default function SettingsPage() {
           .eq('user_id', session.user.id);
         if (clientsData) {
           setClients(clientsData);
+        }
+
+        // Fetch Organization context
+        const { data: orgData } = await supabase.rpc('get_user_orgs');
+        if (orgData && orgData.length > 0) {
+          setUserRole(orgData[0].role);
+          
+          if (orgData[0].role === 'owner' || orgData[0].role === 'admin') {
+            const { data: orgDetails } = await supabase
+              .from('organizations')
+              .select('join_code')
+              .eq('id', orgData[0].org_id)
+              .single();
+            if (orgDetails) setJoinCode(orgDetails.join_code);
+
+            const { data: members } = await supabase
+              .from('organization_members')
+              .select('user_id, role, profiles(company_name)')
+              .eq('org_id', orgData[0].org_id);
+            if (members) setTeamMembers(members);
+          }
         }
       }
     } catch (error) {
@@ -193,9 +222,25 @@ export default function SettingsPage() {
     }
   };
 
+  const handleJoinFirm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputJoinCode) return;
+    setJoiningFirm(true);
+    const { data, error } = await supabase.rpc('join_firm', { join_code_param: inputJoinCode.toUpperCase() });
+    setJoiningFirm(false);
+    
+    if (error) {
+      toast.error(error.message || 'Invalid Join Code');
+    } else {
+      toast.success('Successfully joined the firm!');
+      fetchUser();
+    }
+  };
+
   const tabs: { key: SettingsTab; label: string; icon: React.ElementType }[] = [
     { key: 'profile', label: 'Profile details', icon: User },
     { key: 'company', label: 'Company defaults', icon: Building2 },
+    { key: 'team', label: 'Team Management', icon: Users },
     { key: 'automation', label: 'Automation', icon: Zap },
     { key: 'security', label: 'Security', icon: Shield },
   ];
@@ -397,12 +442,122 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="pt-4 flex justify-end border-t border-border">
-                  <button type="submit" disabled={saving} className="btn-primary">
+                  <button type="submit" disabled={saving || userRole === 'accountant'} className="btn-primary">
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                     Save Changes
                   </button>
                 </div>
               </motion.form>
+            )}
+
+            {/* ── TEAM TAB ── */}
+            {activeTab === 'team' && (
+              <motion.div
+                key="team"
+                variants={tabSlide}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="space-y-6"
+              >
+                {/* Firm Owners: Show Join Code & Roster */}
+                {(userRole === 'owner' || userRole === 'admin') ? (
+                  <>
+                    <div className="card p-6 space-y-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-accent-subtle text-accent flex items-center justify-center">
+                          <UserPlus className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h2 className="text-lg font-display font-semibold text-text-primary">Invite Team Members</h2>
+                          <p className="text-sm text-text-secondary font-light">Share this code with junior accountants to invite them to your firm.</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-4 mt-4 p-4 bg-bg-sunken border border-border rounded-xl">
+                        <code className="text-2xl font-mono font-bold tracking-widest text-accent flex-1 text-center py-2">
+                          {joinCode || 'Loading...'}
+                        </code>
+                        <button 
+                          onClick={() => {
+                            if (joinCode) {
+                              navigator.clipboard.writeText(joinCode);
+                              setCopiedCode(true);
+                              setTimeout(() => setCopiedCode(false), 2000);
+                              toast.success('Join code copied!');
+                            }
+                          }}
+                          className="btn-secondary h-12"
+                        >
+                          {copiedCode ? <Check className="w-4 h-4 text-accent" /> : <Copy className="w-4 h-4" />}
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="card p-6">
+                      <h2 className="text-lg font-display font-semibold text-text-primary mb-4">Team Roster</h2>
+                      <div className="border border-border rounded-xl overflow-hidden">
+                        <table className="w-full text-left text-sm">
+                          <thead className="bg-bg-sunken border-b border-border text-text-secondary">
+                            <tr>
+                              <th className="px-4 py-3 font-medium">User ID</th>
+                              <th className="px-4 py-3 font-medium">Role</th>
+                              <th className="px-4 py-3 font-medium text-right">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border">
+                            {teamMembers.map((member, idx) => (
+                              <tr key={idx} className="hover:bg-bg-sunken/50 transition-colors">
+                                <td className="px-4 py-3 font-mono text-xs">{member.user_id}</td>
+                                <td className="px-4 py-3 capitalize">
+                                  <span className={`px-2 py-1 rounded-md text-xs font-medium ${member.role === 'owner' ? 'bg-accent/10 text-accent' : 'bg-border text-text-secondary'}`}>
+                                    {member.role}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  {member.role !== 'owner' && (
+                                    <button className="text-error hover:text-error-hover text-xs font-medium">
+                                      Revoke Access
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  /* Accountants: Cannot invite */
+                  <div className="card p-6 text-center">
+                    <Shield className="w-12 h-12 text-border mx-auto mb-4" />
+                    <h2 className="text-lg font-display font-semibold text-text-primary">Restricted Access</h2>
+                    <p className="text-sm text-text-secondary mt-1">Only Firm Owners and Admins can manage the team roster.</p>
+                  </div>
+                )}
+
+                {/* Join Firm Form (Available to all) */}
+                <form onSubmit={handleJoinFirm} className="card p-6 space-y-4">
+                  <h2 className="text-lg font-display font-semibold text-text-primary">Join an Existing Firm</h2>
+                  <p className="text-sm text-text-secondary font-light">Enter an invite code provided by your CA Firm Admin to switch your workspace context.</p>
+                  
+                  <div className="flex gap-4">
+                    <input
+                      type="text"
+                      value={inputJoinCode}
+                      onChange={e => setInputJoinCode(e.target.value)}
+                      placeholder="e.g. KHATA-1234"
+                      className="input-field uppercase font-mono flex-1"
+                      required
+                    />
+                    <button type="submit" disabled={joiningFirm || !inputJoinCode} className="btn-primary w-32">
+                      {joiningFirm ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Join Firm'}
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
             )}
 
             {/* ── AUTOMATION TAB ── */}

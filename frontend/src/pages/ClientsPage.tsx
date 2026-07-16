@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useClient, type Client } from '../lib/ClientContext';
-import { Plus, Building2, Trash2, Edit2, Loader2, Save, X } from 'lucide-react';
+import { Plus, Building2, Trash2, Edit2, Loader2, Save, X, Users, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function ClientsPage() {
@@ -11,6 +11,13 @@ export default function ClientsPage() {
   const [formData, setFormData] = useState({ client_name: '', gstin: '', pan: '' });
   const [isSaving, setIsSaving] = useState(false);
   const [invoiceCounts, setInvoiceCounts] = useState<Record<string, number>>({});
+
+  // Enterprise RBAC State
+  const [userRole, setUserRole] = useState<string>('accountant');
+  const [managingAccessFor, setManagingAccessFor] = useState<string | null>(null);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [assignedMembers, setAssignedMembers] = useState<string[]>([]);
+  const [isUpdatingAccess, setIsUpdatingAccess] = useState(false);
 
   React.useEffect(() => {
     const fetchCounts = async () => {
@@ -25,6 +32,24 @@ export default function ClientsPage() {
     };
     if (clients.length > 0) fetchCounts();
   }, [clients]);
+
+  React.useEffect(() => {
+    const fetchRoleAndTeam = async () => {
+      const { data: orgData } = await supabase.rpc('get_user_orgs');
+      if (orgData && orgData.length > 0) {
+        setUserRole(orgData[0].role);
+        if (orgData[0].role === 'owner' || orgData[0].role === 'admin') {
+          const { data: members } = await supabase
+            .from('organization_members')
+            .select('user_id, role, profiles(company_name)')
+            .eq('org_id', orgData[0].org_id)
+            .eq('role', 'accountant');
+          if (members) setTeamMembers(members);
+        }
+      }
+    };
+    fetchRoleAndTeam();
+  }, []);
 
   const isBusiness = localStorage.getItem('accountType') === 'business';
   const entityName = isBusiness ? 'Business' : 'Client';
@@ -68,7 +93,6 @@ export default function ClientsPage() {
           .single();
         if (error) throw error;
         
-        // If this is the first client, set as active
         if (clients.length === 0 && data) {
           setActiveClientId(data.id);
         }
@@ -86,21 +110,49 @@ export default function ClientsPage() {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!window.confirm(`Are you sure you want to delete ${name}? All associated invoices will also be deleted!`)) {
-      return;
-    }
-    
+    if (!window.confirm(`Are you sure you want to delete ${name}? All associated invoices will also be deleted!`)) return;
     try {
       const { error } = await supabase.from('clients').delete().eq('id', id);
       if (error) throw error;
       toast.success(`${entityName} deleted`);
-      if (activeClientId === id) {
-        setActiveClientId(null);
-      }
+      if (activeClientId === id) setActiveClientId(null);
       await refreshClients();
     } catch (error: any) {
       toast.error(`Failed to delete ${entityName.toLowerCase()}`);
-      console.error(error);
+    }
+  };
+
+  const handleOpenManageAccess = async (clientId: string) => {
+    setManagingAccessFor(clientId);
+    const { data } = await supabase.from('client_assignments').select('user_id').eq('client_id', clientId);
+    if (data) {
+      setAssignedMembers(data.map(d => d.user_id));
+    } else {
+      setAssignedMembers([]);
+    }
+  };
+
+  const handleSaveAccess = async () => {
+    if (!managingAccessFor) return;
+    setIsUpdatingAccess(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      await supabase.from('client_assignments').delete().eq('client_id', managingAccessFor);
+      
+      if (assignedMembers.length > 0) {
+        const inserts = assignedMembers.map(uid => ({
+          client_id: managingAccessFor,
+          user_id: uid,
+          assigned_by: session?.user.id
+        }));
+        await supabase.from('client_assignments').insert(inserts);
+      }
+      toast.success('Access updated successfully');
+      setManagingAccessFor(null);
+    } catch (e) {
+      toast.error('Failed to update access');
+    } finally {
+      setIsUpdatingAccess(false);
     }
   };
 
@@ -109,7 +161,7 @@ export default function ClientsPage() {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6 pb-20">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6 pb-20 relative">
       
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
@@ -117,11 +169,8 @@ export default function ClientsPage() {
           <p className="text-text-secondary">Manage your {entityNamePlural.toLowerCase()} to keep their invoices strictly separated.</p>
         </div>
         
-        {!isAdding && !editingId && (
-          <button 
-            onClick={() => setIsAdding(true)}
-            className="btn-primary"
-          >
+        {!isAdding && !editingId && (userRole === 'owner' || userRole === 'admin') && (
+          <button onClick={() => setIsAdding(true)} className="btn-primary">
             <Plus className="w-4 h-4" /> Add {entityName}
           </button>
         )}
@@ -135,34 +184,15 @@ export default function ClientsPage() {
           <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-text-primary">{entityName} Name <span className="text-error">*</span></label>
-              <input
-                type="text"
-                required
-                value={formData.client_name}
-                onChange={(e) => setFormData({...formData, client_name: e.target.value})}
-                className="input-field w-full"
-                placeholder="e.g. Acme Corp"
-              />
+              <input type="text" required value={formData.client_name} onChange={(e) => setFormData({...formData, client_name: e.target.value})} className="input-field w-full" placeholder="e.g. Acme Corp" />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-text-primary">GSTIN (Optional)</label>
-              <input
-                type="text"
-                value={formData.gstin}
-                onChange={(e) => setFormData({...formData, gstin: e.target.value})}
-                className="input-field w-full"
-                placeholder="29XXXXX1234X1X1"
-              />
+              <input type="text" value={formData.gstin} onChange={(e) => setFormData({...formData, gstin: e.target.value})} className="input-field w-full" placeholder="29XXXXX1234X1X1" />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-text-primary">PAN (Optional)</label>
-              <input
-                type="text"
-                value={formData.pan}
-                onChange={(e) => setFormData({...formData, pan: e.target.value})}
-                className="input-field w-full"
-                placeholder="XXXXX1234X"
-              />
+              <input type="text" value={formData.pan} onChange={(e) => setFormData({...formData, pan: e.target.value})} className="input-field w-full" placeholder="XXXXX1234X" />
             </div>
             
             <div className="md:col-span-2 flex items-center justify-end gap-3 mt-4">
@@ -187,9 +217,11 @@ export default function ClientsPage() {
           <p className="text-text-secondary max-w-md mb-6">
             Add your first {entityName.toLowerCase()} to start organizing invoices and managing their data securely.
           </p>
-          <button onClick={() => setIsAdding(true)} className="btn-primary">
-            <Plus className="w-4 h-4" /> Add Your First {entityName}
-          </button>
+          {(userRole === 'owner' || userRole === 'admin') && (
+            <button onClick={() => setIsAdding(true)} className="btn-primary">
+              <Plus className="w-4 h-4" /> Add Your First {entityName}
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -199,14 +231,19 @@ export default function ClientsPage() {
                 <div className="w-10 h-10 rounded-lg bg-bg-sunken flex items-center justify-center">
                   <Building2 className={`w-5 h-5 ${activeClientId === client.id ? 'text-accent' : 'text-text-secondary'}`} />
                 </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => handleEdit(client)} className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-bg-sunken rounded" title="Edit">
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button onClick={() => handleDelete(client.id, client.client_name)} className="p-1.5 text-text-secondary hover:text-error hover:bg-error-subtle rounded" title="Delete">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                {(userRole === 'owner' || userRole === 'admin') && (
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => handleOpenManageAccess(client.id)} className="p-1.5 text-text-secondary hover:text-accent hover:bg-accent-subtle rounded" title="Manage Team Access">
+                      <Shield className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => handleEdit(client)} className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-bg-sunken rounded" title="Edit">
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => handleDelete(client.id, client.client_name)} className="p-1.5 text-text-secondary hover:text-error hover:bg-error-subtle rounded" title="Delete">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
               
               <h3 className="font-semibold text-text-primary text-lg truncate mb-1">{client.client_name}</h3>
@@ -234,6 +271,63 @@ export default function ClientsPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* MANAGE ACCESS MODAL */}
+      {managingAccessFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-bg-base/80 backdrop-blur-sm">
+          <div className="card p-6 w-full max-w-md shadow-xl border border-border">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-lg font-bold text-text-primary flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-accent" /> Manage Access
+                </h3>
+                <p className="text-xs text-text-secondary mt-1">Assign accountants who can view this client.</p>
+              </div>
+              <button onClick={() => setManagingAccessFor(null)} className="p-2 hover:bg-bg-sunken rounded-lg text-text-secondary">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 max-h-64 overflow-y-auto pr-2 mb-6">
+              {teamMembers.length === 0 ? (
+                <div className="p-4 bg-bg-sunken rounded-lg text-center text-sm text-text-secondary">
+                  No accountants found in your firm. Add them via Settings &gt; Team Management.
+                </div>
+              ) : (
+                teamMembers.map(member => (
+                  <label key={member.user_id} className="flex items-center gap-3 p-3 bg-bg-sunken border border-border rounded-xl cursor-pointer hover:border-accent/30 transition-colors">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 rounded border-border text-accent focus:ring-accent/30"
+                      checked={assignedMembers.includes(member.user_id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setAssignedMembers([...assignedMembers, member.user_id]);
+                        } else {
+                          setAssignedMembers(assignedMembers.filter(id => id !== member.user_id));
+                        }
+                      }}
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-text-primary capitalize">{member.profiles?.company_name || 'Accountant'}</p>
+                      <p className="text-xs text-text-secondary font-mono truncate">{member.user_id.substring(0, 16)}...</p>
+                    </div>
+                  </label>
+                ))
+              )}
+            </div>
+
+            <div className="flex gap-3 pt-4 border-t border-border">
+              <button onClick={() => setManagingAccessFor(null)} className="btn-secondary flex-1">
+                Cancel
+              </button>
+              <button onClick={handleSaveAccess} disabled={isUpdatingAccess} className="btn-primary flex-1">
+                {isUpdatingAccess ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Access'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
