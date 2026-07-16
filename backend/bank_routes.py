@@ -7,6 +7,7 @@ from fastapi import APIRouter, File, UploadFile, HTTPException, Header, Backgrou
 from fastapi.responses import StreamingResponse
 from supabase import create_async_client
 from bank_service import process_bank_statement_bg
+from utils import get_user_supabase_client
 
 router = APIRouter()
 
@@ -29,8 +30,7 @@ async def list_bank_statements(client_id: str, authorization: str = Header(None)
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_ANON_KEY)
-    sc = await create_async_client(SUPABASE_URL, SERVICE_ROLE)
+    sc = await get_user_supabase_client(authorization)
 
     resp = await sc.table("bank_statements")\
         .select("id, bank_name, account_number, status, file_url, created_at")\
@@ -56,8 +56,7 @@ async def upload_bank_statement(
     if len(content) > 25 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large. Max 25MB.")
         
-    SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_ANON_KEY)
-    sc = await create_async_client(SUPABASE_URL, SERVICE_ROLE)
+    sc = await get_user_supabase_client(authorization)
     
     # Check credits
     profile_resp = await sc.table("profiles").select("credits").eq("id", user_id).execute()
@@ -96,8 +95,7 @@ async def get_statement_status(statement_id: str, authorization: str = Header(No
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")
         
-    SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_ANON_KEY)
-    sc = await create_async_client(SUPABASE_URL, SERVICE_ROLE)
+    sc = await get_user_supabase_client(authorization)
     
     resp = await sc.table("bank_statements").select("status, bank_name, account_number, file_url").eq("id", statement_id).execute()
     if not resp.data:
@@ -110,8 +108,7 @@ async def get_transactions(statement_id: str, authorization: str = Header(None))
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")
         
-    SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_ANON_KEY)
-    sc = await create_async_client(SUPABASE_URL, SERVICE_ROLE)
+    sc = await get_user_supabase_client(authorization)
     
     resp = await sc.table("bank_transactions").select("*").eq("statement_id", statement_id).order("txn_date").execute()
     return {"status": "success", "data": resp.data}
@@ -121,8 +118,7 @@ async def export_excel(statement_id: str, authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")
         
-    SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_ANON_KEY)
-    sc = await create_async_client(SUPABASE_URL, SERVICE_ROLE)
+    sc = await get_user_supabase_client(authorization)
     
     # 1. Hard UI Block Enforced on Backend
     txns_resp = await sc.table("bank_transactions").select("*").eq("statement_id", statement_id).order("txn_date").execute()

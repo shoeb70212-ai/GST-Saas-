@@ -3,6 +3,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 from supabase import create_async_client
+from utils import get_user_supabase_client
 from reconcile_service import run_ai_matching_engine
 
 router = APIRouter()
@@ -38,8 +39,7 @@ async def get_suggestions(client_id: str, authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")
         
-    SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_ANON_KEY)
-    sc = await create_async_client(SUPABASE_URL, SERVICE_ROLE)
+    sc = await get_user_supabase_client(authorization)
     
     resp = await sc.table("reconciliation_matches")\
         .select("*, invoices(*), bank_transactions(*)")\
@@ -55,8 +55,7 @@ async def get_history(client_id: str, authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_ANON_KEY)
-    sc = await create_async_client(SUPABASE_URL, SERVICE_ROLE)
+    sc = await get_user_supabase_client(authorization)
 
     resp = await sc.table("reconciliation_matches")\
         .select("*, invoices(supplier_name, total_amount, invoice_number), bank_transactions(description, withdrawal, txn_date)")\
@@ -76,8 +75,7 @@ async def approve_match(req: MatchActionRequest, authorization: str = Header(Non
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")
         
-    SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_ANON_KEY)
-    sc = await create_async_client(SUPABASE_URL, SERVICE_ROLE)
+    sc = await get_user_supabase_client(authorization)
     
     # Execute the Atomic RPC Function
     try:
@@ -88,8 +86,7 @@ async def approve_match(req: MatchActionRequest, authorization: str = Header(Non
 
 @router.post("/reject")
 async def reject_match(req: MatchActionRequest, authorization: str = Header(None)):
-    SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_ANON_KEY)
-    sc = await create_async_client(SUPABASE_URL, SERVICE_ROLE)
+    sc = await get_user_supabase_client(authorization)
     
     await sc.table("reconciliation_matches").update({"status": "REJECTED"}).eq("id", req.match_id).execute()
     return {"status": "success", "message": "Match rejected."}
@@ -99,8 +96,7 @@ async def undo_match(req: MatchActionRequest, authorization: str = Header(None))
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_ANON_KEY)
-    sc = await create_async_client(SUPABASE_URL, SERVICE_ROLE)
+    sc = await get_user_supabase_client(authorization)
     
     # Execute the Atomic RPC Function
     try:

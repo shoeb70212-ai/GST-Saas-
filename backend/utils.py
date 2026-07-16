@@ -11,11 +11,24 @@ SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 def get_supabase_client():
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         raise HTTPException(status_code=500, detail="Missing Supabase service key configuration.")
-    # We must use synchronous client if public_routes expects it synchronously, 
-    # but in public_routes.py we see:
-    # await supabase_client.table("clients")... 
-    # But wait, create_async_client is async. We shouldn't call await inside get_supabase_client if it's not async.
-    pass # I'll look at how it's used.
+    pass
+
+from supabase.client import ClientOptions
+async def get_user_supabase_client(authorization: str):
+    """
+    Creates an async Supabase client using the user's JWT.
+    This enforces Postgres Row Level Security (RLS) on all backend queries,
+    preventing users from bypassing RBAC by hitting the API directly.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    # We use ANON_KEY + User's JWT so RLS applies correctly
+    return await create_async_client(
+        SUPABASE_URL, 
+        os.getenv("VITE_SUPABASE_ANON_KEY"),
+        options=ClientOptions(headers={"Authorization": authorization})
+    )
 
 def validate_file_content(content: bytes, filename: str) -> str:
     """
