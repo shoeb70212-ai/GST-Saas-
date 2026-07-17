@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState  } from "react";
 import { supabase } from '../lib/supabase';
 import { LogOut, User, Building2, Shield, Loader2, Save, Lock, Eye, EyeOff, MessageCircle, Zap, Network, Clock, Users, UserPlus, Copy, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -10,7 +10,7 @@ type SettingsTab = 'profile' | 'company' | 'team' | 'automation' | 'security';
 
 const tabSlide = {
   hidden: { opacity: 0, y: 10 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] } },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] as any } },
   exit: { opacity: 0, y: -10, transition: { duration: 0.15 } },
 };
 
@@ -226,7 +226,7 @@ export default function SettingsPage() {
     e.preventDefault();
     if (!inputJoinCode) return;
     setJoiningFirm(true);
-    const { data, error } = await supabase.rpc('join_firm', { join_code_param: inputJoinCode.toUpperCase() });
+    const { error } = await supabase.rpc('join_firm', { join_code_param: inputJoinCode.toUpperCase() });
     setJoiningFirm(false);
     
     if (error) {

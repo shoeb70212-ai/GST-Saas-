@@ -169,10 +169,10 @@ export default function VirtualCfoPage() {
                     <Tooltip 
                       contentStyle={{ backgroundColor: 'rgba(15,23,42,0.9)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff' }}
                       itemStyle={{ color: '#fff' }}
-                      formatter={(value: number) => [`₹${value}`, 'Total Spend']}
+                      formatter={(value: any) => [`₹${value}`, 'Total Spend']}
                     />
                     <Bar dataKey="total_spend" radius={[0, 4, 4, 0]}>
-                      {itemizedSpend?.map((entry: any, index: number) => (
+                      {itemizedSpend?.map((_entry: any, index: number) => (
                         <Cell key={`cell-${index}`} fill={`hsl(${220 + index * 10}, 70%, 60%)`} />
                       ))}
                     </Bar>

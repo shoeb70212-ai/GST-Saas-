@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { DollarSign, FileText, Settings, CheckCircle2, TrendingUp, Building2, Briefcase, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -38,9 +38,9 @@ export default function DashboardPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [visibleWidgets, setVisibleWidgets] = useState<string[]>(DEFAULT_WIDGETS);
   
-  const [estimatedSales, setEstimatedSales] = useState<number>(0);
-  const [taxRate, setTaxRate] = useState<number>(18);
-  const [isSavingSales, setIsSavingSales] = useState(false);
+  
+  
+  
   
   const { data: dashboardData, isLoading, isError: isDashboardError, refetch: refetchDashboard } = useQuery({
     queryKey: ['invoices', 'dashboard', activeClientId],
@@ -120,32 +120,16 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (clientData) {
-      setEstimatedSales(clientData.estimated_monthly_sales || 0);
-      setTaxRate(clientData.estimated_sales_tax_rate || 18);
+      
+      
     }
   }, [clientData]);
 
-  const handleSaveSales = async () => {
-    if (!activeClientId) return;
-    setIsSavingSales(true);
-    try {
-      const { error } = await supabase.from('clients').update({
-        estimated_monthly_sales: estimatedSales,
-        estimated_sales_tax_rate: taxRate
-      }).eq('id', activeClientId);
-      if (error) throw error;
-      toast.success("Estimates updated");
-    } catch (e) {
-      console.error(e);
-      toast.error("Failed to save estimates");
-    } finally {
-      setIsSavingSales(false);
-    }
-  };
   
-  const estimatedSalesTax = useMemo(() => (estimatedSales * taxRate) / 100, [estimatedSales, taxRate]);
-  const totalITC = useMemo(() => metrics.totalCgst + metrics.totalSgst + metrics.totalIgst, [metrics]);
-  const estimatedLiability = useMemo(() => Math.max(0, estimatedSalesTax - totalITC), [estimatedSalesTax, totalITC]);
+  
+  
+  
+  
 
   useEffect(() => {
     const saved = localStorage.getItem('khatalens_widgets');
@@ -456,7 +440,7 @@ export default function DashboardPage() {
                       ) : (
                         <span className="badge bg-warning-subtle text-warning border border-warning/20">Review</span>
                       )}
-                      {inv.approval_status === 'pending_approval' && (
+                      {(inv as any).approval_status === 'pending_approval' && (
                         <div className="mt-1">
                           <span className="badge bg-warning-subtle text-warning border border-warning/20 text-[10px]">Pending Appr.</span>
                         </div>

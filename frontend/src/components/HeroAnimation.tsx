@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { FileText, FileSpreadsheet } from 'lucide-react';
 import KhataLensIcon from './KhataLensIcon';
 import anime from 'animejs';

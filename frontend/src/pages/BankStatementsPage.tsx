@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback  } from "react";
 import { useDropzone } from 'react-dropzone';
 import { useClient } from '../lib/ClientContext';
 import { supabase } from '../lib/supabase';

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { useState  } from "react";
 import { supabase } from '../lib/supabase';
 import { useClient, type Client } from '../lib/ClientContext';
-import { Plus, Building2, Trash2, Edit2, Loader2, Save, X, Users, Shield } from 'lucide-react';
+import { Plus, Building2, Trash2, Edit2, Loader2, Save, X, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function ClientsPage() {

@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight, ShieldCheck, Network, Banknote, CheckCircle2,
-  ChevronRight, Calculator, FileCheck, Layers, Upload,
-  FileSpreadsheet, Zap, Users, Lock, BarChart3, Menu, X,
+  Calculator, FileCheck, Layers, Upload,
+  FileSpreadsheet, Zap, Lock, BarChart3, Menu, X,
   Plus, Minus, Quote, Star, Building2, Clock, Award, Smartphone, PlayCircle
 } from 'lucide-react';
 import HeroAnimation from '../components/HeroAnimation';
@@ -14,16 +14,16 @@ import KhataLensIcon from '../components/KhataLensIcon';
 // ─── Animation Variants ─────────────────────────────────────────────────────
 const fadeUp = {
   hidden: { opacity: 0, y: 32 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.65, ease: [0.22, 1, 0.36, 1] } }
+  visible: { opacity: 1, y: 0, transition: { duration: 0.65, ease: [0.22, 1, 0.36, 1] as any } }
 };
-const fadeLeft = {
+/* const fadeLeft = {
   hidden: { opacity: 0, x: -40 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] } }
+  visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] as any } }
 };
 const fadeRight = {
   hidden: { opacity: 0, x: 40 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] } }
-};
+  visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] as any } }
+}; */
 const stagger = {
   hidden: { opacity: 0 },
   visible: { opacity: 1, transition: { staggerChildren: 0.1 } }
@@ -85,7 +85,7 @@ function FaqItem({ question, answer }: { question: string; answer: string }) {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] as any }}
             className="overflow-hidden"
           >
             <p className="px-7 pb-7 text-text-secondary leading-relaxed font-light border-t border-border pt-5">
@@ -429,7 +429,7 @@ export default function LandingPage() {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] as any }}
               className="md:hidden bg-bg-surface border-b border-border overflow-hidden"
             >
               <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col gap-4">
@@ -457,7 +457,7 @@ export default function LandingPage() {
           <motion.div
             initial={{ opacity: 0, x: -40 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] as any }}
           >
             {/* Badge */}
             <motion.div
@@ -505,7 +505,7 @@ export default function LandingPage() {
           <motion.div
             initial={{ opacity: 0, scale: 0.94, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1], delay: 0.15 }}
+            transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] as any, delay: 0.15 }}
             className="relative"
             aria-hidden="true"
           >
@@ -994,7 +994,7 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: 24 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] as any }}
             className="text-5xl lg:text-7xl font-display font-bold mb-8 text-text-primary tracking-tight"
           >
             Your practice deserves<br />
@@ -1005,7 +1005,7 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            transition={{ duration: 0.6, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.6, delay: 0.1, ease: [0.22, 1, 0.36, 1] as any }}
             className="text-2xl text-text-secondary mb-14 max-w-2xl mx-auto font-light"
           >
             Join 500+ Chartered Accountants who are already processing invoices in seconds, not hours.
@@ -1015,7 +1015,7 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            transition={{ duration: 0.6, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.6, delay: 0.2, ease: [0.22, 1, 0.36, 1] as any }}
             className="flex flex-col sm:flex-row items-center justify-center gap-5"
           >
             <Link

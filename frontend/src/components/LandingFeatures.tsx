@@ -1,6 +1,5 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { FileText, CheckCircle2, ArrowRight, Smartphone, Network } from 'lucide-react';
+
+import { FileText, CheckCircle2, Smartphone, Network } from 'lucide-react';
 
 export function BankStatementDemo() {
   return (

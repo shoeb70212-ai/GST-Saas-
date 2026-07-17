@@ -277,7 +277,7 @@ export default function SavedInvoicesPage() {
     return (
       <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 pb-20">
         <ErrorState 
-          title="Failed to load invoices" 
+           
           message="There was a problem communicating with the server. Please try again."
           onRetry={refetchInvoices}
         />
@@ -362,7 +362,7 @@ export default function SavedInvoicesPage() {
             <button 
               onClick={() => setShowSettings(!showSettings)}
               className="p-2 text-text-secondary hover:text-text-primary hover:bg-bg-sunken rounded-lg transition-colors border border-transparent hover:border-border"
-              title="Configure Columns"
+              
             >
               <Settings className="w-5 h-5" />
             </button>
@@ -441,7 +441,7 @@ export default function SavedInvoicesPage() {
                 <div className="flex flex-col min-w-0 flex-1">
                   <h3 className="font-semibold text-text-primary text-sm truncate flex items-center gap-2">
                     {inv.supplier_name || 'Unknown Supplier'}
-                    {inv.hsn_audit_warning && <AlertTriangle className="w-4 h-4 text-error shrink-0" title={inv.hsn_audit_warning} />}
+                    {inv.hsn_audit_warning && <AlertTriangle className="w-4 h-4 text-error shrink-0"  />}
                   </h3>
                   <p className="text-xs text-text-secondary truncate mt-0.5">
                     {inv.invoice_number || 'No Inv#'} • {inv.invoice_date || '-'}
@@ -566,7 +566,7 @@ export default function SavedInvoicesPage() {
                   <td className="p-4 whitespace-nowrap text-text-primary text-sm font-medium">
                     <div className="flex items-center gap-2">
                       {inv.file_name || 'Unknown'}
-                      {inv.hsn_audit_warning && <AlertTriangle className="w-4 h-4 text-error shrink-0" title={inv.hsn_audit_warning} />}
+                      {inv.hsn_audit_warning && <AlertTriangle className="w-4 h-4 text-error shrink-0"  />}
                     </div>
                   </td>
                   {visibleColumns.map(col => {

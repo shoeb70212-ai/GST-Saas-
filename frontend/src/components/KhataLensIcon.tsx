@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef  } from "react";
 import anime from 'animejs';
 
 interface KhataLensIconProps {
@@ -21,7 +21,7 @@ export default function KhataLensIcon({ className = '', size = 24, animate = fal
         strokeDashoffset: [anime.setDashoffset, 0],
         easing: 'easeInOutSine',
         duration: 1500,
-        delay: function(el, i) { return i * 150 },
+        delay: function(_el, i) { return i * 150 },
         direction: 'alternate',
         loop: false
       });
