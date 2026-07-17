@@ -82,7 +82,11 @@ async def upload_bank_statement(
                 print(f"DEBUG: auth_result={auth_result}")
                 if not pdf_password or not auth_result:
                     raise ValueError("This PDF is password-protected. Please provide the correct password.")
-                # Remove password by writing the authenticated document back to memory
+                from utils import remove_pdf_password_if_present
+                c_bytes = remove_pdf_password_if_present(content, pdf_password)
+                doc = fitz.open(stream=c_bytes, filetype="pdf")
+                if doc.needs_pass:
+                    doc.authenticate(pdf_password)
                 content = doc.tobytes()
             cost = max(2, math.ceil(len(doc) / 5) * 2)
         except ValueError as ve:

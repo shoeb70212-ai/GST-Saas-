@@ -249,7 +249,7 @@ async def process_whatsapp_message_bg(message_data: dict):
             # 6. Save to DB
             invoice_data = {
                 "user_id": user_id,
-                "client_id": active_client_id,
+                "client_id": client_id,
                 "supplier_name": data_dict.get("Supplier_Name"),
                 "supplier_gstin": data_dict.get("Supplier_GSTIN"),
                 "invoice_number": data_dict.get("Invoice_Number"),
@@ -296,7 +296,7 @@ async def process_whatsapp_message_bg(message_data: dict):
             
             if rpc_resp.data == -1:
                 await send_whatsapp_message(
-                    phone_number,
+                    from_number,
                     "⚠️ *Insufficient Credits*\nYour organization has run out of AI credits. Please recharge your wallet via the web dashboard to process this invoice."
                 )
                 return {"status": "insufficient_credits"}

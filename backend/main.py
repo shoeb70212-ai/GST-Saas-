@@ -323,6 +323,8 @@ async def scan_invoice(
                     c_bytes = remove_pdf_password_if_present(c_bytes, password)
                     # Reopen the clean stream for PyMuPDF rendering/markdown
                     doc = fitz.open(stream=c_bytes, filetype="pdf")
+                    if doc.needs_pass:
+                        doc.authenticate(password)
                 else:
                     raise ValueError("This PDF is password-protected. Please provide the correct password.")
             
