@@ -45,6 +45,7 @@ async def upload_bank_statement(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     client_id: str = Form(...),
+    pdf_password: str = Form(None),
     authorization: str = Header(None)
 ):
     if not authorization or not authorization.startswith("Bearer "):
@@ -58,10 +59,61 @@ async def upload_bank_statement(
         
     sc = await get_user_supabase_client(authorization)
     
+    import os as _os
+    import math
+    import fitz
+    import pandas as pd
+    import io
+
+    # Extract file extension
+    _, ext = _os.path.splitext(file.filename or "")
+    ext = ext.lower()
+    if ext not in ['.pdf', '.xlsx', '.xls', '.csv']:
+        ext = '.pdf'
+
+    # Calculate Volume-Based Cost
+    cost = 2
+    if ext == '.pdf':
+        try:
+            doc = fitz.open(stream=content, filetype="pdf")
+            if doc.needs_pass:
+                print(f"DEBUG: PDF requires password. Received pdf_password='{pdf_password}'")
+                auth_result = doc.authenticate(pdf_password) if pdf_password else 0
+                print(f"DEBUG: auth_result={auth_result}")
+                if not pdf_password or not auth_result:
+                    raise ValueError("This PDF is password-protected. Please provide the correct password.")
+                # Remove password by writing the authenticated document back to memory
+                content = doc.tobytes()
+            cost = max(2, math.ceil(len(doc) / 5) * 2)
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
+        except Exception as e:
+            print(f"Failed to calculate PDF cost: {e}")
+    elif ext in ['.xlsx', '.xls', '.csv']:
+        try:
+            if ext == '.csv':
+                df = pd.read_csv(io.BytesIO(content))
+                total_rows = len(df)
+            else:
+                dfs = pd.read_excel(io.BytesIO(content), sheet_name=None)
+                total_rows = sum(len(df) for df in dfs.values())
+            cost = max(2, math.ceil(total_rows / 50) * 2)
+        except Exception as e:
+            print(f"Failed to calculate Excel cost: {e}")
+
     # Check credits
-    profile_resp = await sc.table("profiles").select("credits").eq("id", user_id).execute()
-    if not profile_resp.data or profile_resp.data[0].get("credits", 0) <= 0:
-        raise HTTPException(status_code=402, detail="Insufficient credits.")
+    profile_resp = await sc.table("profiles").select("active_org_id").eq("id", user_id).execute()
+    current_credits = 0
+    if profile_resp.data and profile_resp.data[0].get("active_org_id"):
+        org_id = profile_resp.data[0]["active_org_id"]
+        org_data = await sc.table("organizations").select("credits").eq("id", org_id).execute()
+        current_credits = org_data.data[0].get("credits", 0) if org_data.data else 0
+    else:
+        org_data = await sc.table("organizations").select("credits").eq("owner_id", user_id).execute()
+        current_credits = org_data.data[0].get("credits", 0) if org_data.data else 0
+
+    if current_credits < cost:
+        raise HTTPException(status_code=402, detail=f"Insufficient credits. This {cost * 5}-page/row statement requires {cost} credits, but your organization only has {current_credits}.")
         
     statement_id = str(uuid.uuid4())
     
@@ -73,20 +125,34 @@ async def upload_bank_statement(
         "status": "processing"
     }).execute()
     
+
+        
     # Upload original to Supabase
-    file_path = f"{client_id}/bank_{statement_id}.pdf"
+    file_path = f"{client_id}/bank_{statement_id}{ext}"
+    content_type = file.content_type or "application/pdf"
     try:
-        sc.storage.from_("invoices").upload(file_path, content, {"content-type": "application/pdf"})
-        file_url = sc.storage.from_("invoices").get_public_url(file_path)
+        await sc.storage.from_("invoices").upload(file_path, content, {"content-type": content_type})
+        file_url = await sc.storage.from_("invoices").get_public_url(file_path)
         await sc.table("bank_statements").update({"file_url": file_url}).eq("id", statement_id).execute()
     except Exception as e:
         print(f"Storage upload failed: {e}")
     
     # Deduct credit
-    await sc.rpc("decrement_credits", {"user_id_param": user_id}).execute()
+    rpc_resp = await sc.rpc("decrement_credits", {
+        "user_id_param": user_id, 
+        "amount": cost,
+        "task_type_param": "bank_statement_upload",
+        "file_name_param": file.filename,
+        "tokens_used_param": 0
+    }).execute()
+    
+    if rpc_resp.data == -1:
+        # Revert processing status
+        await sc.table("bank_statements").update({"status": "failed"}).eq("id", statement_id).execute()
+        raise HTTPException(status_code=402, detail="Insufficient credits. Please recharge your wallet.")
     
     # Start background task
-    background_tasks.add_task(process_bank_statement_bg, statement_id, content, user_id, client_id)
+    background_tasks.add_task(process_bank_statement_bg, statement_id, content, user_id, client_id, ext, pdf_password)
     
     return {"status": "success", "statement_id": statement_id, "message": "Bank statement is processing in the background."}
 
@@ -102,6 +168,26 @@ async def get_statement_status(statement_id: str, authorization: str = Header(No
         raise HTTPException(status_code=404, detail="Statement not found.")
         
     return {"status": "success", "data": resp.data[0]}
+
+@router.post("/{statement_id}/cancel")
+async def cancel_statement(statement_id: str, authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    sc = await get_user_supabase_client(authorization)
+    
+    resp = await sc.table("bank_statements").select("status").eq("id", statement_id).execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Statement not found.")
+        
+    status = str(resp.data[0].get("status", ""))
+    if not status.startswith("processing"):
+        raise HTTPException(status_code=400, detail="Only processing statements can be cancelled.")
+        
+    await sc.table("bank_statements").update({"status": "cancelled"}).eq("id", statement_id).execute()
+    await sc.table("bank_transactions").delete().eq("statement_id", statement_id).execute()
+    
+    return {"status": "success", "message": "Statement processing cancelled successfully."}
 
 @router.get("/{statement_id}/transactions")
 async def get_transactions(statement_id: str, authorization: str = Header(None)):

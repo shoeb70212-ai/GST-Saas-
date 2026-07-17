@@ -53,13 +53,13 @@
     --border-focus: #A8A29E;
 
     --text-primary: #292524;
-    --text-secondary: #A8A29E;
-    --text-disabled: #D8D1C7;
+    --text-secondary: #78716C;
+    --text-disabled: #A8A29E;
     --text-inverse: #F5F1EA;
 
-    --accent: #7A282D;
-    --accent-subtle: rgba(122, 40, 45, 0.1);
-    --accent-hover: #5C1E22;
+    --accent: #990000;
+    --accent-subtle: rgba(153, 0, 0, 0.1);
+    --accent-hover: #CC0000;
 
     --success: #16A34A;
     --success-subtle: rgba(22, 163, 74, 0.1);

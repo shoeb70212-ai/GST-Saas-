@@ -128,9 +128,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+DROP TRIGGER IF EXISTS trigger_set_client_org ON clients;
 CREATE TRIGGER trigger_set_client_org BEFORE INSERT ON clients FOR EACH ROW EXECUTE PROCEDURE set_default_org_id();
+
+DROP TRIGGER IF EXISTS trigger_set_invoice_org ON invoices;
 CREATE TRIGGER trigger_set_invoice_org BEFORE INSERT ON invoices FOR EACH ROW EXECUTE PROCEDURE set_default_org_id();
+
+DROP TRIGGER IF EXISTS trigger_set_gstr2b_org ON gstr2b_records;
 CREATE TRIGGER trigger_set_gstr2b_org BEFORE INSERT ON gstr2b_records FOR EACH ROW EXECUTE PROCEDURE set_default_org_id();
+
+DROP TRIGGER IF EXISTS trigger_set_whatsapp_org ON whatsapp_pending_files;
 CREATE TRIGGER trigger_set_whatsapp_org BEFORE INSERT ON whatsapp_pending_files FOR EACH ROW EXECUTE PROCEDURE set_default_org_id();
 
 -- =====================================================================================
@@ -185,16 +192,23 @@ ALTER TABLE client_assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- Organizations: Only members can view. Only owners/admins can update.
+DROP POLICY IF EXISTS "Users can view orgs they belong to" ON organizations;
+DROP POLICY IF EXISTS "Admins can update org" ON organizations;
 CREATE POLICY "Users can view orgs they belong to" ON organizations FOR SELECT USING (id IN (SELECT org_id FROM get_user_orgs()));
 CREATE POLICY "Admins can update org" ON organizations FOR UPDATE USING (id IN (SELECT org_id FROM get_user_orgs() WHERE role IN ('owner', 'admin')));
 
 -- Organization Members: Members can view each other. Admins can manage.
+DROP POLICY IF EXISTS "Members can view coworkers" ON organization_members;
+DROP POLICY IF EXISTS "Admins can insert members" ON organization_members;
+DROP POLICY IF EXISTS "Admins can update members" ON organization_members;
+DROP POLICY IF EXISTS "Admins can delete members" ON organization_members;
 CREATE POLICY "Members can view coworkers" ON organization_members FOR SELECT USING (org_id IN (SELECT org_id FROM get_user_orgs()));
 CREATE POLICY "Admins can insert members" ON organization_members FOR INSERT WITH CHECK (org_id IN (SELECT org_id FROM get_user_orgs() WHERE role IN ('owner', 'admin')));
 CREATE POLICY "Admins can update members" ON organization_members FOR UPDATE USING (org_id IN (SELECT org_id FROM get_user_orgs() WHERE role IN ('owner', 'admin')));
 CREATE POLICY "Admins can delete members" ON organization_members FOR DELETE USING (org_id IN (SELECT org_id FROM get_user_orgs() WHERE role IN ('owner', 'admin')));
 
 -- Audit Logs: Read-only for admins. Insert restricted to Postgres Triggers internally.
+DROP POLICY IF EXISTS "Admins can view audit logs" ON audit_logs;
 CREATE POLICY "Admins can view audit logs" ON audit_logs FOR SELECT USING (org_id IN (SELECT org_id FROM get_user_orgs() WHERE role IN ('owner', 'admin')));
 
 -- Rewrite Clients RLS
@@ -202,6 +216,11 @@ DROP POLICY IF EXISTS "Users can insert their own clients" ON clients;
 DROP POLICY IF EXISTS "Users can view their own clients" ON clients;
 DROP POLICY IF EXISTS "Users can update their own clients" ON clients;
 DROP POLICY IF EXISTS "Users can delete their own clients" ON clients;
+
+DROP POLICY IF EXISTS "Admins can insert clients" ON clients;
+DROP POLICY IF EXISTS "Users view assigned clients" ON clients;
+DROP POLICY IF EXISTS "Users update assigned clients" ON clients;
+DROP POLICY IF EXISTS "Admins delete clients" ON clients;
 
 CREATE POLICY "Admins can insert clients" ON clients FOR INSERT WITH CHECK (org_id IN (SELECT org_id FROM get_user_orgs() WHERE role IN ('owner', 'admin')));
 CREATE POLICY "Users view assigned clients" ON clients FOR SELECT USING (has_client_access(id));
@@ -213,6 +232,11 @@ DROP POLICY IF EXISTS "Users can insert their own invoices" ON invoices;
 DROP POLICY IF EXISTS "Users can view their own invoices" ON invoices;
 DROP POLICY IF EXISTS "Users can update their own invoices" ON invoices;
 DROP POLICY IF EXISTS "Users can delete their own invoices" ON invoices;
+
+DROP POLICY IF EXISTS "Users can insert invoices for assigned clients" ON invoices;
+DROP POLICY IF EXISTS "Users can view invoices for assigned clients" ON invoices;
+DROP POLICY IF EXISTS "Users can update invoices for assigned clients" ON invoices;
+DROP POLICY IF EXISTS "Users can delete invoices for assigned clients" ON invoices;
 
 CREATE POLICY "Users can insert invoices for assigned clients" ON invoices FOR INSERT WITH CHECK (has_client_access(client_id));
 CREATE POLICY "Users can view invoices for assigned clients" ON invoices FOR SELECT USING (has_client_access(client_id));
@@ -281,6 +305,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+DROP TRIGGER IF EXISTS trigger_audit_invoices ON invoices;
 CREATE TRIGGER trigger_audit_invoices
 AFTER INSERT OR UPDATE OR DELETE ON invoices
 FOR EACH ROW EXECUTE PROCEDURE log_invoice_changes();

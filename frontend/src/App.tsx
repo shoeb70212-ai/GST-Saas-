@@ -14,6 +14,10 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const ClientsPage = lazy(() => import('./pages/ClientsPage'));
 const AuditLogsPage = lazy(() => import('./pages/AuditLogsPage'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
+const PricingPage = lazy(() => import('./pages/PricingPage'));
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
+const SecurityPage = lazy(() => import('./pages/SecurityPage'));
+const AboutPage = lazy(() => import('./pages/AboutPage'));
 const BankStatementsPage = lazy(() => import('./pages/BankStatementsPage'));
 const ReconciliationPage = lazy(() => import('./pages/ReconciliationPage'));
 const BankReconcilePage = lazy(() => import('./pages/BankReconcilePage'));
@@ -95,6 +99,10 @@ export default function App() {
           <Routes>
             {/* Public Routes */}
             <Route path="/" element={<LandingPage />} />
+            <Route path="/pricing" element={<PricingPage />} />
+            <Route path="/privacy" element={<PrivacyPage />} />
+            <Route path="/security" element={<SecurityPage />} />
+            <Route path="/about" element={<AboutPage />} />
             <Route path="/portal/:clientId" element={<CollaborationPortal />} />
             <Route path="/auth" element={session ? <Navigate to="/dashboard" replace /> : <AuthPage />} />
             <Route path="/register" element={<AuthPage />} />

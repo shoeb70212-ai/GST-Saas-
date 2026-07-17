@@ -1,5 +1,6 @@
 import os
 import io
+import csv
 import fitz # PyMuPDF
 import pymupdf4llm
 from openai import AsyncOpenAI
@@ -7,15 +8,27 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from supabase import create_async_client
 import json
+from dotenv import load_dotenv
+
+load_dotenv()
 
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
-if OPENAI_API_KEY:
+if OPENROUTER_API_KEY:
+    client = AsyncOpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=OPENROUTER_API_KEY,
+    )
+    AI_MODEL = "openai/gpt-4o-mini"
+elif OPENAI_API_KEY:
     client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+    AI_MODEL = "gpt-4o-mini"
 else:
     client = None
+    AI_MODEL = None
 
 class BankTransaction(BaseModel):
     txn_date: Optional[str] = Field(description="Date of transaction in YYYY-MM-DD format. Return null if blurry, missing, or ambiguous.")
@@ -25,6 +38,19 @@ class BankTransaction(BaseModel):
     withdrawal: Optional[float] = Field(description="Debit or withdrawal amount. Return null if blurry or ambiguous.")
     deposit: Optional[float] = Field(description="Credit or deposit amount. Return null if blurry or ambiguous.")
     balance: Optional[float] = Field(description="Running balance amount. Return null if blurry or ambiguous.")
+
+class BankStatementExtractCSV(BaseModel):
+    account_number: Optional[str] = Field(description="The bank account number for these transactions. Useful if multiple accounts are present.")
+    bank_name: Optional[str] = Field(description="The name of the bank (e.g., HDFC, SBI).")
+    transactions_csv: str = Field(description="""A CSV formatted string containing all transactions.
+Use EXACTLY these columns: txn_date, description, reference_no, cheque_number, withdrawal, deposit, balance.
+- Enclose text in double quotes if it contains commas (e.g. description).
+- Leave missing/null values completely empty (e.g. ,,).
+- Dates MUST be YYYY-MM-DD.
+- Amounts MUST be raw numbers (no commas or currency symbols).
+- DO NOT wrap the CSV in markdown code blocks, just output the raw text string.
+- If no transactions exist, return an empty string.
+""")
 
 class BankStatementExtract(BaseModel):
     account_number: Optional[str] = Field(description="The bank account number for these transactions. Useful if multiple accounts are present.")
@@ -40,68 +66,149 @@ async def extract_bank_statement_chunk(md_text: str, statement_period: str) -> B
     Extract the tabular bank statement transactions from the provided markdown text.
     
     CRITICAL INSTRUCTIONS:
-    1. THE ZERO HALLUCINATION MANDATE: If any number, date, or description is blurry, missing, or ambiguous, you MUST return null. Do NOT attempt to guess or hallucinate.
+    1. THE ZERO HALLUCINATION MANDATE: If any number, date, or description is blurry, missing, or ambiguous, you MUST return empty/null. Do NOT attempt to guess or hallucinate.
     2. STATEMENT PERIOD: The statement period is {statement_period}. Use this to determine the correct year for dates if only day/month is provided (e.g. '12-Jan' -> '2023-01-12').
-    3. OPENING BALANCE: If the first row is 'B/F', 'Brought Forward', or 'Opening Balance', you MUST extract it as a transaction with 0 withdrawal, 0 deposit, and the specified balance.
-    4. EMPTY PAGES: If the text is just Terms & Conditions or has no tabular data, return an empty transactions array [].
+    3. OPENING BALANCE: If the first row is 'B/F', 'Brought Forward', or 'Opening Balance', you MUST extract it as a transaction with empty withdrawal, empty deposit, and the specified balance.
+    4. EMPTY PAGES: If the text is just Terms & Conditions or has no tabular data, return an empty CSV string.
     5. MULTI-LINE NARRATIONS: Indian banks often span descriptions across multiple lines. Merge them into a single string.
     """
 
     try:
         response = await client.beta.chat.completions.parse(
-            model="gpt-4o-mini",
+            model=AI_MODEL,
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": f"Markdown Text:\n\n{md_text}"}
             ],
-            response_format=BankStatementExtract,
+            response_format=BankStatementExtractCSV,
         )
         
-        extracted_data = response.choices[0].message.parsed
-        return extracted_data
+        extracted_csv_data = response.choices[0].message.parsed
+        transactions = []
+        
+        if extracted_csv_data.transactions_csv and extracted_csv_data.transactions_csv.strip():
+            f = io.StringIO(extracted_csv_data.transactions_csv.strip())
+            reader = csv.DictReader(f)
+            for row in reader:
+                try:
+                    def parse_float(val):
+                        if not val or not str(val).strip(): return None
+                        clean = str(val).replace(',', '').strip()
+                        return float(clean) if clean else None
+                        
+                    txn = BankTransaction(
+                        txn_date=row.get('txn_date') or None,
+                        description=row.get('description') or None,
+                        reference_no=row.get('reference_no') or None,
+                        cheque_number=row.get('cheque_number') or None,
+                        withdrawal=parse_float(row.get('withdrawal')),
+                        deposit=parse_float(row.get('deposit')),
+                        balance=parse_float(row.get('balance'))
+                    )
+                    transactions.append(txn)
+                except Exception as row_err:
+                    print(f"Error parsing CSV row {row}: {row_err}")
+                    continue
+
+        tokens = response.usage.total_tokens if response.usage else 0
+        
+        return BankStatementExtract(
+            account_number=extracted_csv_data.account_number,
+            bank_name=extracted_csv_data.bank_name,
+            transactions=transactions
+        ), tokens
     except Exception as e:
         print(f"GPT-4o-mini extraction failed: {e}")
-        return BankStatementExtract(transactions=[])
+        return BankStatementExtract(transactions=[], account_number=None, bank_name=None), 0
 
-async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes, user_id: str, client_id: str):
+async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes, user_id: str, client_id: str, extension: str = '.pdf', pdf_password: str = None):
     """
-    Background worker that chunks the PDF, runs extraction, performs math checks, and saves to DB.
+    Background worker that chunks the file, runs extraction, performs math checks, and saves to DB.
     """
     SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_ANON_KEY)
     sc = await create_async_client(SUPABASE_URL, SERVICE_ROLE)
     
+    print(f"DEBUG BG: Starting process_bank_statement_bg for {statement_id}")
+    all_transactions = []
+    overall_bank_name = None
+    overall_account_number = None
+    total_statement_tokens = 0
+
     try:
-        doc = fitz.open(stream=file_path_or_bytes, filetype="pdf")
-        
-        first_page_text = doc[0].get_text()
-        statement_period_context = "Unknown. Look at the text for context."
-        
-        # Step 1: Chunk the document (5 pages at a time)
-        chunk_size = 5
-        total_pages = len(doc)
-        
-        all_transactions = []
-        overall_bank_name = None
-        overall_account_number = None
-        
-        for i in range(0, total_pages, chunk_size):
-            chunk_doc = fitz.open()
-            for j in range(i, min(i + chunk_size, total_pages)):
-                chunk_doc.insert_pdf(doc, from_page=j, to_page=j)
+        if extension in ['.xlsx', '.xls', '.csv']:
+            import pandas as pd
+            if extension == '.csv':
+                df = pd.read_csv(io.BytesIO(file_path_or_bytes))
+                dfs = {"Sheet1": df}
+            else:
+                dfs = pd.read_excel(io.BytesIO(file_path_or_bytes), sheet_name=None)
                 
-            md_text = pymupdf4llm.to_markdown(chunk_doc)
+            for sheet_name, df in dfs.items():
+                df.dropna(how='all', axis=0, inplace=True)
+                df.dropna(how='all', axis=1, inplace=True)
+                
+                chunk_size = 50
+                for i in range(0, len(df), chunk_size):
+                    status_check = await sc.table("bank_statements").select("status").eq("id", statement_id).execute()
+                    if status_check.data and status_check.data[0].get("status") == "cancelled":
+                        return
+                        
+                    progress_msg = f"processing: rows {i+1}-{min(i+chunk_size, len(df))} of {len(df)}"
+                    await sc.table("bank_statements").update({"status": progress_msg[:50]}).eq("id", statement_id).execute()
+                    
+                    chunk_df = df.iloc[i:i+chunk_size]
+                    if chunk_df.empty: continue
+                    
+                    md_text = chunk_df.to_markdown(index=False)
+                    extract_result, tokens = await extract_bank_statement_chunk(md_text, "Unknown period (Excel/CSV)")
+                    total_statement_tokens += tokens
+                    
+                    if extract_result.bank_name and not overall_bank_name: overall_bank_name = extract_result.bank_name
+                    if extract_result.account_number and not overall_account_number: overall_account_number = extract_result.account_number
+                    all_transactions.extend(extract_result.transactions)
+                    
+        else:
+            print(f"DEBUG BG: Opening PDF stream")
+            doc = fitz.open(stream=file_path_or_bytes, filetype="pdf")
+            if doc.needs_pass and pdf_password:
+                doc.authenticate(pdf_password)
+            first_page_text = doc[0].get_text()
+            statement_period_context = "Unknown. Look at the text for context."
             
-            if len(md_text) < 50:
-                continue
-                
-            extract_result = await extract_bank_statement_chunk(md_text, statement_period_context)
+            total_pages = len(doc)
+            print(f"DEBUG BG: Extracted first page text. Total pages: {total_pages}")
+            chunk_size = 10
             
-            if extract_result.bank_name and not overall_bank_name:
-                overall_bank_name = extract_result.bank_name
-            if extract_result.account_number and not overall_account_number:
-                overall_account_number = extract_result.account_number
+            for i in range(0, total_pages, chunk_size):
+                status_check = await sc.table("bank_statements").select("status").eq("id", statement_id).execute()
+                if status_check.data and status_check.data[0].get("status") == "cancelled":
+                    print(f"DEBUG BG: Statement {statement_id} was cancelled. Halting.")
+                    return
                 
-            all_transactions.extend(extract_result.transactions)
+                start_page = i + 1
+                end_page = min(i + chunk_size, total_pages)
+                progress_msg = f"processing: {start_page}-{end_page} of {total_pages}"
+                # Fit within 50 chars for varchar(50)
+                await sc.table("bank_statements").update({"status": progress_msg[:50]}).eq("id", statement_id).execute()
+                
+                chunk_doc = fitz.open()
+                for j in range(i, min(i + chunk_size, total_pages)):
+                    chunk_doc.insert_pdf(doc, from_page=j, to_page=j)
+                    
+                print(f"DEBUG BG: Generating markdown for chunk {i}")
+                md_text = pymupdf4llm.to_markdown(chunk_doc)
+                if len(md_text) < 50:
+                    print(f"DEBUG BG: Markdown too short, skipping chunk {i}")
+                    continue
+                    
+                print(f"DEBUG BG: Requesting AI extraction for chunk {i}")
+                extract_result, tokens = await extract_bank_statement_chunk(md_text, statement_period_context)
+                total_statement_tokens += tokens
+                print(f"DEBUG BG: AI extraction completed for chunk {i}")
+                
+                if extract_result.bank_name and not overall_bank_name: overall_bank_name = extract_result.bank_name
+                if extract_result.account_number and not overall_account_number: overall_account_number = extract_result.account_number
+                all_transactions.extend(extract_result.transactions)
             
         # Step 2: Run Deterministic Math Engine
         db_rows = []
@@ -159,6 +266,15 @@ async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes
             "bank_name": overall_bank_name,
             "account_number": overall_account_number
         }).eq("id", statement_id).execute()
+        
+        # Log Token Usage (credits were already deducted upfront in the router)
+        await sc.rpc("decrement_credits", {
+            "user_id_param": user_id, 
+            "amount": 0,
+            "task_type_param": "bank_statement_processing",
+            "file_name_param": f"statement_{statement_id}",
+            "tokens_used_param": total_statement_tokens
+        }).execute()
         
     except Exception as e:
         print(f"Error processing bank statement: {e}")

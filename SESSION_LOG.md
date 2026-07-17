@@ -134,6 +134,18 @@
   - Brainstormed and documented 10 high-value expansion concepts for V2.0 (e.g., Tally XML Export, AA API Bank Feeds, AI Fraud Detection) in 14_Future_Expansion_Ideas.md.
 - **Pending/Open**:
   - The actual .sql migration files generated today (phase37_monetization) still need to be executed manually in Supabase because the local Docker daemon was offline.
+
+## 2026-07-16 (CI/CD, Monetization, & Roadmap Planning)
+- **Accomplished**:
+  - Engineered an Automated CI/CD Testing Pipeline via GitHub Actions (ci.yml) to run both Pytest and Playwright test suites on every pull request, securely pulling API keys from GitHub Secrets.
+  - Designed and deployed the Razorpay Monetization Engine for the Indian B2B market, choosing Prepaid SaaS Passes (Starter ₹999 / Pro ₹2,499) to bypass RBI e-mandate failure rates.
+  - Implemented a secure Postgres RPC (upgrade_user_tier) with atomic idempotency checks in migration_phase37_monetization.sql.
+  - Built a sleek <ProGate> React component to lock advanced tools (CFO Dashboard, Tax Liability Predictor) behind the Pro subscription wall.
+  - Updated the backend (payment_routes.py) and frontend (WalletPage.tsx) to process Razorpay checkouts flawlessly.
+  - Successfully documented the entire system state, updating KhataLens_Master_Document.md and creating 13_Monetization_Architecture.md.
+  - Brainstormed and documented 10 high-value expansion concepts for V2.0 (e.g., Tally XML Export, AA API Bank Feeds, AI Fraud Detection) in 14_Future_Expansion_Ideas.md.
+- **Pending/Open**:
+  - The actual .sql migration files generated today (phase37_monetization) still need to be executed manually in Supabase because the local Docker daemon was offline.
   - GitHub Secrets must be populated by the user before the CI/CD pipeline will pass its authentications.
 - **Decisions**:
   - Decided to pivot from recurring subscriptions to Prepaid Passes for Razorpay due to the high churn/failure rates of RBI-mandated 3D secure checks.
@@ -141,3 +153,19 @@
 - **Next Time**:
   - Run the migrations on the production Supabase instance.
   - Populate GitHub Secrets and verify the CI/CD pipeline runs green.
+
+## 2026-07-16 (Dynamic Weighted Credits & PDF Passwords)
+- **Accomplished**:
+  - Investigated and resolved the backend failure related to OpenAI/OpenRouter API key usage (`bank_service.py`).
+  - Redesigned the entire credit system architecture (Strategy B - Action-Based Weighted Credits) to prevent financial exploits by calculating token volume cost upfront before API execution.
+  - Implemented dynamic cost calculation using PyMuPDF (PDF pages) and Pandas (Excel rows) in `bank_routes.py` and `batch_routes.py`.
+  - Added dynamic AI Deep Matching cost calculation in `reconcile_routes.py`.
+  - Created `migration_phase39_dynamic_credits.sql` and `migration_phase40_gstin_status.sql` (to fix a frontend analytics crash).
+  - Added UI and backend logic to handle password-protected PDFs during upload, and natively strip the encryption using PyMuPDF before saving to Supabase.
+- **Pending/Open**:
+  - The PDF password feature was deployed but the user reported "it is not taking the password" right before the servers restarted. This issue remains pending and needs debugging on the next session.
+- **Decisions**:
+  - Selected upfront mathematical volume costing over post-processing deductions to protect the wallet from going into the negatives.
+  - Chose to completely decrypt PDFs using PyMuPDF (`tobytes()`) rather than just unlocking them, so users only need to provide the password once.
+- **Next Time**:
+  - Debug why the PDF password is not being accepted on the frontend/backend when uploaded.

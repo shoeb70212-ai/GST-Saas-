@@ -3,7 +3,10 @@ from fastapi import APIRouter, HTTPException, Header, Request, Depends
 from pydantic import BaseModel
 import razorpay
 from supabase import create_async_client
-from main import SUPABASE_URL, SUPABASE_ANON_KEY
+import os
+SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
+SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
+
 
 router = APIRouter()
 
@@ -164,3 +167,35 @@ async def verify_payment(
         return {"status": "success", "message": f"Successfully upgraded to {plan_type} and added {credits_to_add} credits."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/audit/usage-logs")
+async def get_usage_logs(authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    token = authorization.split(" ")[1]
+    
+    sc = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+    try:
+        user_resp = await sc.auth.get_user(token)
+        user_id = user_resp.user.id
+        sc.postgrest.auth(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid session token")
+        
+    # Get active org
+    profile_resp = await sc.table("profiles").select("active_org_id").eq("id", user_id).execute()
+    active_org_id = None
+    if profile_resp.data:
+        active_org_id = profile_resp.data[0].get("active_org_id")
+        
+    if not active_org_id:
+        org_resp = await sc.table("organizations").select("id").eq("owner_id", user_id).execute()
+        if org_resp.data:
+            active_org_id = org_resp.data[0].get("id")
+            
+    if not active_org_id:
+        return {"status": "success", "data": []}
+
+    resp = await sc.table("credit_usage_logs").select("*").eq("org_id", active_org_id).order("created_at", desc=True).limit(100).execute()
+    return {"status": "success", "data": resp.data}

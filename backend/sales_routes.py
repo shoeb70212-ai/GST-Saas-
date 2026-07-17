@@ -5,7 +5,10 @@ import calendar
 from datetime import date
 from fastapi import APIRouter, File, UploadFile, HTTPException, Header, Form
 import httpx
-from main import SUPABASE_URL, SUPABASE_ANON_KEY
+import os
+SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
+SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
+
 
 router = APIRouter()
 

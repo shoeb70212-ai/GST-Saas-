@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useClient } from '../lib/ClientContext';
 import { cn } from '../lib/utils';
+import KhataLensIcon from './KhataLensIcon';
 
 /**
  * Layout Component
@@ -20,10 +21,9 @@ import { cn } from '../lib/utils';
 export default function Layout() {
   const location = useLocation();
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [credits, setCredits] = useState<number | null>(null);
   const [clientMenuOpen, setClientMenuOpen] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
-  const { clients, activeClientId, setActiveClientId } = useClient();
+  const { clients, activeClientId, setActiveClientId, credits } = useClient();
 
   useEffect(() => {
     // Check initial theme from localStorage or system preference
@@ -37,21 +37,6 @@ export default function Layout() {
       setIsDarkMode(false);
       document.documentElement.classList.remove('dark');
     }
-
-    const fetchCredits = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        const { data } = await supabase
-          .from('profiles')
-          .select('credits')
-          .eq('id', session.user.id)
-          .single();
-        if (data) {
-          setCredits(data.credits);
-        }
-      }
-    };
-    fetchCredits();
   }, [location.pathname]);
 
   const toggleTheme = () => {
@@ -95,7 +80,7 @@ export default function Layout() {
       {/* Mobile Top Header (Sticky) */}
       <div className="md:hidden glass-header flex items-center justify-between p-3 z-50 pt-safe">
         <div className="flex items-center gap-2">
-          <img src="/favicon.png" alt="KhataLens Logo" className="w-7 h-7 drop-shadow-sm" />
+          <KhataLensIcon size={28} />
           <span className="text-lg font-bold text-text-primary tracking-tight">KhataLens</span>
         </div>
         
@@ -117,7 +102,7 @@ export default function Layout() {
         <div className="flex-1 bg-bg-surface/60 backdrop-blur-2xl border border-white/10 shadow-xl rounded-2xl flex flex-col overflow-hidden relative">
           <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent pointer-events-none" />
           <div className="p-5 flex items-center gap-3 h-[70px] relative z-10">
-          <img src="/favicon.png" alt="KhataLens Logo" className="w-8 h-8 drop-shadow-sm" />
+          <KhataLensIcon size={32} />
           <span className="text-xl font-bold text-text-primary tracking-tight">KhataLens</span>
         </div>
         

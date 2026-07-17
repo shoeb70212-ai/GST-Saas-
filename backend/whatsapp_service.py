@@ -19,7 +19,7 @@ except ImportError:
     pass
 
 # We reuse the existing extraction function from main
-from main import run_ai_extraction
+# to avoid circular imports, import run_ai_extraction where used
 
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
@@ -151,9 +151,8 @@ async def process_whatsapp_message_bg(message_data: dict):
                     content_bytes = await download_whatsapp_media(media_id)
                     doc = fitz.open(stream=content_bytes, filetype="pdf")
                     if doc.authenticate(text_body):
-                        output_pdf = io.BytesIO()
-                        doc.save(output_pdf)
-                        content_bytes = output_pdf.getvalue()
+                        from utils import remove_pdf_password_if_present
+                        content_bytes = remove_pdf_password_if_present(content_bytes, text_body)
                         await sc.table("whatsapp_pending_files").delete().eq("id", pending_id).execute()
                     else:
                         new_attempts = attempts + 1
@@ -234,10 +233,10 @@ async def process_whatsapp_message_bg(message_data: dict):
                 file_url = sc.storage.from_("invoices").get_public_url(file_path)
             except Exception as e:
                 print(f"Storage upload failed: {e}")
-                # Continue without file_url
-
+            
             # 5. AI Extraction
-            data_dict = await run_ai_extraction(content_bytes, mime_type, tally_ledgers)
+            from main import run_ai_extraction
+            data_dict, tokens = await run_ai_extraction(content_bytes, mime_type, tally_ledgers)
             
             state = data_dict.get("Extraction_State")
             if state == "needs_retry":
@@ -248,34 +247,59 @@ async def process_whatsapp_message_bg(message_data: dict):
                 return
 
             # 6. Save to DB
-            data_dict["user_id"] = user_id
-            data_dict["client_id"] = client_id
-            data_dict["status"] = "pending_approval"
-            data_dict["source"] = "whatsapp"
-            
-            db_payload = {
+            invoice_data = {
                 "user_id": user_id,
-                "client_id": client_id,
+                "client_id": active_client_id,
                 "supplier_name": data_dict.get("Supplier_Name"),
                 "supplier_gstin": data_dict.get("Supplier_GSTIN"),
                 "invoice_number": data_dict.get("Invoice_Number"),
+                "invoice_date": data_dict.get("Invoice_Date"),
                 "total_amount": data_dict.get("Total_Amount"),
                 "cgst_amount": data_dict.get("CGST_Amount"),
                 "sgst_amount": data_dict.get("SGST_Amount"),
                 "igst_amount": data_dict.get("IGST_Amount"),
-                "taxable_amount": data_dict.get("Taxable_Amount"),
-                "invoice_date": data_dict.get("Invoice_Date"),
-                "confidence_score": data_dict.get("Confidence_Score"),
+                "cess_amount": data_dict.get("Cess_Amount"),
+                "tax_rate": data_dict.get("Tax_Rate"),
+                "expense_category": data_dict.get("Expense_Category"),
+                "invoice_type": data_dict.get("Invoice_Type"),
+                "reverse_charge_applicable": data_dict.get("Reverse_Charge_Applicable"),
+                "confidence_score": data_dict.get("Confidence_Score", 0),
                 "extraction_state": state,
+                "flag_reason": data_dict.get("Flag_Reason"),
+                "hsn_audit_warning": data_dict.get("HSN_Audit_Warning"),
+                "file_url": file_url,
                 "status": "pending_approval",
-                "source": "whatsapp",
-                "file_url": file_url
+                "source": "whatsapp"
             }
+
+            resp = await sc.table("invoices").insert(invoice_data).execute()
+            if not resp.data:
+                raise Exception("Failed to insert into DB")
+
+            invoice_id = resp.data[0]["id"]
             
-            await sc.table("invoices").insert(db_payload).execute()
+            # Save Line Items
+            items = data_dict.get("Line_Items", [])
+            if items:
+                for item in items:
+                    item["invoice_id"] = invoice_id
+                await sc.table("invoice_line_items").insert(items).execute()
+
+            # 7. Deduct Credit and log tokens
+            rpc_resp = await sc.rpc("decrement_credits", {
+                "user_id_param": user_id, 
+                "amount": 1,
+                "task_type_param": "whatsapp_scan",
+                "file_name_param": f"WhatsApp_{media_id}",
+                "tokens_used_param": tokens
+            }).execute()
             
-            # 7. Deduct Credit
-            await sc.rpc("decrement_credits", {"user_id_param": user_id}).execute()
+            if rpc_resp.data == -1:
+                await send_whatsapp_message(
+                    phone_number,
+                    "⚠️ *Insufficient Credits*\nYour organization has run out of AI credits. Please recharge your wallet via the web dashboard to process this invoice."
+                )
+                return {"status": "insufficient_credits"}
 
             # 8. Send Success Message
             supplier = data_dict.get("Supplier_Name", "Unknown Vendor")

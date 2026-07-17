@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useClient } from '../lib/ClientContext';
 import { supabase } from '../lib/supabase';
-import { UploadCloud, FileText, Loader2, CheckCircle2, AlertTriangle, Eye, RefreshCw, AlertCircle } from 'lucide-react';
+import { UploadCloud, FileText, Loader2, CheckCircle2, AlertTriangle, Eye, RefreshCw, AlertCircle, Building2, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -11,6 +11,7 @@ export default function BankStatementsPage() {
   const [statements, setStatements] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [pdfPassword, setPdfPassword] = useState('');
   const [selectedStatementId, setSelectedStatementId] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [txnsLoading, setTxnsLoading] = useState(false);
@@ -41,7 +42,7 @@ export default function BankStatementsPage() {
 
   // Polling for processing statements
   useEffect(() => {
-    const hasProcessing = statements.some(s => s.status === 'processing');
+    const hasProcessing = statements.some(s => s.status.startsWith('processing'));
     if (hasProcessing) {
       const timer = setInterval(() => {
         fetchStatements();
@@ -50,7 +51,12 @@ export default function BankStatementsPage() {
     }
   }, [statements, fetchStatements]);
 
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+  const onDrop = useCallback(async (acceptedFiles: File[], fileRejections: any[]) => {
+    if (fileRejections.length > 0) {
+      toast.error('Invalid file type. Only PDF, Excel, and CSV statements are supported.');
+      return;
+    }
+
     if (!activeClientId) {
       toast.error("Please select a client first.");
       return;
@@ -58,8 +64,14 @@ export default function BankStatementsPage() {
     const file = acceptedFiles[0];
     if (!file) return;
 
-    if (file.type !== 'application/pdf') {
-      toast.error('Only PDF bank statements are supported.');
+    const validTypes = [
+      'application/pdf', 
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
+      'application/vnd.ms-excel', 
+      'text/csv'
+    ];
+    if (!validTypes.includes(file.type)) {
+      toast.error('Only PDF, Excel, and CSV statements are supported.');
       return;
     }
 
@@ -71,6 +83,9 @@ export default function BankStatementsPage() {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('client_id', activeClientId);
+      if (pdfPassword) {
+        formData.append('pdf_password', pdfPassword);
+      }
 
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       const res = await fetch(`${apiUrl}/api/bank-statements/upload`, {
@@ -89,11 +104,16 @@ export default function BankStatementsPage() {
     } finally {
       setUploading(false);
     }
-  }, [activeClientId, fetchStatements]);
+  }, [activeClientId, fetchStatements, pdfPassword]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { 'application/pdf': ['.pdf'] },
+    accept: { 
+      'application/pdf': ['.pdf'],
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+      'application/vnd.ms-excel': ['.xls'],
+      'text/csv': ['.csv']
+    },
     maxFiles: 1,
     disabled: uploading || !activeClientId
   });
@@ -123,6 +143,25 @@ export default function BankStatementsPage() {
     }
   };
 
+  const cancelStatement = async (stmtId: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const res = await fetch(`${apiUrl}/api/bank-statements/${stmtId}/cancel`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+      
+      if (!res.ok) throw new Error('Failed to cancel');
+      toast.success('Processing cancelled');
+      fetchStatements();
+    } catch (e) {
+      toast.error('Could not cancel processing');
+    }
+  };
+
   if (!activeClientId) {
     return (
       <div className="p-4 md:p-8 flex items-center justify-center h-full">
@@ -148,6 +187,19 @@ export default function BankStatementsPage() {
       </div>
 
       {/* Upload Zone */}
+      <div className="mb-6 max-w-sm mx-auto">
+        <label className="block text-sm font-medium text-text-secondary mb-1">PDF Password (Optional)</label>
+        <input 
+          type="password"
+          placeholder="If statement is encrypted..."
+          value={pdfPassword}
+          onChange={e => setPdfPassword(e.target.value)}
+          className="w-full bg-bg-surface border border-border rounded-lg px-4 py-2 text-text-primary focus:outline-none focus:border-accent"
+          disabled={uploading}
+        />
+        <p className="text-xs text-text-disabled mt-1 text-center">We automatically remove the password for future viewing.</p>
+      </div>
+
       <div 
         {...getRootProps()} 
         className={`border-2 border-dashed rounded-2xl p-8 md:p-12 text-center cursor-pointer transition-all duration-300 ${
@@ -166,7 +218,7 @@ export default function BankStatementsPage() {
           {isDragActive ? 'Drop statement here' : 'Upload Bank Statement'}
         </h3>
         <p className="text-sm text-text-secondary font-light max-w-md mx-auto">
-          Drag and drop a PDF bank statement here, or click to browse. Max 25MB. The AI will extract all transactions automatically.
+          Drag and drop a PDF, Excel, or CSV statement here, or click to browse. Max 25MB. The AI will extract all transactions automatically.
         </p>
       </div>
 
@@ -202,9 +254,18 @@ export default function BankStatementsPage() {
                   </div>
                   
                   <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
-                    {stmt.status === 'processing' && (
+                    {stmt.status.startsWith('processing') && (
                       <div className="flex items-center gap-2 text-warning text-sm font-medium bg-warning-subtle px-3 py-1.5 rounded-full border border-warning/20">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Processing...
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> 
+                        {stmt.status === 'processing' ? 'Processing...' : stmt.status.replace('processing:', '').trim()}
+                        <button onClick={() => cancelStatement(stmt.id)} className="ml-2 hover:text-red-500 transition-colors" title="Cancel Processing">
+                          <XCircle className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                    {stmt.status === 'cancelled' && (
+                      <div className="flex items-center gap-2 text-text-secondary text-sm font-medium bg-bg-sunken px-3 py-1.5 rounded-full border border-border">
+                        <XCircle className="w-3.5 h-3.5" /> Cancelled
                       </div>
                     )}
                     {stmt.status === 'completed' && (

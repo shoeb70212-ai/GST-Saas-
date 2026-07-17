@@ -1,32 +1,135 @@
-import { motion, AnimatePresence } from 'framer-motion';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { FileText, FileSpreadsheet } from 'lucide-react';
+import KhataLensIcon from './KhataLensIcon';
+import anime from 'animejs';
 
 export default function HeroAnimation() {
-  const [activeId, setActiveId] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const timelineRef = useRef<anime.AnimeTimelineInstance | null>(null);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveId((prev) => (prev + 1) % 100); 
-    }, 3500);
-    return () => clearInterval(interval);
+    if (!containerRef.current) return;
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (prefersReducedMotion) {
+      // Just show static elements
+      const elements = containerRef.current.querySelectorAll('.anime-hide');
+      elements.forEach(el => (el as HTMLElement).style.opacity = '1');
+      return;
+    }
+
+    // Set initial states
+    anime.set('.anime-line-bg1', { backgroundPosition: '200% 0' });
+    anime.set('.anime-line-bg2', { backgroundPosition: '-200% 0' });
+    
+    // Background lines loop
+    anime({
+      targets: '.anime-line-bg1',
+      backgroundPosition: ['200% 0', '-200% 0'],
+      duration: 2000,
+      loop: true,
+      easing: 'linear'
+    });
+    
+    anime({
+      targets: '.anime-line-bg2',
+      backgroundPosition: ['-200% 0', '200% 0'],
+      duration: 2000,
+      delay: 1000,
+      loop: true,
+      easing: 'linear'
+    });
+
+    // Laser loop
+    anime({
+      targets: '.anime-laser',
+      top: ['0%', '100%', '0%'],
+      duration: 1800,
+      loop: true,
+      easing: 'linear'
+    });
+
+    // Create main timeline loop
+    const tl = anime.timeline({
+      loop: true,
+    });
+    timelineRef.current = tl;
+
+    // Phase 1: Messy Bills In
+    tl.add({
+      targets: '.anime-messy-bill',
+      opacity: [0, 1],
+      translateX: [-50, 0],
+      scale: [0.8, 1],
+      rotate: [-5, 2],
+      duration: 800,
+      easing: 'easeOutElastic(1, .8)'
+    })
+    // Phase 2: Scan In + Messy Bills Out
+    .add({
+      targets: '.anime-messy-bill',
+      opacity: [1, 0],
+      translateX: [0, 50],
+      scale: [1, 0.8],
+      duration: 500,
+      easing: 'easeInQuad'
+    }, '+=500')
+    .add({
+      targets: '.anime-scan-bill',
+      opacity: [0, 1],
+      translateY: [-100, 0],
+      scale: [0.6, 1],
+      rotate: [-5, 0],
+      duration: 1200,
+      easing: 'easeOutElastic(1, .8)'
+    }, '-=300')
+    // Phase 3: Ping + Rows In + Scan Out
+    .add({
+      targets: '.anime-scan-bill',
+      opacity: [1, 0],
+      translateY: [0, 100],
+      scale: [1, 0.6],
+      duration: 500,
+      easing: 'easeInQuad'
+    }, '+=800')
+    .add({
+      targets: '.anime-ping',
+      opacity: [0, 1, 0],
+      scale: [0.5, 3, 4],
+      duration: 1000,
+      easing: 'easeOutQuad'
+    }, '-=200')
+    .add({
+      targets: '.anime-row',
+      opacity: [0, 1],
+      translateX: [-30, 0],
+      height: [0, 32],
+      duration: 400,
+      delay: anime.stagger(150),
+      easing: 'easeOutElastic(1, .8)'
+    }, '-=800')
+    // Reset for next loop
+    .add({
+      targets: '.anime-row',
+      opacity: [1, 0],
+      duration: 400,
+      easing: 'easeInQuad'
+    }, '+=1000');
+
+    return () => {
+      anime.remove('.anime-line-bg1');
+      anime.remove('.anime-line-bg2');
+      anime.remove('.anime-laser');
+      tl.pause();
+    };
   }, []);
 
   return (
-    <div className="relative w-full h-[450px] lg:h-[550px] flex items-center justify-center scale-90 sm:scale-100 mt-8 lg:mt-0">
-      {/* Animated connection lines */}
-      <div className="absolute top-1/2 left-0 w-full h-[3px] -translate-y-1/2 flex items-center justify-between px-16 z-0 hidden sm:flex">
-        <motion.div 
-          className="h-full w-2/5 bg-gradient-to-r from-transparent via-slate-300 to-transparent" 
-          animate={{ backgroundPosition: ['200% 0', '-200% 0'] }}
-          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-        />
-        <motion.div 
-          className="h-full w-2/5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent" 
-          animate={{ backgroundPosition: ['-200% 0', '200% 0'] }}
-          transition={{ duration: 2, repeat: Infinity, ease: "linear", delay: 1 }}
-        />
-      </div>
+    <div ref={containerRef} className="w-full relative overflow-hidden flex items-center justify-center py-12 px-4 min-h-[440px] bg-bg-surface bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]">
+      
+      {/* Background animated lines */}
+      <div className="anime-line-bg1 absolute inset-0 opacity-[0.03] z-0" style={{ backgroundImage: 'repeating-linear-gradient(90deg, transparent, transparent 40px, #000 40px, #000 42px)' }} />
+      <div className="anime-line-bg2 absolute inset-0 opacity-[0.03] z-0" style={{ backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 40px, #000 40px, #000 42px)' }} />
 
       <div className="relative flex items-center justify-between w-full max-w-3xl px-2 z-10 gap-4">
         
@@ -34,14 +137,8 @@ export default function HeroAnimation() {
         <div className="hidden sm:flex flex-col gap-3 relative z-10 items-center">
            <div className="bg-white/80 backdrop-blur px-3 py-1 rounded-full shadow-sm border border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Messy Bills</div>
            <div className="relative w-24 h-32">
-             <AnimatePresence mode="popLayout">
-               <motion.div 
-                 key={`queue-${activeId}`}
-                 initial={{ opacity: 0, x: -50, scale: 0.8, rotate: -5 }}
-                 animate={{ opacity: 1, x: 0, scale: 1, rotate: 2 }}
-                 exit={{ opacity: 0, x: 50, scale: 0.8, filter: "blur(4px)" }}
-                 transition={{ duration: 0.8, type: "spring" }}
-                 className="absolute inset-0 bg-white rounded-xl shadow-lg border border-slate-200 p-3 flex flex-col gap-2"
+               <div 
+                 className="anime-messy-bill anime-hide opacity-0 absolute inset-0 bg-white rounded-xl shadow-lg border border-slate-200 p-3 flex flex-col gap-2"
                >
                  <div className="flex justify-between items-center">
                    <div className="w-8 h-2 bg-slate-300 rounded" />
@@ -52,8 +149,7 @@ export default function HeroAnimation() {
                  <div className="w-full h-full bg-slate-50 rounded mt-auto flex items-center justify-center border border-dashed border-slate-200">
                    <FileText className="w-6 h-6 text-slate-300" />
                  </div>
-               </motion.div>
-             </AnimatePresence>
+               </div>
            </div>
         </div>
 
@@ -67,17 +163,13 @@ export default function HeroAnimation() {
             <div className="text-xs font-bold text-white tracking-wide">KhataLens AI</div>
           </div>
           
-          <img src="/favicon.png" alt="KhataLens" className="w-24 h-24 drop-shadow-[0_0_25px_rgba(232,80,10,0.8)] z-10 mb-6" />
+          <div className="z-10 mb-6 drop-shadow-[0_0_25px_rgba(232,80,10,0.8)]">
+            <KhataLensIcon size={96} animate={true} />
+          </div>
 
           {/* Active Scanning Invoice */}
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={`scan-${activeId}`}
-              initial={{ opacity: 0, y: -100, scale: 0.6, rotate: -5 }}
-              animate={{ opacity: 1, y: 0, scale: 1, rotate: 0 }}
-              exit={{ opacity: 0, y: 100, scale: 0.6, filter: "blur(10px)" }}
-              transition={{ duration: 1.2, type: "spring", bounce: 0.3 }}
-              className="absolute bottom-8 w-40 h-48 bg-white rounded-xl shadow-2xl p-4 overflow-hidden"
+            <div
+              className="anime-scan-bill anime-hide opacity-0 absolute bottom-8 w-40 h-48 bg-white rounded-xl shadow-2xl p-4 overflow-hidden"
             >
                <div className="flex justify-between items-center mb-4">
                  <div className="w-12 h-3 bg-slate-300 rounded" />
@@ -95,13 +187,10 @@ export default function HeroAnimation() {
                </div>
                
                {/* Glowing Laser */}
-               <motion.div
-                 animate={{ top: ['0%', '100%', '0%'] }}
-                 transition={{ duration: 1.8, repeat: Infinity, ease: "linear" }}
-                 className="absolute left-0 w-full h-[4px] bg-accent shadow-[0_0_15px_#E8500A] z-20 opacity-90"
+               <div
+                 className="anime-laser absolute left-0 w-full h-[4px] bg-accent shadow-[0_0_15px_#E8500A] z-20 opacity-90 top-0"
                />
-            </motion.div>
-          </AnimatePresence>
+            </div>
         </div>
 
         {/* Step 3: Extracted Data (Excel) */}
@@ -110,12 +199,8 @@ export default function HeroAnimation() {
            <div className="w-56 bg-white rounded-2xl shadow-xl border border-slate-200 p-5 relative overflow-hidden">
              
              {/* Success Ping */}
-             <motion.div 
-                key={`ping-${activeId}`}
-                initial={{ opacity: 0, scale: 0 }}
-                animate={{ opacity: [0, 1, 0], scale: [0.5, 3, 4] }}
-                transition={{ delay: 1.2, duration: 1 }}
-                className="absolute top-5 right-5 w-5 h-5 rounded-full bg-emerald-400/20"
+             <div 
+                className="anime-ping anime-hide opacity-0 absolute top-5 right-5 w-5 h-5 rounded-full bg-emerald-400/20"
              />
 
              <div className="flex items-center gap-2 mb-6 border-b border-slate-100 pb-3 text-slate-800">
@@ -126,17 +211,14 @@ export default function HeroAnimation() {
              <div className="flex flex-col gap-3">
                {/* Excel Rows */}
                {[1, 2, 3].map((row) => (
-                 <motion.div
-                   key={`row-${activeId}-${row}`}
-                   initial={{ opacity: 0, x: -30, height: 0 }}
-                   animate={{ opacity: 1, x: 0, height: 32 }}
-                   transition={{ delay: 1.2 + (row * 0.15), duration: 0.4, type: "spring" }}
-                   className="w-full bg-slate-50 rounded border border-slate-200 flex items-center px-3 gap-3 shadow-sm hover:bg-emerald-50 hover:border-emerald-200 transition-colors"
+                 <div
+                   key={`row-${row}`}
+                   className="anime-row anime-hide opacity-0 w-full bg-slate-50 rounded border border-slate-200 flex items-center px-3 gap-3 shadow-sm hover:bg-emerald-50 hover:border-emerald-200 transition-colors overflow-hidden"
                  >
                    <div className="w-2 h-2 rounded-sm bg-emerald-400" />
                    <div className="w-16 h-2 bg-slate-300 rounded" />
                    <div className="w-8 h-2 bg-slate-400 rounded ml-auto" />
-                 </motion.div>
+                 </div>
                ))}
              </div>
            </div>

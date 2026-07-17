@@ -271,6 +271,7 @@ export default function ScanPage() {
 
   const [isExporting, setIsExporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [pdfPassword, setPdfPassword] = useState('');
   
   const [showSettings, setShowSettings] = useState(false);
   const [uploadMode, setUploadMode] = useState<'single' | 'zip'>('single');
@@ -463,6 +464,9 @@ export default function ScanPage() {
       const processedFile = await compressImage(item.file, 1536, 1536);
       const formData = new FormData();
       formData.append('file', processedFile);
+      if (pdfPassword) {
+        formData.append('password', pdfPassword);
+      }
 
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       const { data: { session } } = await supabase.auth.getSession();
@@ -793,6 +797,17 @@ export default function ScanPage() {
               </p>
             </div>
           </motion.div>
+
+          <div className="mb-6">
+            <label className="text-[10px] text-text-secondary uppercase tracking-wider mb-1 block">PDF Password (Optional)</label>
+            <input
+              type="password"
+              placeholder="If the PDF is password-protected"
+              value={pdfPassword}
+              onChange={(e) => setPdfPassword(e.target.value)}
+              className="w-full bg-bg-sunken border border-border focus:border-accent focus:ring-1 focus:ring-accent rounded-md px-3 py-2 text-sm text-text-primary transition-all"
+            />
+          </div>
 
           {fileStates.length > 0 && (
             <div className="space-y-4">

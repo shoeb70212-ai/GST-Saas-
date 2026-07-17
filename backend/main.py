@@ -3,7 +3,7 @@ import base64
 import json
 import io
 import httpx
-from fastapi import FastAPI, File, UploadFile, HTTPException, Header
+from fastapi import FastAPI, File, UploadFile, HTTPException, Header, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -233,7 +233,11 @@ def read_root():
     return {"status": "InvoiceScanner Backend is running."}
 
 @app.post("/api/scan-invoice")
-async def scan_invoice(file: UploadFile = File(...), authorization: str = Header(None)):
+async def scan_invoice(
+    file: UploadFile = File(...), 
+    password: str = Form(None),
+    authorization: str = Header(None)
+):
     """
     Primary endpoint for processing single invoice files (PDF/Images).
     
@@ -268,16 +272,33 @@ async def scan_invoice(file: UploadFile = File(...), authorization: str = Header
             
         user_id = user_resp.json().get("id")
         
-        # Get Profile
+        # Get Profile and Active Org
         profile_resp = await http_client.get(
-            f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credits,tally_ledgers",
+            f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=active_org_id,tally_ledgers",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
         )
         tally_ledgers = None
+        credits = 0
         if profile_resp.status_code == 200 and profile_resp.json():
             p_data = profile_resp.json()[0]
-            credits = p_data.get("credits", 0)
             tally_ledgers = p_data.get("tally_ledgers")
+            active_org_id = p_data.get("active_org_id")
+            
+            # Fetch credits from organization
+            if active_org_id:
+                org_resp = await http_client.get(
+                    f"{SUPABASE_URL}/rest/v1/organizations?id=eq.{active_org_id}&select=credits",
+                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+                )
+                if org_resp.status_code == 200 and org_resp.json():
+                    credits = org_resp.json()[0].get("credits", 0)
+            else:
+                org_resp = await http_client.get(
+                    f"{SUPABASE_URL}/rest/v1/organizations?owner_id=eq.{user_id}&select=credits",
+                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+                )
+                if org_resp.status_code == 200 and org_resp.json():
+                    credits = org_resp.json()[0].get("credits", 0)
         else:
             credits = 0 # Fallback if profile row is missing
         if credits <= 0:
@@ -296,6 +317,14 @@ async def scan_invoice(file: UploadFile = File(...), authorization: str = Header
             doc = fitz.open(stream=c_bytes, filetype="pdf")
             if not doc:
                 raise ValueError("Could not read PDF pages.")
+            if doc.needs_pass:
+                if password and doc.authenticate(password):
+                    from utils import remove_pdf_password_if_present
+                    c_bytes = remove_pdf_password_if_present(c_bytes, password)
+                    # Reopen the clean stream for PyMuPDF rendering/markdown
+                    doc = fitz.open(stream=c_bytes, filetype="pdf")
+                else:
+                    raise ValueError("This PDF is password-protected. Please provide the correct password.")
             
             # AI COST OPTIMIZATION: Try extracting structured Markdown for digital PDFs
             try:
@@ -379,7 +408,7 @@ async def scan_invoice(file: UploadFile = File(...), authorization: str = Header
             raise HTTPException(status_code=500, detail=f"Failed to process file. Error: {str(e)}")
 
     try:
-        data_dict = await run_ai_extraction(content, mime_type, tally_ledgers)
+        data_dict, tokens = await run_ai_extraction(content, mime_type, tally_ledgers)
         
         # Verify GSTIN if it exists
         gstin = data_dict.get("Supplier_GSTIN")
@@ -402,10 +431,24 @@ async def scan_invoice(file: UploadFile = File(...), authorization: str = Header
             rpc_resp = await http_client.post(
                 f"{SUPABASE_URL}/rest/v1/rpc/decrement_credits",
                 headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json={"user_id_param": user_id}
+                json={
+                    "user_id_param": user_id, 
+                    "amount": 1,
+                    "task_type_param": "invoice_scan",
+                    "file_name_param": file.filename,
+                    "tokens_used_param": tokens
+                }
             )
             if rpc_resp.status_code != 200:
                 print(f"Failed to deduct credits. RPC response: {rpc_resp.text}")
+                raise HTTPException(status_code=500, detail="Internal error during credit deduction")
+            
+            try:
+                result = rpc_resp.json()
+                if result == -1:
+                    raise HTTPException(status_code=402, detail="Insufficient credits. Please recharge your wallet.")
+            except ValueError:
+                pass
                 
         return {"status": "success", "data": data_dict}
     except Exception as e:
@@ -455,11 +498,12 @@ async def run_ai_extraction(content: bytes | str, mime_type: str, tally_ledgers:
             raise HTTPException(status_code=500, detail="Failed to parse structured output from primary AI.")
             
         data_dict = extracted_data.model_dump()
+        tokens = response.usage.total_tokens if response.usage else 0
         
         # Apply refactored tax and confidence calculations
         data_dict = apply_tax_calculations(data_dict)
         
-        return data_dict
+        return data_dict, tokens
         
     except Exception as e:
         print(f"Primary AI failed with error: {e}. Attempting fallback to Gemini...")
@@ -478,18 +522,18 @@ async def run_ai_extraction(content: bytes | str, mime_type: str, tally_ledgers:
                 
                 extracted_data = response.choices[0].message.parsed
                 if not extracted_data:
-                    raise HTTPException(status_code=500, detail="Failed to parse structured output from Gemini.")
+                    raise HTTPException(status_code=500, detail="Failed to parse structured output from fallback AI.")
                     
                 data_dict = extracted_data.model_dump()
+                tokens = response.usage.total_tokens if response.usage else 0
                 
-                # Apply refactored tax and confidence calculations
+                # Apply calculations
                 data_dict = apply_tax_calculations(data_dict)
                 
-                return data_dict
+                return data_dict, tokens
             except Exception as gemini_e:
-                raise HTTPException(status_code=500, detail=f"Both primary AI and Gemini fallback failed. Gemini Error: {str(gemini_e)}")
-        else:
-            raise HTTPException(status_code=500, detail=f"Error communicating with OpenAI (no fallback available): {str(e)}")
+                raise HTTPException(status_code=500, detail=f"Both primary and fallback AI failed. Primary: {e}, Fallback: {gemini_e}")
+        raise HTTPException(status_code=500, detail=f"Error communicating with OpenAI (no fallback available): {str(e)}")
 
 # from auth_routes import router as auth_router
 from admin_routes import router as admin_router

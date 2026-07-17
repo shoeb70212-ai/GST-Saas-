@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { Loader2, CreditCard, ShieldCheck, Zap, History } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { Link } from 'react-router-dom';
 
 declare global {
   interface Window {
@@ -13,7 +14,7 @@ declare global {
 import { useClient } from '../lib/ClientContext';
 
 export default function WalletPage() {
-  const { refreshCredits } = useClient();
+  const { credits, refreshCredits } = useClient();
   const queryClient = useQueryClient();
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<number | null>(null);
@@ -40,32 +41,44 @@ export default function WalletPage() {
     }
   });
 
+  const { data: usageLogs } = useQuery({
+    queryKey: ['usageLogs'],
+    queryFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No session");
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const res = await fetch(`${apiUrl}/api/usage-logs`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+      if (!res.ok) throw new Error('Failed to fetch usage logs');
+      return res.json();
+    }
+  });
+
   useEffect(() => {
     // Load Razorpay Script
     const script = document.createElement('script');
     script.src = 'https://checkout.razorpay.com/v1/checkout.js';
     script.async = true;
     document.body.appendChild(script);
-    return () => {
-      document.body.removeChild(script);
-    };
+    return () => { document.body.removeChild(script); }
   }, []);
 
   const plans = [
-    { id: 1, name: "Starter Pass", credits: 1000, price: 999, popular: false, type: "starter" },
-    { id: 2, name: "Pro Pass", credits: 5000, price: 2499, popular: true, type: "pro" }
+    { id: 1, name: "Starter Pass", credits: 1000, price: 2499, popular: false, type: "starter" },
+    { id: 2, name: "Pro Pass", credits: 5000, price: 7999, popular: true, type: "pro" }
   ];
 
-  const handlePurchase = async (plan: typeof plans[0]) => {
-    setSelectedPlan(plan.id);
+  const handlePurchase = async (plan: any) => {
     setIsProcessing(true);
-    toast.loading("Initializing payment...", { id: 'payment' });
-    
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Authentication required");
+    setSelectedPlan(plan.id);
 
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Please sign in to purchase.");
+
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      
       // 1. Create Order on Backend
       const orderRes = await fetch(`${apiUrl}/api/create-order`, {
         method: 'POST',
@@ -73,7 +86,11 @@ export default function WalletPage() {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ amount: plan.price, credits: plan.credits, plan_type: plan.type }),
+        body: JSON.stringify({
+          amount: plan.price,
+          credits: plan.credits,
+          plan_type: plan.type
+        }),
       });
 
       if (!orderRes.ok) throw new Error("Failed to create order");
@@ -163,11 +180,11 @@ export default function WalletPage() {
               <Zap className="w-8 h-8 text-accent" />
             </div>
             <h2 className="text-text-secondary font-medium mb-2">Available Credits</h2>
-            <div className="text-5xl font-bold text-text-primary mb-2">{profile?.credits || 0}</div>
+            <div className="text-5xl font-bold text-text-primary mb-2">{credits !== null ? credits : (profile?.credits || 0)}</div>
             <div className="text-sm font-bold text-accent uppercase tracking-wider mb-4 border border-accent/30 bg-accent/10 px-3 py-1 rounded-full">
               {profile?.tier || 'Free'} Tier
             </div>
-            <p className="text-sm text-text-disabled">1 Credit = 1 AI Invoice Scan</p>
+            <Link to="/pricing" className="text-sm text-accent hover:underline mt-2">View Credit Costs</Link>
           </div>
         </div>
 
@@ -233,6 +250,51 @@ export default function WalletPage() {
                     <td className="p-4">
                       <span className="badge bg-success-subtle text-success border border-success/20 flex items-center gap-1 w-max">
                         <ShieldCheck className="w-3 h-3" /> {tx.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="card p-0 overflow-hidden mt-8 mb-8">
+        <div className="p-6 border-b border-border flex justify-between items-center">
+          <h2 className="text-lg font-bold text-text-primary flex items-center gap-2"><Zap className="w-5 h-5 text-accent" /> AI Usage & Token Audit Log</h2>
+          <div className="badge bg-accent/10 text-accent border border-accent/20 px-4 py-1.5 font-mono">
+            Total Tokens Processed: {usageLogs?.reduce((acc: number, log: any) => acc + (log.tokens_used || 0), 0).toLocaleString() || 0}
+          </div>
+        </div>
+        <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="table-header sticky top-0 bg-bg-surface z-10 shadow-sm">
+              <tr>
+                <th className="p-4">Date & Time</th>
+                <th className="p-4">Task Type</th>
+                <th className="p-4">File Name</th>
+                <th className="p-4">Tokens Used</th>
+                <th className="p-4">Credits Deducted</th>
+                <th className="p-4">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {usageLogs?.length === 0 || !usageLogs ? (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-text-secondary">No AI usage logs found.</td>
+                </tr>
+              ) : (
+                usageLogs?.map((log: any) => (
+                  <tr key={log.id} className="hover:bg-bg-subtle transition-colors">
+                    <td className="p-4 font-mono text-text-secondary whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
+                    <td className="p-4 font-medium text-text-primary capitalize">{log.task_type.replace(/_/g, ' ')}</td>
+                    <td className="p-4 text-text-secondary max-w-[200px] truncate" title={log.file_name}>{log.file_name || '-'}</td>
+                    <td className="p-4 font-mono font-medium text-text-primary">{log.tokens_used?.toLocaleString() || 0}</td>
+                    <td className="p-4 font-bold text-accent">-{log.credits_deducted}</td>
+                    <td className="p-4">
+                      <span className={`badge ${log.status === 'success' ? 'bg-success-subtle text-success border-success/20' : 'bg-error-subtle text-error border-error/20'} border flex items-center gap-1 w-max`}>
+                        {log.status === 'success' ? <ShieldCheck className="w-3 h-3" /> : null} {log.status}
                       </span>
                     </td>
                   </tr>

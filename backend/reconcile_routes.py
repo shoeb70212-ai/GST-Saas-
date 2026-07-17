@@ -5,7 +5,10 @@ import calendar
 from datetime import date
 from fastapi import APIRouter, File, UploadFile, HTTPException, Header, Form
 import httpx
-from main import SUPABASE_URL, SUPABASE_ANON_KEY
+import os
+SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
+SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
+
 from collections import defaultdict
 import rapidfuzz
 
@@ -317,14 +320,24 @@ async def deep_match_reconcile(
         if not unmatched_2b:
             return {"status": "success", "message": "No unmatched GSTR-2B records available for Deep Match."}
             
-        # Deduct Credit
+        import math
+        total_items = len(missing_in_2b) + len(unmatched_2b)
+        cost = max(5, math.ceil(total_items / 20) * 5)
+
+        # Check credits and Deduct
         rpc_resp = await http_client.post(
             f"{SUPABASE_URL}/rest/v1/rpc/decrement_credits",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-            json={"user_id_param": user_id}
+            json={"user_id_param": user_id, "amount": cost}
         )
         if rpc_resp.status_code != 200:
-            raise HTTPException(status_code=402, detail="Insufficient credits for AI Deep Match.")
+            raise HTTPException(status_code=500, detail="Internal error during credit deduction.")
+            
+        try:
+            if rpc_resp.json() == -1:
+                raise HTTPException(status_code=402, detail="Insufficient credits for AI Deep Match.")
+        except ValueError:
+            pass
             
     # Prepare Gemini Payloads
     pr_subset = [{"id": inv["id"], "supplier": inv.get("supplier_name"), "gstin": inv.get("supplier_gstin"), "inv_num": inv.get("invoice_number"), "amount": inv.get("taxable_amount")} for inv in missing_in_2b]

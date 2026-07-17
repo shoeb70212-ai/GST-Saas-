@@ -5,10 +5,11 @@ import {
   ArrowRight, ShieldCheck, Network, Banknote, CheckCircle2,
   ChevronRight, Calculator, FileCheck, Layers, Upload,
   FileSpreadsheet, Zap, Users, Lock, BarChart3, Menu, X,
-  Plus, Minus, Quote, Star, Building2, Clock, Award, Smartphone
+  Plus, Minus, Quote, Star, Building2, Clock, Award, Smartphone, PlayCircle
 } from 'lucide-react';
 import HeroAnimation from '../components/HeroAnimation';
 import { BankStatementDemo, WhatsAppDemo, ReconciliationDemo } from '../components/LandingFeatures';
+import KhataLensIcon from '../components/KhataLensIcon';
 
 // ─── Animation Variants ─────────────────────────────────────────────────────
 const fadeUp = {
@@ -117,7 +118,7 @@ const faqData = [
   },
   {
     question: "Which accounting software can I export to?",
-    answer: "Our primary export is a structured Excel (.xlsx) file formatted to match the import templates for Tally Prime, Zoho Books, and the GST portal's offline tool. We also export raw CSV. If you need a custom column layout for another software, you can define a custom mapping in your settings."
+    answer: "Our primary export is a structured Excel (.xlsx) file formatted to match the import templates for Tally Prime and Zoho Books. We also support native Tally XML voucher export for direct import into Tally ERP. You can configure custom Tally Ledger mappings in your Settings page to match your firm's chart of accounts."
   },
   {
     question: "How many invoices can I process per month?",
@@ -135,21 +136,21 @@ const faqData = [
 
 const testimonials = [
   {
-    name: "CA Priya Mehta",
-    title: "Partner, Mehta & Associates, Mumbai",
-    quote: "I was manually typing data from 200 invoices every quarter. KhataLens cut that to under 20 minutes. The GSTIN validation alone has saved me from 3 penalties this year. This is not a nice-to-have — it is a practice essential.",
+    name: "Example Scenario",
+    title: "Mid-size CA Practice (40+ clients)",
+    quote: "A practice processing 200 invoices per quarter can reduce that to under 20 minutes with KhataLens. The GSTIN validation alone catches suspended or cancelled dealers before export. The multi-client workspace means each client's data is fully isolated.",
     rating: 5
   },
   {
-    name: "CA Rajesh Gupta",
-    title: "Principal, Gupta Tax Consultants, Delhi",
-    quote: "The multi-client workspace is exactly what our 40-client practice needed. The fact that the Excel output is pre-formatted for Tally means my junior staff can process a complete set in one sitting. The accuracy on blurry WhatsApp bills genuinely surprised me.",
+    name: "Example Scenario",
+    title: "Multi-Client Tax Consultancy",
+    quote: "The Excel output is pre-formatted for Tally Prime with native XML voucher export. The duplicate invoice detection flags invoices already in the system. The accuracy on blurry WhatsApp-compressed bills is achieved through AI vision models, not basic OCR.",
     rating: 5
   },
   {
-    name: "CA Anita Desai",
-    title: "Independent Practitioner, Bangalore",
-    quote: "I was sceptical about AI for compliance work, but the cross-verification logic convinced me. It does not just extract — it tells me when something looks wrong. That auditability is what I needed before trusting it with client data.",
+    name: "Example Scenario",
+    title: "Independent Practitioner",
+    quote: "The cross-verification logic compares AI-extracted totals against computed line-item sums. When confidence drops below 95%, the field is flagged for manual review rather than silently guessed. That auditability is essential for compliance work.",
     rating: 5
   }
 ];
@@ -158,13 +159,15 @@ const features = [
   {
     icon: FileCheck,
     tag: "Core AI Engine",
-    headline: "37-field extraction.\nNothing slips through.",
-    body: "KhataLens acts like a Senior Accountant, not a simple OCR tool. It understands the distinction between CGST, SGST, and IGST. It cross-verifies line-item subtotals against the grand total. It reads Place of Supply and derives the correct inter-state or intra-state tax treatment — automatically.",
+    headline: "48-field extraction.\nNothing slips through.",
+    body: "KhataLens acts like a Senior Accountant, not a simple OCR tool. It understands the distinction between CGST, SGST, and IGST. It cross-verifies line-item subtotals against the grand total. It reads Place of Supply and derives the correct inter-state or intra-state tax treatment — automatically. It even flags suspicious HSN codes that don't match item descriptions.",
     bullets: [
       "Full line-item extraction with HSN codes",
       "Automatic CGST / SGST / IGST classification",
-      "Cross-verification of tax totals",
-      "Reads skewed photos & WhatsApp-compressed images"
+      "Cross-verification of tax totals with confidence scoring",
+      "Reads skewed photos & WhatsApp-compressed images",
+      "Duplicate invoice detection",
+      "AI fallback (OpenAI → Gemini) for reliability"
     ],
     side: 'right' as const,
     demo: (
@@ -390,7 +393,7 @@ export default function LandingPage() {
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3 group" aria-label="KhataLens Home">
             <div className="w-9 h-9 rounded-xl bg-accent flex items-center justify-center shadow-md group-hover:scale-105 transition-transform duration-200">
-              <img src="/favicon.png" alt="" className="w-5 h-5 brightness-200" />
+              <KhataLensIcon size={20} className="text-white drop-shadow-md" />
             </div>
             <span className="text-xl font-display font-semibold tracking-tight text-text-primary">KhataLens</span>
           </Link>
@@ -467,13 +470,13 @@ export default function LandingPage() {
               Built exclusively for Indian Chartered Accountants
             </motion.div>
 
-            <h1 id="hero-heading" className="text-[3.5rem] lg:text-[5.5rem] font-display font-bold tracking-tight mb-8 leading-[1.05] text-text-primary">
-              From receipt scan<br />
-              <em className="text-accent not-italic">to bank reconciliation.</em>
+            <h1 id="hero-heading" className="text-[3.5rem] lg:text-[6.5rem] font-display font-extrabold tracking-tight mb-8 leading-[1.05] text-text-primary text-balance">
+              From receipt scan<br className="hidden lg:block" />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent to-accent-hover block mt-2">to bank reconciliation.</span>
             </h1>
 
-            <p className="text-xl text-text-secondary mb-10 max-w-lg leading-relaxed font-light">
-              KhataLens reads your messy bills, extracts the data, and reconciles it against bank statements. All AI. Zero typing.
+            <p className="text-xl text-text-secondary mb-10 max-w-xl leading-relaxed">
+              KhataLens reads your messy bills, extracts the data, and reconciles it against bank statements. <strong className="text-text-primary font-medium">All AI. Zero typing.</strong>
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 mb-10">
@@ -486,13 +489,14 @@ export default function LandingPage() {
               </Link>
               <a
                 href="#how-it-works"
-                className="inline-flex items-center justify-center gap-2 px-9 py-4 rounded-2xl bg-bg-surface border border-border hover:border-border-focus text-text-primary font-medium text-lg transition-all duration-200 hover:bg-bg-sunken"
+                className="inline-flex items-center justify-center gap-2 px-9 py-4 rounded-2xl bg-bg-surface border border-border hover:border-text-disabled text-text-primary font-medium text-lg transition-all duration-200 hover:bg-bg-sunken shadow-sm hover:shadow"
               >
+                <PlayCircle className="w-5 h-5 text-accent" aria-hidden="true" />
                 See how it works
               </a>
             </div>
 
-            <p className="text-sm text-text-disabled font-medium tracking-wide">
+            <p className="text-sm text-text-secondary font-medium tracking-wide">
               100 free extractions · No credit card · Instant access
             </p>
           </motion.div>
@@ -505,8 +509,8 @@ export default function LandingPage() {
             className="relative"
             aria-hidden="true"
           >
-            <div className="absolute -inset-4 bg-gradient-to-tr from-bg-base via-transparent to-transparent z-10 pointer-events-none rounded-3xl" />
-            <div className="p-2 rounded-3xl bg-bg-surface border border-border shadow-2xl backdrop-blur-sm">
+            <div className="absolute -inset-4 bg-gradient-to-tr from-accent/5 via-transparent to-transparent z-10 pointer-events-none rounded-3xl" />
+            <div className="rounded-3xl bg-bg-surface border border-border shadow-2xl backdrop-blur-sm relative overflow-hidden">
               <HeroAnimation />
             </div>
           </motion.div>
@@ -526,10 +530,10 @@ export default function LandingPage() {
             className="grid grid-cols-2 lg:grid-cols-4 gap-10 lg:gap-16"
           >
             <motion.div variants={fadeUp}>
-              <StatCounter target={500} suffix="+" label="CAs in Beta" />
+              <StatCounter target={48} suffix="+" label="Fields Extracted" />
             </motion.div>
             <motion.div variants={fadeUp}>
-              <StatCounter target={120} suffix="k+" label="Invoices & Txns" />
+              <StatCounter target={3} suffix="s" label="Avg Scan Time" />
             </motion.div>
             <motion.div variants={fadeUp}>
               <StatCounter target={98} suffix="%" label="Recon Accuracy" />
@@ -603,7 +607,7 @@ export default function LandingPage() {
 
             {[
               { num: '01', icon: Upload, title: 'Upload Invoices', desc: 'Drag & drop PDFs, JPGs, PNGs — even compressed WhatsApp photos. Bulk upload 200 files at once.' },
-              { num: '02', icon: Zap, title: 'AI Extracts Everything', desc: 'Gemini 2.5 Flash reads GSTIN, HSN codes, line items, tax breakdowns, and validates totals in seconds.', highlight: true },
+              { num: '02', icon: Zap, title: 'AI Extracts Everything', desc: 'AI reads GSTIN, HSN codes, line items, tax breakdowns, and validates totals in seconds.', highlight: true },
               { num: '03', icon: FileSpreadsheet, title: 'Export & File', desc: 'Download a Tally-ready Excel file. Import directly into your accounting software. Done.' },
             ].map((step) => (
               <motion.div
@@ -786,7 +790,7 @@ export default function LandingPage() {
               <div className="mb-6">
                 <div className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-4">Starter</div>
                 <div className="flex items-end gap-1 mb-2">
-                  <span className="text-4xl lg:text-5xl font-display font-bold text-text-primary">₹999</span>
+                  <span className="text-4xl lg:text-5xl font-display font-bold text-text-primary">₹2,499</span>
                   <span className="text-text-secondary pb-1 font-light text-sm">/ month</span>
                 </div>
                 <p className="text-text-secondary font-light text-sm">Perfect for solo practitioners and small businesses.</p>
@@ -823,7 +827,7 @@ export default function LandingPage() {
                   </span>
                 </div>
                 <div className="flex items-end gap-1 mb-2">
-                  <span className="text-4xl lg:text-5xl font-display font-bold text-text-primary">₹2,499</span>
+                  <span className="text-4xl lg:text-5xl font-display font-bold text-text-primary">₹7,999</span>
                   <span className="text-text-secondary pb-1 font-light text-sm">/ month</span>
                 </div>
                 <p className="text-text-secondary font-light text-sm mb-6">Everything in Starter, plus AI Reconciliation and WhatsApp.</p>
@@ -983,7 +987,7 @@ export default function LandingPage() {
             transition={{ type: "spring", bounce: 0.35, duration: 0.8 }}
             className="w-28 h-28 mx-auto rounded-[2rem] bg-bg-surface border border-border flex items-center justify-center mb-12 shadow-2xl"
           >
-            <img src="/favicon.png" alt="" className="w-14 h-14 opacity-90" />
+            <KhataLensIcon size={56} animate={true} />
           </motion.div>
 
           <motion.h2
@@ -1030,7 +1034,7 @@ export default function LandingPage() {
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
-                <img src="/favicon.png" alt="" className="w-4 h-4 brightness-200" />
+                <KhataLensIcon size={16} className="text-white" />
               </div>
               <span className="font-display font-semibold text-text-primary">KhataLens</span>
             </div>

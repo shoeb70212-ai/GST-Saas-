@@ -65,3 +65,23 @@ def compute_file_hash(content: bytes) -> str:
     Computes SHA-256 hash of file content for deduplication.
     """
     return hashlib.sha256(content).hexdigest()
+
+
+import io
+
+def remove_pdf_password_if_present(pdf_bytes: bytes, password: str) -> bytes:
+    try:
+        from pypdf import PdfReader, PdfWriter
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        if reader.is_encrypted:
+            res = reader.decrypt(password)
+            if res:
+                writer = PdfWriter()
+                for page in reader.pages:
+                    writer.add_page(page)
+                out = io.BytesIO()
+                writer.write(out)
+                return out.getvalue()
+    except Exception as e:
+        print(f'Error removing PDF password: {e}')
+    return pdf_bytes

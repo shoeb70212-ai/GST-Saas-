@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Background
 from supabase import create_async_client
 import httpx
 from utils import validate_file_content, sanitize_filename, compute_file_hash, SUPABASE_URL, SUPABASE_SERVICE_KEY
-from main import run_ai_extraction
+# to avoid circular imports, import run_ai_extraction where used
 
 router = APIRouter()
 
@@ -33,6 +33,7 @@ async def process_public_worker(invoice_id: str, content: bytes, mime_type: str,
     try:
         sem = await get_public_semaphore()
         async with sem:
+            from main import run_ai_extraction
             data_dict = await run_ai_extraction(content, mime_type, tally_ledgers)
         
         # Verify GSTIN if exists
