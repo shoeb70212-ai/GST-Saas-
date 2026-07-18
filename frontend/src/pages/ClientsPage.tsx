@@ -2,8 +2,9 @@ import React from 'react';
 import { useState  } from "react";
 import { supabase } from '../lib/supabase';
 import { useClient, type Client } from '../lib/ClientContext';
-import { Plus, Building2, Trash2, Edit2, Loader2, Save, X, Shield } from 'lucide-react';
+import { Plus, Building2, Trash2, Edit2, Loader2, Save, X, Shield, Users, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { Modal } from '../components/ui/Modal';
 
 export default function ClientsPage() {
   const { clients, loading, refreshClients, activeClientId, setActiveClientId } = useClient();
@@ -276,22 +277,20 @@ export default function ClientsPage() {
       )}
 
       {/* MANAGE ACCESS MODAL */}
-      {managingAccessFor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-bg-base/80 backdrop-blur-sm">
-          <div className="card p-6 w-full max-w-md shadow-xl border border-border">
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h3 className="text-lg font-bold text-text-primary flex items-center gap-2">
-                  <Shield className="w-5 h-5 text-accent" /> Manage Access
-                </h3>
-                <p className="text-xs text-text-secondary mt-1">Assign accountants who can view this client.</p>
-              </div>
-              <button onClick={() => setManagingAccessFor(null)} className="p-2 hover:bg-bg-sunken rounded-lg text-text-secondary">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3 max-h-64 overflow-y-auto pr-2 mb-6">
+      <Modal
+        isOpen={!!managingAccessFor}
+        onClose={() => setManagingAccessFor(null)}
+        title={
+          <div>
+            <h3 className="text-lg font-bold text-text-primary flex items-center gap-2">
+              <Shield className="w-5 h-5 text-accent" /> Manage Access
+            </h3>
+            <p className="text-xs text-text-secondary mt-1 font-normal">Assign accountants who can view this client.</p>
+          </div>
+        }
+        size="md"
+      >
+        <div className="space-y-3 pr-2 mb-6">
               {teamMembers.length === 0 ? (
                 <div className="p-4 bg-bg-sunken rounded-lg text-center text-sm text-text-secondary">
                   No accountants found in your firm. Add them via Settings &gt; Team Management.
@@ -327,10 +326,9 @@ export default function ClientsPage() {
               <button onClick={handleSaveAccess} disabled={isUpdatingAccess} className="btn-primary flex-1">
                 {isUpdatingAccess ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Access'}
               </button>
-            </div>
           </div>
-        </div>
-      )}
+
+      </Modal>
     </div>
   );
 }

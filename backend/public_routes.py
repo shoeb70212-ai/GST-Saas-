@@ -34,7 +34,7 @@ async def process_public_worker(invoice_id: str, content: bytes, mime_type: str,
         sem = await get_public_semaphore()
         async with sem:
             from main import run_ai_extraction
-            data_dict = await run_ai_extraction(content, mime_type, tally_ledgers)
+            data_dict, tokens = await run_ai_extraction(content, mime_type, tally_ledgers)
         
         # Verify GSTIN if exists
         gstin = data_dict.get("Supplier_GSTIN")
@@ -47,8 +47,30 @@ async def process_public_worker(invoice_id: str, content: bytes, mime_type: str,
             rpc_resp = await http_client.post(
                 f"{SUPABASE_URL}/rest/v1/rpc/decrement_credits",
                 headers={"apikey": SUPABASE_SERVICE_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}", "Content-Type": "application/json"},
-                json={"user_id_param": user_id}
+                json={
+                    "user_id_param": user_id,
+                    "amount": 1,
+                    "task_type_param": "public_upload",
+                    "file_name_param": f"public_{invoice_id}",
+                    "tokens_used_param": tokens
+                }
             )
+        
+        # Check RPC result — if -1, the organization is out of credits (fixes free processing exploit)
+        if rpc_resp.status_code == 200:
+            rpc_result = rpc_resp.json()
+            if rpc_result == -1:
+                await supabase_client.table("invoices").update({
+                    "processing_status": "failed",
+                    "error_message": "Insufficient credits. Please recharge your wallet."
+                }).eq("id", invoice_id).execute()
+                return
+        else:
+            await supabase_client.table("invoices").update({
+                "processing_status": "failed",
+                "error_message": "Credit deduction service unavailable."
+            }).eq("id", invoice_id).execute()
+            return
 
         # Prepare update payload
         from batch_routes import format_date_to_iso
@@ -110,6 +132,15 @@ async def public_upload(
         raise HTTPException(status_code=404, detail="Client not found")
         
     user_id = resp.data[0]["user_id"]
+    
+    # Rate Limiting / Denial of Wallet Prevention
+    # Ensure public links aren't abused to drain firm credits
+    import datetime
+    today_start = datetime.datetime.now(datetime.timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    limit_resp = await supabase_client.table("invoices").select("id", count="exact").eq("client_id", client_id).gte("created_at", today_start).execute()
+        
+    if limit_resp.count and limit_resp.count >= 200:
+        raise HTTPException(status_code=429, detail="Daily public upload limit exceeded for this client. Please try again tomorrow or ask your CA to upload internally.")
     
     profile_resp = await supabase_client.table("profiles").select("tally_ledgers").eq("id", user_id).execute()
     tally_ledgers = profile_resp.data[0].get("tally_ledgers") if profile_resp.data else None

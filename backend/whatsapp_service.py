@@ -5,12 +5,15 @@ import json
 import asyncio
 import io
 import uuid
+import logging
 import fitz  # PyMuPDF
 from fastapi import HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from supabase import create_async_client
 from PIL import Image, ImageOps, UnidentifiedImageError
+
+logger = logging.getLogger(__name__)
 
 try:
     from pillow_heif import register_heif_opener
@@ -48,7 +51,7 @@ async def send_whatsapp_message(to_number: str, text: str):
     async with httpx.AsyncClient() as client:
         resp = await client.post(url, headers=headers, json=payload)
         if resp.status_code not in (200, 201):
-            print(f"Failed to send WA message: {resp.text}")
+            logger.warning(f"Failed to send WA message: {resp.text}")
 
 async def download_whatsapp_media(media_id: str) -> bytes:
     headers = {"Authorization": f"Bearer {META_ACCESS_TOKEN}"}
@@ -99,7 +102,7 @@ async def process_whatsapp_message_bg(message_data: dict):
             SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_ANON_KEY)
             sc = await create_async_client(SUPABASE_URL, SERVICE_ROLE)
             
-            profile_resp = await sc.table("profiles").select("id, active_whatsapp_client_id, tally_ledgers, credits").eq("whatsapp_number", from_number).execute()
+            profile_resp = await sc.table("profiles").select("id, active_whatsapp_client_id, tally_ledgers, active_org_id").eq("whatsapp_number", from_number).execute()
             if not profile_resp.data or len(profile_resp.data) == 0:
                 await send_whatsapp_message(from_number, "⚠️ This phone number is not linked to any KhataLens account. Please add your number in Settings.")
                 return
@@ -108,13 +111,24 @@ async def process_whatsapp_message_bg(message_data: dict):
             user_id = user_profile.get("id")
             client_id = user_profile.get("active_whatsapp_client_id")
             tally_ledgers = user_profile.get("tally_ledgers")
-            credits = user_profile.get("credits", 0)
+            active_org_id = user_profile.get("active_org_id")
             
             if not client_id:
                 await send_whatsapp_message(from_number, "⚠️ You don't have an active client selected for WhatsApp ingestion. Please set one in Settings.")
                 return
-                
-            # 1. Wallet Abuse Check
+            
+            # 1. Wallet Abuse Check — fetch credits from organization (consistent with decrement_credits RPC)
+            credits = 0
+            if active_org_id:
+                org_resp = await sc.table("organizations").select("credits").eq("id", active_org_id).execute()
+                if org_resp.data:
+                    credits = org_resp.data[0].get("credits", 0)
+            else:
+                # Fallback: find org where user is owner
+                org_resp = await sc.table("organizations").select("credits").eq("owner_id", user_id).execute()
+                if org_resp.data:
+                    credits = org_resp.data[0].get("credits", 0)
+            
             if credits <= 0:
                 await send_whatsapp_message(from_number, "💳 You have insufficient credits. Please recharge your wallet to process invoices via WhatsApp.")
                 return
@@ -232,7 +246,7 @@ async def process_whatsapp_message_bg(message_data: dict):
                 res = sc.storage.from_("invoices").upload(file_path, content_bytes, {"content-type": mime_type})
                 file_url = sc.storage.from_("invoices").get_public_url(file_path)
             except Exception as e:
-                print(f"Storage upload failed: {e}")
+                logger.error(f"Storage upload failed: {e}")
             
             # 5. AI Extraction
             from main import run_ai_extraction
@@ -310,7 +324,7 @@ async def process_whatsapp_message_bg(message_data: dict):
             )
 
         except Exception as e:
-            print(f"Error in process_whatsapp_message_bg: {e}")
+            logger.error(f"Error in process_whatsapp_message_bg: {e}")
             try:
                 from_number = message_data.get("from")
                 if from_number:

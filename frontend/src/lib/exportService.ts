@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { AVAILABLE_COLUMNS } from './constants';
 
 export const exportToExcelMultiSheet = (invoices: any[], allLineItems: any[]) => {
   const tallyData: any[] = [];
@@ -208,4 +209,66 @@ export const exportToTallyXML = (filteredInvoices: any[], allLineItems: any[]) =
   a.download = 'Tally_Vouchers.xml';
   a.click();
   window.URL.revokeObjectURL(url);
+};
+
+export const exportToRawExcel = (
+  invoices: any[], 
+  allLineItems: any[], 
+  selectedColumns: string[], 
+  includeItems: boolean
+) => {
+  const rawData: any[] = [];
+  
+  // Create a map of column keys to labels
+  const colMap = AVAILABLE_COLUMNS.reduce((acc, col) => {
+    acc[col.key] = col.label;
+    return acc;
+  }, {} as Record<string, string>);
+
+  invoices.forEach(inv => {
+    const items = allLineItems?.filter(li => li.invoice_id === inv.id) || [];
+    
+    // Base row with selected invoice columns
+    const baseRow: any = {};
+    selectedColumns.forEach(colKey => {
+      // Map the DB field to the selected column
+      const dbField = colKey.toLowerCase();
+      let val = inv[dbField];
+      if (val === undefined || val === null) {
+        val = '';
+      }
+      baseRow[colMap[colKey] || colKey] = val;
+    });
+
+    if (includeItems && items.length > 0) {
+      items.forEach(item => {
+        const row = { ...baseRow };
+        // Append line item fields
+        row['Item Description'] = item.description || '';
+        row['Item HSN/SAC'] = item.hsn_sac || '';
+        row['Item Qty'] = item.quantity || 0;
+        row['Item Price'] = item.unit_price || 0;
+        row['Item Tax %'] = item.tax_rate || 0;
+        row['Item Amount'] = item.amount || 0;
+        rawData.push(row);
+      });
+    } else {
+      if (includeItems) {
+        // Still add the columns even if no items, to keep headers consistent
+        baseRow['Item Description'] = '';
+        baseRow['Item HSN/SAC'] = '';
+        baseRow['Item Qty'] = '';
+        baseRow['Item Price'] = '';
+        baseRow['Item Tax %'] = '';
+        baseRow['Item Amount'] = '';
+      }
+      rawData.push(baseRow);
+    }
+  });
+
+  const workbook = XLSX.utils.book_new();
+  const rawSheet = XLSX.utils.json_to_sheet(rawData);
+  XLSX.utils.book_append_sheet(workbook, rawSheet, "Custom Report");
+
+  XLSX.writeFile(workbook, "Custom_Invoice_Export.xlsx");
 };

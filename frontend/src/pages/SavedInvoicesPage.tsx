@@ -1,28 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import { Loader2, FileText, Search, Download, Filter, Settings, CheckCircle2, Trash2, AlertTriangle } from 'lucide-react';
+import { Loader2, FileText, Search, Download, Filter, Settings, CheckCircle2, Trash2, AlertTriangle, Table2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { cn } from '../lib/utils';
 import { AVAILABLE_COLUMNS, DEFAULT_COLUMNS } from '../lib/constants';
 import { useClient } from '../lib/ClientContext';
-import { exportToExcelMultiSheet, exportToTallyXML } from '../lib/exportService';
+import { exportToExcelMultiSheet, exportToTallyXML, exportToRawExcel } from '../lib/exportService';
 import { InvoiceDetailsModal } from '../components/InvoiceDetailsModal';
+import { ExportFieldPicker } from '../components/ExportFieldPicker';
 import { Skeleton } from '../components/ui/Skeleton';
 import { ErrorState } from '../components/ui/ErrorState';
+import { formatCurrency } from '../utils/format';
 
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-IN', { 
-    style: 'currency', 
-    currency: 'INR', 
-    maximumFractionDigits: 0 
-  }).format(amount);
-};
 
 export default function SavedInvoicesPage() {
   const { activeClientId } = useClient();
@@ -50,7 +41,7 @@ export default function SavedInvoicesPage() {
     queryFn: async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return null;
-      const { data } = await supabase.from('profiles').select('tally_ledgers').eq('id', session.user.id).single();
+      const { data } = await supabase.from('profiles').select('tally_ledgers, export_columns, export_include_items').eq('id', session.user.id).single();
       return data;
     }
   });
@@ -91,6 +82,7 @@ export default function SavedInvoicesPage() {
 
   const [isExporting, setIsExporting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showExportPicker, setShowExportPicker] = useState(false);
   
   // Filters
   const [showFilters, setShowFilters] = useState(false);
@@ -189,6 +181,44 @@ export default function SavedInvoicesPage() {
     } catch (err) {
       console.error("Export failed:", err);
       toast.error("Failed to export invoices.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleCustomExportConfirm = async (columns: string[], includeItems: boolean, remember: boolean) => {
+    setShowExportPicker(false);
+    
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (remember && session) {
+      await supabase.from('profiles').update({
+        export_columns: columns,
+        export_include_items: includeItems
+      }).eq('id', session.user.id);
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+    }
+
+    const toExport = getInvoicesToExport();
+    if (toExport.length === 0) {
+      toast.error("No invoices to export.");
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const invoiceIds = toExport.map(inv => inv.id);
+      const { data: allLineItems, error } = await supabase
+        .from('invoice_line_items')
+        .select('*')
+        .in('invoice_id', invoiceIds);
+        
+      if (error) throw error;
+      
+      exportToRawExcel(toExport, allLineItems || [], columns, includeItems);
+    } catch (err) {
+      console.error("Custom Export failed:", err);
+      toast.error("Failed to generate custom export.");
     } finally {
       setIsExporting(false);
     }
@@ -656,6 +686,50 @@ export default function SavedInvoicesPage() {
         )}
       </div>
 
+      <AnimatePresence>
+        {selectedIds.size > 0 && (
+          <motion.div
+            initial={{ y: 50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 50, opacity: 0 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-bg-surface border border-border shadow-xl rounded-full px-4 md:px-6 py-3 flex items-center gap-3 md:gap-4 max-w-[90vw] overflow-x-auto custom-scrollbar"
+          >
+            <span className="text-sm font-medium text-text-primary whitespace-nowrap">
+              <span className="text-accent font-bold">{selectedIds.size}</span> selected
+            </span>
+            <div className="w-px h-6 bg-border mx-1 md:mx-2 shrink-0" />
+            <button 
+              onClick={() => setShowExportPicker(true)}
+              disabled={isExporting}
+              className="flex items-center gap-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50 whitespace-nowrap"
+            >
+              <Table2 className="w-4 h-4" /> <span className="hidden sm:inline">Custom Report</span>
+            </button>
+            <button 
+              onClick={handleExportExcel}
+              disabled={isExporting}
+              className="flex items-center gap-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50 whitespace-nowrap"
+            >
+              <Download className="w-4 h-4" /> <span className="hidden sm:inline">Tally Excel</span>
+            </button>
+            <button 
+              onClick={handleExportTallyXML}
+              disabled={isExporting}
+              className="flex items-center gap-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50 whitespace-nowrap"
+            >
+              <FileText className="w-4 h-4" /> <span className="hidden sm:inline">Tally XML</span>
+            </button>
+            <button 
+              onClick={handleDeleteSelected}
+              disabled={isDeleting}
+              className="flex items-center gap-2 text-sm font-medium text-error hover:text-error/80 transition-colors ml-1 md:ml-2 whitespace-nowrap"
+            >
+              <Trash2 className="w-4 h-4" /> <span className="hidden sm:inline">Delete</span>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <InvoiceDetailsModal 
         selectedInvoice={selectedInvoice}
         invoiceLineItems={invoiceLineItems}
@@ -664,6 +738,13 @@ export default function SavedInvoicesPage() {
         handleUpdateCategory={handleUpdateCategory}
         setSelectedInvoice={setSelectedInvoice}
         handleApprove={handleApprove}
+      />
+      <ExportFieldPicker 
+        isOpen={showExportPicker}
+        onClose={() => setShowExportPicker(false)}
+        onConfirm={handleCustomExportConfirm}
+        initialColumns={profile?.export_columns || DEFAULT_COLUMNS}
+        initialIncludeItems={profile?.export_include_items ?? true}
       />
     </div>
   );

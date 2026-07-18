@@ -48,6 +48,15 @@ export const AVAILABLE_COLUMNS = [
   { key: 'Original_Invoice_Date', label: 'Orig. Invoice Date' },
 ];
 
+export const EXPORT_CATEGORIES = {
+  "Invoice Details": ['Invoice_Number', 'Invoice_Date', 'Due_Date', 'Invoice_Type', 'PO_Number', 'E_Way_Bill_Number', 'Vehicle_Number', 'Place_Of_Supply', 'Original_Invoice_Number', 'Original_Invoice_Date', 'Reverse_Charge_Applicable', 'IRN'],
+  "Supplier Info": ['Supplier_Name', 'Supplier_Address', 'Supplier_Phone', 'Supplier_Email', 'Supplier_GSTIN', 'Supplier_GSTIN_Status', 'Supplier_PAN'],
+  "Buyer Info": ['Buyer_Name', 'Buyer_Address', 'Buyer_PIN', 'Buyer_GSTIN', 'Buyer_PAN'],
+  "Amounts & Taxes": ['Taxable_Amount', 'CGST_Amount', 'SGST_Amount', 'IGST_Amount', 'Cess_Amount', 'GST_Amount', 'Round_Off', 'Total_Amount', 'Amount_In_Words'],
+  "Bank Details": ['Account_Holder', 'Account_Number', 'Bank_Name', 'Branch_Name', 'IFSC_Code', 'UPI_ID'],
+  "Status & Balances": ['Extraction_State', 'Expense_Category', 'HSN_Audit_Warning', 'Confidence_Score', 'Received_Amount', 'Balance_Amount', 'Previous_Balance', 'Current_Balance']
+};
+
 export const DEFAULT_COLUMNS = [
   'Invoice_Type',
   'Expense_Category',

@@ -2,7 +2,7 @@ import React from 'react';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UploadCloud, CheckCircle2, FileText, Loader2, Sparkles, Download, Settings, X, File as FileIcon, ChevronDown, ChevronUp, Cloud, RefreshCw, AlertCircle, AlertTriangle } from 'lucide-react';
+import { UploadCloud, CheckCircle2, FileText, Loader2, Sparkles, Download, Settings, X, File as FileIcon, ChevronDown, ChevronUp, Cloud, RefreshCw, AlertCircle, AlertTriangle, Table2 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { supabase } from '../lib/supabase';
@@ -14,8 +14,9 @@ function cn(...inputs: ClassValue[]) {
 }
 
 import { useScanContext } from '../lib/ScanContext';
-import { AVAILABLE_COLUMNS } from '../lib/constants';
+import { AVAILABLE_COLUMNS, DEFAULT_COLUMNS } from '../lib/constants';
 import type { FileState, InvoiceData, LineItem } from '../lib/ScanContext';
+import { ExportFieldPicker } from '../components/ExportFieldPicker';
 import { useClient } from '../lib/ClientContext';
 import { isValidGSTIN } from '../utils/gstin';
 
@@ -273,6 +274,12 @@ export default function ScanPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [pdfPassword, setPdfPassword] = useState('');
   
+  const [showExportPicker, setShowExportPicker] = useState(false);
+  const [exportPrefs, setExportPrefs] = useState<{ columns: string[], includeItems: boolean }>({
+    columns: DEFAULT_COLUMNS,
+    includeItems: true
+  });
+  
   const [showSettings, setShowSettings] = useState(false);
   const [uploadMode, setUploadMode] = useState<'single' | 'zip'>('single');
   const settingsRef = useRef<HTMLDivElement>(null);
@@ -285,6 +292,27 @@ export default function ScanPage() {
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Fetch export preferences on mount
+  useEffect(() => {
+    const fetchExportPrefs = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('export_columns, export_include_items')
+        .eq('id', session.user.id)
+        .single();
+      
+      if (profile) {
+        setExportPrefs({
+          columns: profile.export_columns || DEFAULT_COLUMNS,
+          includeItems: profile.export_include_items ?? true
+        });
+      }
+    };
+    fetchExportPrefs();
   }, []);
 
   const toggleColumn = (key: string) => {
@@ -705,37 +733,73 @@ export default function ScanPage() {
     }
   };
 
-  const handleExportExcel = async () => {
+  const handleExportExcelTally = async () => {
     setIsExporting(true);
     try {
-      const validStates = fileStates.filter(fs => fs.extractedData);
-      if (validStates.length === 0) {
+      const invoices = fileStates
+        .filter(fs => fs.extractedData)
+        .map(fs => ({ ...fs.extractedData, id: fs.id })) as (InvoiceData & { id: string })[];
+
+      if (invoices.length === 0) {
         alert("No extracted data available to export.");
+        setIsExporting(false);
         return;
       }
 
-      const invoices = validStates.map(fs => {
-        const lowerData: any = { id: fs.id, filename: fs.file.name };
-        Object.keys(fs.extractedData!).forEach(k => {
-          lowerData[k.toLowerCase()] = fs.extractedData![k];
-        });
-        return lowerData;
-      });
-      
-      const allLineItems: any[] = [];
-      validStates.forEach(fs => {
-        const items = fs.extractedData?.Line_Items || [];
-        items.forEach(item => {
-          const lowerItem: any = { invoice_id: fs.id };
-          Object.keys(item).forEach(k => {
-            lowerItem[k.toLowerCase()] = (item as any)[k];
+      // Group all line items
+      const allLineItems: (LineItem & { invoice_id: string })[] = [];
+      invoices.forEach(inv => {
+        if (inv.Line_Items && Array.isArray(inv.Line_Items)) {
+          inv.Line_Items.forEach(li => {
+            allLineItems.push({ ...li, invoice_id: inv.id });
           });
-          allLineItems.push(lowerItem);
-        });
+        }
       });
 
       const { exportToExcelMultiSheet } = await import('../lib/exportService');
       exportToExcelMultiSheet(invoices, allLineItems);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to export Tally Excel');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleCustomExportConfirm = async (columns: string[], includeItems: boolean, remember: boolean) => {
+    setShowExportPicker(false);
+    
+    if (remember) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        await supabase.from('profiles').update({
+          export_columns: columns,
+          export_include_items: includeItems
+        }).eq('id', session.user.id);
+        setExportPrefs({ columns, includeItems });
+      }
+    }
+
+    setIsExporting(true);
+    try {
+      const invoices = fileStates
+        .filter(fs => fs.extractedData)
+        .map(fs => ({ ...fs.extractedData, id: fs.id })) as (InvoiceData & { id: string })[];
+
+      const allLineItems: (LineItem & { invoice_id: string })[] = [];
+      invoices.forEach(inv => {
+        if (inv.Line_Items && Array.isArray(inv.Line_Items)) {
+          inv.Line_Items.forEach(li => {
+            allLineItems.push({ ...li, invoice_id: inv.id });
+          });
+        }
+      });
+
+      const { exportToRawExcel } = await import('../lib/exportService');
+      exportToRawExcel(invoices, allLineItems, columns, includeItems);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to generate Custom Excel Report');
     } finally {
       setIsExporting(false);
     }
@@ -936,12 +1000,20 @@ export default function ScanPage() {
                     {!activeClientId ? 'Select Client' : `Save ${unsavedCount > 0 ? `(${unsavedCount})` : ''}`}
                   </button>
                 <button 
-                  onClick={handleExportExcel}
+                  onClick={() => setShowExportPicker(true)}
                   disabled={successfullyExtractedCount === 0 || isExporting}
                   className="btn-ghost flex-1 sm:flex-none justify-center"
                 >
-                  {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                  Export
+                  {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Table2 className="w-4 h-4" />}
+                  Custom Report
+                </button>
+                <button 
+                  onClick={handleExportExcelTally}
+                  disabled={successfullyExtractedCount === 0 || isExporting}
+                  className="btn-ghost flex-1 sm:flex-none justify-center"
+                >
+                  <Download className="w-4 h-4" />
+                  <span className="hidden sm:inline">Tally Excel</span>
                 </button>
               </div>
             </div>
@@ -988,6 +1060,14 @@ export default function ScanPage() {
         </div>
 
       </main>
+
+      <ExportFieldPicker 
+        isOpen={showExportPicker}
+        onClose={() => setShowExportPicker(false)}
+        onConfirm={handleCustomExportConfirm}
+        initialColumns={exportPrefs.columns}
+        initialIncludeItems={exportPrefs.includeItems}
+      />
     </div>
   );
 }

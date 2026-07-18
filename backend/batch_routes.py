@@ -11,6 +11,18 @@ from utils import validate_file_content, sanitize_filename
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
 
+import httpx
+
+async def _verify_client_ownership_batch(token: str, client_id: str, user_id: str):
+    """Verify that a client_id belongs to the authenticated user."""
+    async with httpx.AsyncClient() as http_client:
+        client_resp = await http_client.get(
+            f"{SUPABASE_URL}/rest/v1/clients?id=eq.{client_id}&user_id=eq.{user_id}&select=id",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if not client_resp.json():
+            raise HTTPException(status_code=403, detail="Access denied: client not found")
+
 def format_date_to_iso(date_str):
     if not date_str: return None
     s = str(date_str).strip()
@@ -132,6 +144,9 @@ async def upload_batch(
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid session token")
         
+    # Verify client ownership before any processing (Fixes Cross-Tenant IDOR Vulnerability)
+    await _verify_client_ownership_batch(token, client_id, user_id)
+        
     # Process Zip as stream
     try:
         with zipfile.ZipFile(file.file) as z:
@@ -144,26 +159,18 @@ async def upload_batch(
             
             cost = len(valid_files)
             
-            profile_resp = await supabase_client.table("profiles").select("active_org_id").eq("id", user_id).execute()
-            current_credits = 0
-            if profile_resp.data and profile_resp.data[0].get("active_org_id"):
-                org_id = profile_resp.data[0]["active_org_id"]
-                org_data = await supabase_client.table("organizations").select("credits").eq("id", org_id).execute()
-                current_credits = org_data.data[0].get("credits", 0) if org_data.data else 0
-            else:
-                org_data = await supabase_client.table("organizations").select("credits").eq("owner_id", user_id).execute()
-                current_credits = org_data.data[0].get("credits", 0) if org_data.data else 0
-
-            if current_credits < cost:
-                raise HTTPException(status_code=402, detail=f"Insufficient credits. This batch contains {cost} invoices, but your organization only has {current_credits} credits.")
-                
-            await supabase_client.rpc("decrement_credits", {
+            # Atomic credit deduction — no pre-check (fixes race condition H2)
+            # The decrement_credits RPC returns -1 if insufficient credits
+            rpc_resp = await supabase_client.rpc("decrement_credits", {
                 "user_id_param": user_id, 
                 "amount": cost,
                 "task_type_param": "batch_upload_upfront",
                 "file_name_param": file.filename,
                 "tokens_used_param": 0
             }).execute()
+            
+            if rpc_resp.data == -1:
+                raise HTTPException(status_code=402, detail=f"Insufficient credits. This batch contains {cost} invoices. Please recharge your wallet.")
             
             batch_ids = []
             

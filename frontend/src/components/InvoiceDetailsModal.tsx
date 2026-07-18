@@ -1,15 +1,11 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Building2, Settings, MapPin, DollarSign, Loader2, CheckCircle2 } from 'lucide-react';
 import { isValidGSTIN } from '../utils/gstin';
+import { formatCurrency } from '../utils/format';
+import { Modal } from './ui/Modal';
 
-const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-IN', { 
-    style: 'currency', 
-    currency: 'INR', 
-    maximumFractionDigits: 0 
-  }).format(amount);
-};
+
 
 interface InvoiceDetailsModalProps {
   selectedInvoice: any | null;
@@ -33,34 +29,36 @@ export function InvoiceDetailsModal({
   const [page, setPage] = useState(1);
   const itemsPerPage = 50;
 
-  if (!selectedInvoice) return null;
+  const [cachedInvoice, setCachedInvoice] = useState(selectedInvoice);
+
+  useEffect(() => {
+    if (selectedInvoice) {
+      setCachedInvoice(selectedInvoice);
+    }
+  }, [selectedInvoice]);
+
+  const invoice = selectedInvoice || cachedInvoice;
+
+  if (!invoice) return null;
 
   return (
-    <AnimatePresence>
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex justify-end"
-        onClick={closeModal}
-      >
-        <motion.div 
-          initial={{ x: '100%' }}
-          animate={{ x: 0 }}
-          exit={{ x: '100%' }}
-          transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-          className="w-full max-w-2xl bg-bg-surface h-full border-l border-border overflow-y-auto"
-          onClick={e => e.stopPropagation()}
-        >
-          <div className="p-6 border-b border-border flex justify-between items-start sticky top-0 bg-bg-surface/90 backdrop-blur-md z-10 shadow-sm">
+    <Modal
+      isOpen={!!selectedInvoice}
+      onClose={closeModal}
+      variant="drawer"
+      position="right"
+      size="2xl"
+      hideHeader
+    >
+      <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-6 p-6 border-b border-border flex justify-between items-start sticky top-0 bg-bg-surface/90 backdrop-blur-md z-10 shadow-sm">
             <div>
               <h2 className="text-xl font-bold text-text-primary mb-1">Invoice Details</h2>
-              <p className="text-sm text-text-secondary font-mono">{selectedInvoice.invoice_number}</p>
+              <p className="text-sm text-text-secondary font-mono">{invoice.invoice_number}</p>
             </div>
             <div className="flex items-center gap-4">
-              {selectedInvoice.approval_status === 'pending_approval' && handleApprove && (
+              {invoice.approval_status === 'pending_approval' && handleApprove && (
                 <button 
-                  onClick={() => handleApprove(selectedInvoice.id)}
+                  onClick={() => handleApprove(invoice.id)}
                   className="flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:bg-accent-hover transition-colors"
                 >
                   <CheckCircle2 className="w-4 h-4" />
@@ -84,15 +82,15 @@ export function InvoiceDetailsModal({
                 <div className="space-y-3">
                   <div>
                     <div className="text-xs text-text-secondary uppercase">Name</div>
-                    <div className="font-medium text-text-primary">{selectedInvoice.supplier_name || '-'}</div>
+                    <div className="font-medium text-text-primary">{invoice.supplier_name || '-'}</div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-xs text-text-secondary uppercase">GSTIN</span>
-                        {selectedInvoice.supplier_gstin && (
+                        {invoice.supplier_gstin && (
                             <div className="flex items-center gap-2">
-                              {!isValidGSTIN(selectedInvoice.supplier_gstin) ? (
+                              {!isValidGSTIN(invoice.supplier_gstin) ? (
                                 <span className="text-[9px] text-red-500 font-medium bg-red-500/10 px-1 rounded">Invalid</span>
                               ) : (
                                 <span className="text-[9px] text-green-500 font-medium bg-green-500/10 px-1 rounded">Valid</span>
@@ -101,7 +99,7 @@ export function InvoiceDetailsModal({
                                 href="https://services.gst.gov.in/services/searchtp" 
                                 target="_blank" 
                                 rel="noreferrer"
-                                onClick={() => navigator.clipboard.writeText(selectedInvoice.supplier_gstin)}
+                                onClick={() => navigator.clipboard.writeText(invoice.supplier_gstin)}
                                 title="Copy GSTIN and verify on Govt Portal"
                                 className="text-[9px] bg-accent/10 text-accent px-1.5 py-0.5 rounded hover:bg-accent hover:text-white transition-colors cursor-pointer"
                               >
@@ -110,25 +108,25 @@ export function InvoiceDetailsModal({
                             </div>
                         )}
                       </div>
-                      <div className="font-mono text-sm">{selectedInvoice.supplier_gstin || '-'}</div>
+                      <div className="font-mono text-sm">{invoice.supplier_gstin || '-'}</div>
                     </div>
                     <div>
                       <div className="text-xs text-text-secondary uppercase">PAN</div>
-                      <div className="font-mono text-sm">{selectedInvoice.supplier_pan || '-'}</div>
+                      <div className="font-mono text-sm">{invoice.supplier_pan || '-'}</div>
                     </div>
                   </div>
                   <div>
                     <div className="text-xs text-text-secondary uppercase">Address</div>
-                    <div className="text-sm text-text-secondary">{selectedInvoice.supplier_address || '-'}</div>
+                    <div className="text-sm text-text-secondary">{invoice.supplier_address || '-'}</div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <div className="text-xs text-text-secondary uppercase">Phone</div>
-                      <div className="text-sm">{selectedInvoice.supplier_phone || '-'}</div>
+                      <div className="text-sm">{invoice.supplier_phone || '-'}</div>
                     </div>
                     <div>
                       <div className="text-xs text-text-secondary uppercase">Email</div>
-                      <div className="text-sm break-all">{selectedInvoice.supplier_email || '-'}</div>
+                      <div className="text-sm break-all">{invoice.supplier_email || '-'}</div>
                     </div>
                   </div>
                 </div>
@@ -140,15 +138,15 @@ export function InvoiceDetailsModal({
                 <div className="space-y-3">
                   <div>
                     <div className="text-xs text-text-secondary uppercase">Name</div>
-                    <div className="font-medium text-text-primary">{selectedInvoice.buyer_name || '-'}</div>
+                    <div className="font-medium text-text-primary">{invoice.buyer_name || '-'}</div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-xs text-text-secondary uppercase">GSTIN</span>
-                        {selectedInvoice.buyer_gstin && (
+                        {invoice.buyer_gstin && (
                             <div className="flex items-center gap-2">
-                              {!isValidGSTIN(selectedInvoice.buyer_gstin) ? (
+                              {!isValidGSTIN(invoice.buyer_gstin) ? (
                                 <span className="text-[9px] text-red-500 font-medium bg-red-500/10 px-1 rounded">Invalid</span>
                               ) : (
                                 <span className="text-[9px] text-green-500 font-medium bg-green-500/10 px-1 rounded">Valid</span>
@@ -157,7 +155,7 @@ export function InvoiceDetailsModal({
                                 href="https://services.gst.gov.in/services/searchtp" 
                                 target="_blank" 
                                 rel="noreferrer"
-                                onClick={() => navigator.clipboard.writeText(selectedInvoice.buyer_gstin)}
+                                onClick={() => navigator.clipboard.writeText(invoice.buyer_gstin)}
                                 title="Copy GSTIN and verify on Govt Portal"
                                 className="text-[9px] bg-accent/10 text-accent px-1.5 py-0.5 rounded hover:bg-accent hover:text-white transition-colors cursor-pointer"
                               >
@@ -166,20 +164,20 @@ export function InvoiceDetailsModal({
                             </div>
                         )}
                       </div>
-                      <div className="font-mono text-sm">{selectedInvoice.buyer_gstin || '-'}</div>
+                      <div className="font-mono text-sm">{invoice.buyer_gstin || '-'}</div>
                     </div>
                     <div>
                       <div className="text-xs text-text-secondary uppercase">PAN</div>
-                      <div className="font-mono text-sm">{selectedInvoice.buyer_pan || '-'}</div>
+                      <div className="font-mono text-sm">{invoice.buyer_pan || '-'}</div>
                     </div>
                   </div>
                   <div>
                     <div className="text-xs text-text-secondary uppercase">Address</div>
-                    <div className="text-sm text-text-secondary">{selectedInvoice.buyer_address || '-'}</div>
+                    <div className="text-sm text-text-secondary">{invoice.buyer_address || '-'}</div>
                   </div>
                   <div>
                     <div className="text-xs text-text-secondary uppercase">PIN Code</div>
-                    <div className="text-sm font-mono">{selectedInvoice.buyer_pin || '-'}</div>
+                    <div className="text-sm font-mono">{invoice.buyer_pin || '-'}</div>
                   </div>
                 </div>
               </div>
@@ -192,11 +190,11 @@ export function InvoiceDetailsModal({
                 <label className="text-xs text-text-secondary uppercase mb-2 block">Expense Category</label>
                 <select 
                   className="input-field w-full md:w-1/2"
-                  value={selectedInvoice.expense_category || ''}
+                  value={invoice.expense_category || ''}
                   onChange={(e) => {
                      const val = e.target.value;
                      setSelectedInvoice({...selectedInvoice, expense_category: val});
-                     handleUpdateCategory(selectedInvoice.id, val);
+                     handleUpdateCategory(invoice.id, val);
                   }}
                 >
                   <option value="">Select Category...</option>
@@ -218,27 +216,27 @@ export function InvoiceDetailsModal({
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <div className="text-xs text-text-secondary uppercase">Invoice Date</div>
-                  <div className="font-medium">{selectedInvoice.invoice_date || '-'}</div>
+                  <div className="font-medium">{invoice.invoice_date || '-'}</div>
                 </div>
                 <div>
                   <div className="text-xs text-text-secondary uppercase">Due Date</div>
-                  <div className="font-medium">{selectedInvoice.due_date || '-'}</div>
+                  <div className="font-medium">{invoice.due_date || '-'}</div>
                 </div>
                 <div>
                   <div className="text-xs text-text-secondary uppercase">Place of Supply</div>
-                  <div className="font-medium">{selectedInvoice.place_of_supply || '-'}</div>
+                  <div className="font-medium">{invoice.place_of_supply || '-'}</div>
                 </div>
                 <div>
                   <div className="text-xs text-text-secondary uppercase">PO Number</div>
-                  <div className="font-mono text-sm">{selectedInvoice.po_number || '-'}</div>
+                  <div className="font-mono text-sm">{invoice.po_number || '-'}</div>
                 </div>
                 <div>
                   <div className="text-xs text-text-secondary uppercase">E-Way Bill</div>
-                  <div className="font-mono text-sm">{selectedInvoice.e_way_bill_number || '-'}</div>
+                  <div className="font-mono text-sm">{invoice.e_way_bill_number || '-'}</div>
                 </div>
                 <div>
                   <div className="text-xs text-text-secondary uppercase">Vehicle No</div>
-                  <div className="font-mono text-sm">{selectedInvoice.vehicle_number || '-'}</div>
+                  <div className="font-mono text-sm">{invoice.vehicle_number || '-'}</div>
                 </div>
               </div>
             </div>
@@ -250,52 +248,52 @@ export function InvoiceDetailsModal({
                 <div className="space-y-2">
                   <div className="flex justify-between p-2 bg-bg-sunken rounded-lg">
                     <span className="text-text-secondary text-sm">Taxable Amount</span>
-                    <span className="font-mono text-text-primary">{formatCurrency(selectedInvoice.taxable_amount || 0)}</span>
+                    <span className="font-mono text-text-primary">{formatCurrency(invoice.taxable_amount || 0)}</span>
                   </div>
                   <div className="flex justify-between p-2 bg-bg-sunken rounded-lg">
                     <span className="text-text-secondary text-sm">CGST</span>
-                    <span className="font-mono text-text-primary">{formatCurrency(selectedInvoice.cgst_amount || 0)}</span>
+                    <span className="font-mono text-text-primary">{formatCurrency(invoice.cgst_amount || 0)}</span>
                   </div>
                   <div className="flex justify-between p-2 bg-bg-sunken rounded-lg">
                     <span className="text-text-secondary text-sm">SGST</span>
-                    <span className="font-mono text-text-primary">{formatCurrency(selectedInvoice.sgst_amount || 0)}</span>
+                    <span className="font-mono text-text-primary">{formatCurrency(invoice.sgst_amount || 0)}</span>
                   </div>
                   <div className="flex justify-between p-2 bg-bg-sunken rounded-lg">
                     <span className="text-text-secondary text-sm">IGST</span>
-                    <span className="font-mono text-text-primary">{formatCurrency(selectedInvoice.igst_amount || 0)}</span>
+                    <span className="font-mono text-text-primary">{formatCurrency(invoice.igst_amount || 0)}</span>
                   </div>
                   <div className="flex justify-between p-2 bg-bg-sunken rounded-lg">
                     <span className="text-text-secondary text-sm">Round Off</span>
-                    <span className="font-mono text-text-primary">{formatCurrency(selectedInvoice.round_off || 0)}</span>
+                    <span className="font-mono text-text-primary">{formatCurrency(invoice.round_off || 0)}</span>
                   </div>
                 </div>
                 <div className="space-y-2">
                   <div className="flex justify-between p-2 bg-accent-subtle rounded-lg border border-accent/20">
                     <span className="text-accent text-sm font-medium">Total Amount</span>
-                    <span className="font-mono text-accent font-bold">{formatCurrency(selectedInvoice.total_amount || 0)}</span>
+                    <span className="font-mono text-accent font-bold">{formatCurrency(invoice.total_amount || 0)}</span>
                   </div>
                   <div className="flex justify-between p-2 bg-bg-sunken rounded-lg">
                     <span className="text-text-secondary text-sm">Received Amount</span>
-                    <span className="font-mono text-success">{formatCurrency(selectedInvoice.received_amount || 0)}</span>
+                    <span className="font-mono text-success">{formatCurrency(invoice.received_amount || 0)}</span>
                   </div>
                   <div className="flex justify-between p-2 bg-bg-sunken rounded-lg">
                     <span className="text-text-secondary text-sm">Balance Due</span>
-                    <span className="font-mono text-warning">{formatCurrency(selectedInvoice.balance_amount || 0)}</span>
+                    <span className="font-mono text-warning">{formatCurrency(invoice.balance_amount || 0)}</span>
                   </div>
                   <div className="flex justify-between p-2 bg-bg-sunken rounded-lg">
                     <span className="text-text-secondary text-sm">Previous Balance</span>
-                    <span className="font-mono text-text-secondary">{formatCurrency(selectedInvoice.previous_balance || 0)}</span>
+                    <span className="font-mono text-text-secondary">{formatCurrency(invoice.previous_balance || 0)}</span>
                   </div>
                   <div className="flex justify-between p-2 bg-bg-sunken rounded-lg">
                     <span className="text-text-secondary text-sm">Current Balance</span>
-                    <span className="font-mono text-text-secondary">{formatCurrency(selectedInvoice.current_balance || 0)}</span>
+                    <span className="font-mono text-text-secondary">{formatCurrency(invoice.current_balance || 0)}</span>
                   </div>
                 </div>
               </div>
-              {selectedInvoice.amount_in_words && (
+              {invoice.amount_in_words && (
                 <div className="mt-4 p-3 bg-bg-sunken rounded-lg border border-border">
                   <div className="text-xs text-text-secondary uppercase mb-1">Amount in Words</div>
-                  <div className="text-sm font-medium text-text-primary italic">{selectedInvoice.amount_in_words}</div>
+                  <div className="text-sm font-medium text-text-primary italic">{invoice.amount_in_words}</div>
                 </div>
               )}
             </div>
@@ -348,29 +346,28 @@ export function InvoiceDetailsModal({
             </div>
 
             {/* Bank Details */}
-            {(selectedInvoice.account_number || selectedInvoice.upi_id) && (
+            {(invoice.account_number || invoice.upi_id) && (
               <div className="space-y-4">
                 <h3 className="font-semibold text-text-primary border-b border-border pb-2">Payment Details</h3>
                 <div className="card bg-bg-sunken border-0 flex flex-wrap gap-8 p-4">
-                  {selectedInvoice.account_number && (
+                  {invoice.account_number && (
                     <div>
                       <div className="text-xs text-text-secondary uppercase mb-1">Bank Account</div>
-                      <div className="font-mono text-text-primary">{selectedInvoice.account_number}</div>
-                      <div className="text-sm text-text-secondary">{selectedInvoice.bank_name || ''} {selectedInvoice.ifsc_code ? `(IFSC: ${selectedInvoice.ifsc_code})` : ''}</div>
+                      <div className="font-mono text-text-primary">{invoice.account_number}</div>
+                      <div className="text-sm text-text-secondary">{invoice.bank_name || ''} {invoice.ifsc_code ? `(IFSC: ${invoice.ifsc_code})` : ''}</div>
                     </div>
                   )}
-                  {selectedInvoice.upi_id && (
+                  {invoice.upi_id && (
                     <div>
                       <div className="text-xs text-text-secondary uppercase mb-1">UPI ID</div>
-                      <div className="font-mono text-text-primary">{selectedInvoice.upi_id}</div>
+                      <div className="font-mono text-text-primary">{invoice.upi_id}</div>
                     </div>
                   )}
                 </div>
               </div>
             )}
           </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+
+    </Modal>
   );
 }

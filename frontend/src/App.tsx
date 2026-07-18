@@ -35,6 +35,25 @@ import { Toaster } from 'react-hot-toast';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
+// ProtectedRoute — extracted outside component body to prevent recreation on every render (fixes L3)
+const ProtectedRoute = ({ children, session }: { children: React.ReactNode; session: Session | null }) => {
+  if (!session) {
+    return <Navigate to="/auth" replace />;
+  }
+  return <>{children}</>;
+};
+
+// 404 Not Found page — proper UX instead of silent redirect (fixes L4)
+const NotFoundPage = () => (
+  <div className="min-h-screen flex flex-col items-center justify-center bg-background text-center px-4">
+    <h1 className="text-6xl font-bold text-primary mb-4">404</h1>
+    <p className="text-lg text-muted-foreground mb-6">The page you're looking for doesn't exist.</p>
+    <a href="/" className="px-6 py-3 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity">
+      Go Home
+    </a>
+  </div>
+);
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -50,22 +69,7 @@ export default function App() {
   useEffect(() => {
     const initSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session && import.meta.env.DEV && import.meta.env.VITE_DEV_EMAIL && import.meta.env.VITE_DEV_PASSWORD) {
-        // Try auto-login in DEV mode
-        const { data: signInData } = await supabase.auth.signInWithPassword({
-          email: import.meta.env.VITE_DEV_EMAIL,
-          password: import.meta.env.VITE_DEV_PASSWORD
-        });
-        
-        if (signInData?.session) {
-          setSession(signInData.session);
-        } else {
-          setSession(null);
-        }
-      } else {
-        setSession(session);
-      }
+      setSession(session);
       setIsInitializing(false);
     };
 
@@ -81,13 +85,6 @@ export default function App() {
   if (isInitializing) {
     return <div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   }
-
-  const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-    if (!session) {
-      return <Navigate to="/auth" replace />;
-    }
-    return <>{children}</>;
-  };
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -111,11 +108,11 @@ export default function App() {
             
             {/* Protected Routes */}
 
-            <Route path="/admin" element={<ProtectedRoute><PlatformAdminLayout /></ProtectedRoute>}>
+            <Route path="/admin" element={<ProtectedRoute session={session}><PlatformAdminLayout /></ProtectedRoute>}>
               <Route index element={<PlatformAdminPage />} />
             </Route>
 
-            <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+            <Route path="/" element={<ProtectedRoute session={session}><Layout /></ProtectedRoute>}>
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="scan" element={<ScanPage />} />
               <Route path="cfo" element={<ProGate><VirtualCfoPage /></ProGate>} />
@@ -131,7 +128,7 @@ export default function App() {
             </Route>
             
             {/* Catch-all 404 Route */}
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Suspense>
         <Toaster position="bottom-right" toastOptions={{

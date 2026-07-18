@@ -1,24 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { DollarSign, FileText, Settings, CheckCircle2, TrendingUp, Building2, Briefcase, AlertTriangle } from 'lucide-react';
+import { DollarSign, FileText, Settings, CheckCircle2, TrendingUp, Building2, Briefcase, AlertTriangle, ArrowUpRight, ArrowDownRight, ArrowRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Link } from 'react-router-dom';
+import { cn } from '../lib/utils';
 import { useClient } from '../lib/ClientContext';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Skeleton } from '../components/ui/Skeleton';
 import AnalyticsCharts, { type AnalyticsData, AnalyticsSkeleton } from '../components/AnalyticsCharts';
 import { ErrorState } from '../components/ui/ErrorState';
-
-const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-IN', { 
-    style: 'currency', 
-    currency: 'INR', 
-    maximumFractionDigits: 0 
-  }).format(amount);
-};
-
-
+import { formatCurrency } from '../utils/format';
 
 const AVAILABLE_WIDGETS = [
   { key: 'total_taxable', label: 'Total Taxable Amount', icon: DollarSign },
@@ -160,6 +152,22 @@ export default function DashboardPage() {
     }
   };
 
+  const getWidgetTrend = (key: string) => {
+    if (!analyticsData?.trends || analyticsData.trends.length < 2) return null;
+    const trends = analyticsData.trends;
+    const current = trends[trends.length - 1];
+    const previous = trends[trends.length - 2];
+    
+    // We only have total_taxable and total_spend in trends.
+    // For most financial metrics on the dashboard, total_taxable provides a good proxy trend.
+    if (key === 'invoice_count') return null; 
+
+    if (previous.total_taxable === 0) return null;
+    
+    const diff = ((current.total_taxable - previous.total_taxable) / previous.total_taxable) * 100;
+    return diff;
+  };
+
 
 
   if (!activeClientId) {
@@ -174,39 +182,56 @@ export default function DashboardPage() {
         </p>
         
         {clients.length === 0 ? (
-          <div className="flex flex-col gap-4 w-full max-w-xs mx-auto">
-             <button 
-               onClick={async () => {
-                 try {
-                   toast.loading("Setting up your workspace...", { id: "setup" });
-                   const { data: { user } } = await supabase.auth.getUser();
-                   if (!user) throw new Error("Not authenticated");
-                   const { error } = await supabase.from('clients').insert({
-                     user_id: user.id,
-                     client_name: 'My Business',
-                     gstin: 'PENDING'
-                   });
-                   if (error) throw error;
-                   localStorage.setItem('accountType', 'business');
-                   toast.success("Workspace ready!", { id: "setup" });
-                   window.location.reload(); 
-                 } catch (err: any) {
-                   toast.error(err.message || "Failed to setup workspace", { id: "setup" });
-                 }
-               }}
-               className="btn-primary flex items-center justify-center gap-3 py-3 w-full"
-             >
-               <Briefcase className="w-5 h-5" /> I'm a Single Business
-             </button>
-             <button 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-3xl mx-auto">
+             
+             <button
                onClick={() => {
                  localStorage.setItem('accountType', 'firm');
-                 window.location.href = '/clients';
-               }} 
-               className="btn-secondary flex items-center justify-center gap-3 py-3 w-full"
+                 window.location.href = '/clients'; // Redirect to clients setup
+               }}
+               className="card p-8 flex flex-col items-start text-left hover:border-accent hover:shadow-glow group transition-all"
              >
-               <Building2 className="w-5 h-5" /> I'm an Accounting Firm
+               <div className="w-12 h-12 rounded-xl bg-accent-subtle flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                 <Building2 className="w-6 h-6 text-accent" />
+               </div>
+               <h3 className="text-xl font-bold text-text-primary mb-2">Accounting Firm (CA)</h3>
+               <p className="text-sm text-text-secondary mb-6 leading-relaxed">
+                 I manage invoices, bank statements, and GST reconciliation for multiple clients.
+               </p>
+               <div className="mt-auto text-accent text-sm font-semibold flex items-center gap-1 group-hover:gap-2 transition-all">
+                 Set up clients <ArrowRight className="w-4 h-4" />
+               </div>
              </button>
+
+             <button 
+               onClick={async () => {
+                 const { data: { session } } = await supabase.auth.getSession();
+                 if (session) {
+                   const { data, error } = await supabase.from('clients').insert({
+                     user_id: session.user.id,
+                     client_name: "My Company",
+                     is_active: true
+                   }).select().single();
+                   if (!error && data) {
+                     setActiveClientId(data.id);
+                     localStorage.setItem('accountType', 'business');
+                   }
+                 }
+               }}
+               className="card p-8 flex flex-col items-start text-left border-border/50 hover:border-accent/50 opacity-90 hover:opacity-100 transition-all group"
+             >
+               <div className="w-12 h-12 rounded-xl bg-bg-sunken flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                 <Briefcase className="w-6 h-6 text-text-secondary group-hover:text-text-primary" />
+               </div>
+               <h3 className="text-lg font-bold text-text-primary mb-2">Single Business</h3>
+               <p className="text-sm text-text-secondary mb-6 leading-relaxed">
+                 I only need to manage invoices and reconciliation for my own company.
+               </p>
+               <div className="mt-auto text-text-secondary group-hover:text-text-primary text-sm font-semibold flex items-center gap-1 group-hover:gap-2 transition-all">
+                 Create workspace <ArrowRight className="w-4 h-4" />
+               </div>
+             </button>
+             
           </div>
         ) : (
           <div className="mt-4">
@@ -316,16 +341,28 @@ export default function DashboardPage() {
           const Icon = widget.icon;
           return (
             <motion.div 
-              whileHover={{ y: -4, scale: 1.02 }}
+              whileHover={{ y: -4 }}
               transition={{ type: "spring", stiffness: 400, damping: 25 }}
               key={widget.key} 
-              className="card space-y-3 p-6 hover:border-accent/30 transition-all cursor-default group"
+              className="card space-y-3 p-6 hover:border-accent/50 hover:shadow-md transition-all cursor-default group"
             >
               <div className="flex items-center gap-2 text-text-secondary group-hover:text-accent transition-colors">
                 <Icon className="w-5 h-5" />
                 <h3 className="font-semibold text-xs tracking-widest uppercase">{widget.label}</h3>
               </div>
               <p className="text-3xl font-bold text-text-primary font-display tracking-tight">{getWidgetValue(widget.key)}</p>
+              {(() => {
+                const trend = getWidgetTrend(widget.key);
+                if (trend === null) return null;
+                const isPositive = trend >= 0;
+                return (
+                  <div className={cn("flex items-center gap-1 text-xs font-semibold mt-1", isPositive ? "text-emerald-500" : "text-error")}>
+                    {isPositive ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
+                    <span>{Math.abs(trend).toFixed(1)}%</span>
+                    <span className="text-text-disabled font-normal ml-1">vs last month</span>
+                  </div>
+                );
+              })()}
             </motion.div>
           );
         })}

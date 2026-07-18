@@ -470,7 +470,7 @@ export default function LandingPage() {
               Built exclusively for Indian Chartered Accountants
             </motion.div>
 
-            <h1 id="hero-heading" className="text-[3.5rem] lg:text-[6.5rem] font-display font-extrabold tracking-tight mb-8 leading-[1.05] text-text-primary text-balance">
+            <h1 id="hero-heading" className="text-[2.5rem] md:text-[3.5rem] lg:text-[6.5rem] font-display font-extrabold tracking-tight mb-8 leading-[1.05] text-text-primary text-balance">
               From receipt scan<br className="hidden lg:block" />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent to-accent-hover block mt-2">to bank reconciliation.</span>
             </h1>

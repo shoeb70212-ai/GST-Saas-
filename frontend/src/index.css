@@ -143,19 +143,19 @@
   }
   
   .btn-primary {
-    @apply h-10 bg-accent hover:bg-accent-hover active:scale-[0.98] text-white font-medium text-sm rounded-lg px-5 transition-all inline-flex items-center justify-center gap-2 shadow-sm hover:shadow-glow;
+    @apply h-10 bg-accent hover:bg-accent-hover active:scale-[0.98] text-white font-medium text-sm rounded-lg px-5 transition-all inline-flex items-center justify-center gap-2 shadow-sm hover:shadow-glow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2;
   }
   
   .btn-secondary {
-    @apply h-10 bg-bg-surface border border-border hover:border-accent/50 text-text-primary hover:text-accent active:scale-[0.98] font-medium text-sm rounded-lg px-5 transition-all inline-flex items-center justify-center gap-2 shadow-sm backdrop-blur-md;
+    @apply h-10 bg-bg-surface border border-border hover:border-accent/50 text-text-primary hover:text-accent active:scale-[0.98] font-medium text-sm rounded-lg px-5 transition-all inline-flex items-center justify-center gap-2 shadow-sm backdrop-blur-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2;
   }
 
   .btn-ghost {
-    @apply h-10 bg-transparent text-text-primary hover:bg-bg-sunken active:scale-[0.98] font-medium text-sm rounded-lg px-4 transition-all inline-flex items-center justify-center gap-2;
+    @apply h-10 bg-transparent text-text-primary hover:bg-bg-sunken active:scale-[0.98] font-medium text-sm rounded-lg px-4 transition-all inline-flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2;
   }
   
   .btn-destructive {
-    @apply h-10 bg-error hover:bg-error/90 active:scale-[0.98] text-white font-medium text-sm rounded-lg px-5 transition-all inline-flex items-center justify-center gap-2 shadow-sm;
+    @apply h-10 bg-error hover:bg-error/90 active:scale-[0.98] text-white font-medium text-sm rounded-lg px-5 transition-all inline-flex items-center justify-center gap-2 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/50 focus-visible:ring-offset-2;
   }
   
   .badge {

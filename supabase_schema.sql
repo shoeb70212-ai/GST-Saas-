@@ -143,6 +143,8 @@ CREATE TABLE profiles (
   company_name TEXT,
   default_gstin TEXT,
   credits INTEGER DEFAULT 100,
+  export_columns JSONB DEFAULT NULL,
+  export_include_items BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

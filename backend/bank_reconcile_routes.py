@@ -21,6 +21,18 @@ async def get_user_from_token(token: str):
             raise HTTPException(status_code=401, detail="Invalid session token")
         return resp.json().get("id")
 
+
+async def _verify_client_ownership_bank_recon(token: str, client_id: str, user_id: str):
+    """Verify that a client_id belongs to the authenticated user before bank reconciliation."""
+    async with httpx.AsyncClient() as http_client:
+        client_resp = await http_client.get(
+            f"{SUPABASE_URL}/rest/v1/clients?id=eq.{client_id}&user_id=eq.{user_id}&select=id",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if not client_resp.json():
+            raise HTTPException(status_code=403, detail="Access denied: client not found")
+
+
 class RunEngineRequest(BaseModel):
     client_id: str
 
@@ -30,6 +42,9 @@ async def run_reconciliation(req: RunEngineRequest, authorization: str = Header(
         raise HTTPException(status_code=401, detail="Unauthorized")
     token = authorization.split(" ")[1]
     user_id = await get_user_from_token(token)
+    
+    # Verify client ownership before invoking AI engine (fixes cross-tenant vulnerability)
+    await _verify_client_ownership_bank_recon(token, req.client_id, user_id)
     
     result = await run_ai_matching_engine(req.client_id, user_id)
     return result

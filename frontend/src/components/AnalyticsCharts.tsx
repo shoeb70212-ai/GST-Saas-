@@ -16,8 +16,9 @@ import {
 } from 'recharts';
 import { Skeleton } from './ui/Skeleton';
 import { BarChart3, PieChart as PieChartIcon } from 'lucide-react';
+import { formatCurrency } from '../utils/format';
 
-const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6', '#f43f5e', '#84cc16'];
+const COLORS = ['#990000', '#C84B31', '#D9A05B', '#7B9070', '#2D4263', '#A84C46', '#876445', '#4C5D70', '#B07D62', '#4A5D23'];
 const RECON_COLORS = {
   matched: '#10b981',
   mismatch: '#f59e0b',
@@ -26,13 +27,7 @@ const RECON_COLORS = {
   unreconciled: '#94a3b8'
 };
 
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(value);
-};
+
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {

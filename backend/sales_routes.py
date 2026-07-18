@@ -2,6 +2,8 @@ import pandas as pd
 import io
 import asyncio
 import calendar
+import logging
+import re
 from datetime import date
 from fastapi import APIRouter, File, UploadFile, HTTPException, Header, Form
 import httpx
@@ -9,8 +11,21 @@ import os
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+async def _verify_client_ownership_sales(token: str, client_id: str, user_id: str):
+    """Verify that a client_id belongs to the authenticated user before sales operations."""
+    async with httpx.AsyncClient() as http_client:
+        client_resp = await http_client.get(
+            f"{SUPABASE_URL}/rest/v1/clients?id=eq.{client_id}&user_id=eq.{user_id}&select=id",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if not client_resp.json():
+            raise HTTPException(status_code=403, detail="Access denied: client not found")
+
 
 def period_to_date_range(period: str):
     """
@@ -28,7 +43,6 @@ def period_to_date_range(period: str):
 
 def clean_str(s):
     if not s: return ""
-    import re
     s = str(s).strip().upper().replace("-", "").replace("/", "").replace(" ", "")
     return re.sub(r'(\D)0+(\d)', r'\1\2', s)
 
@@ -53,13 +67,16 @@ async def upload_sales_register(
             raise HTTPException(status_code=401, detail="Invalid session token")
         user_id = user_resp.json().get("id")
         
+        # Verify client ownership before any data modification (fixes cross-tenant vulnerability)
+        await _verify_client_ownership_sales(token, client_id, user_id)
+    
     content = await file.read()
     
     records = []
     
-    # Try parsing B2B sheet
+    # Try parsing B2B sheet — removed hardcoded engine='openpyxl' to support .xls files (fixes crash)
     try:
-        df_b2b_full = pd.read_excel(io.BytesIO(content), sheet_name='b2b', header=None, engine='openpyxl')
+        df_b2b_full = pd.read_excel(io.BytesIO(content), sheet_name='b2b', header=None)
         header_idx = 0
         for i, row in df_b2b_full.iterrows():
             row_str = " ".join([str(x).lower() for x in row.values])
@@ -67,7 +84,7 @@ async def upload_sales_register(
                 header_idx = i
                 break
                 
-        df_b2b = pd.read_excel(io.BytesIO(content), sheet_name='b2b', header=header_idx, engine='openpyxl')
+        df_b2b = pd.read_excel(io.BytesIO(content), sheet_name='b2b', header=header_idx)
         df_b2b.columns = [str(c).strip().replace('\n', ' ') for c in df_b2b.columns]
         
         # Mapping columns
@@ -110,11 +127,11 @@ async def upload_sales_register(
                 "is_credit_note": is_credit_note
             })
     except Exception as e:
-        print(f"Skipping B2B sheet or failed to parse: {e}")
+        logger.warning(f"Skipping B2B sheet or failed to parse: {e}")
         
-    # Try parsing B2CS (B2C Small) sheet
+    # Try parsing B2CS (B2C Small) sheet — removed hardcoded engine='openpyxl'
     try:
-        df_b2cs_full = pd.read_excel(io.BytesIO(content), sheet_name='b2cs', header=None, engine='openpyxl')
+        df_b2cs_full = pd.read_excel(io.BytesIO(content), sheet_name='b2cs', header=None)
         header_idx = 0
         for i, row in df_b2cs_full.iterrows():
             row_str = " ".join([str(x).lower() for x in row.values])
@@ -122,7 +139,7 @@ async def upload_sales_register(
                 header_idx = i
                 break
                 
-        df_b2cs = pd.read_excel(io.BytesIO(content), sheet_name='b2cs', header=header_idx, engine='openpyxl')
+        df_b2cs = pd.read_excel(io.BytesIO(content), sheet_name='b2cs', header=header_idx)
         df_b2cs.columns = [str(c).strip().replace('\n', ' ') for c in df_b2cs.columns]
         
         col_mapping_b2c = {}
@@ -154,10 +171,10 @@ async def upload_sales_register(
                 "is_credit_note": is_credit_note
             })
     except Exception as e:
-        print(f"Skipping B2CS sheet or failed to parse: {e}")
+        logger.warning(f"Skipping B2CS sheet or failed to parse: {e}")
 
     if not records:
-        raise HTTPException(status_code=400, detail="No valid B2B or B2C sales records found in the uploaded GSTR-1 file.")
+        raise HTTPException(status_code=400, detail="No valid B2B or B2C sales records found in the uploaded GSTR-1 file. If uploading an .xls file, ensure the xlrd package is installed.")
 
     async with httpx.AsyncClient() as http_client:
         # Delete old records for this period (Idempotency)

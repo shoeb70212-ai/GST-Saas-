@@ -1,12 +1,13 @@
-import { useEffect, useState  } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from '../lib/supabase';
-import { LogOut, User, Building2, Shield, Loader2, Save, Lock, Eye, EyeOff, MessageCircle, Zap, Network, Clock, Users, UserPlus, Copy, Check } from 'lucide-react';
+import { LogOut, User, Building2, Shield, Loader2, Save, Lock, Eye, EyeOff, MessageCircle, Zap, Network, Clock, Users, UserPlus, Copy, Check, Table2, CheckSquare, Square } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useClient } from '../lib/ClientContext';
+import { AVAILABLE_COLUMNS, DEFAULT_COLUMNS, EXPORT_CATEGORIES } from '../lib/constants';
 
-type SettingsTab = 'profile' | 'company' | 'team' | 'automation' | 'security';
+type SettingsTab = 'profile' | 'company' | 'team' | 'automation' | 'security' | 'export';
 
 const tabSlide = {
   hidden: { opacity: 0, y: 10 },
@@ -54,17 +55,15 @@ export default function SettingsPage() {
   const [joiningFirm, setJoiningFirm] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
 
+  // Export fields
+  const [exportColumns, setExportColumns] = useState<Set<string>>(new Set(DEFAULT_COLUMNS));
+  const [exportIncludeItems, setExportIncludeItems] = useState(true);
+
   useEffect(() => {
     fetchUser();
   }, []);
 
-  useEffect(() => {
-    if (activeClientId) {
-      fetchAutomationSettings();
-    }
-  }, [activeClientId]);
-
-  const fetchAutomationSettings = async () => {
+  const fetchAutomationSettings = useCallback(async () => {
     try {
       setFetchingAutomation(true);
       const { data, error } = await supabase
@@ -84,7 +83,13 @@ export default function SettingsPage() {
     } finally {
       setFetchingAutomation(false);
     }
-  };
+  }, [activeClientId]);
+
+  useEffect(() => {
+    if (activeClientId) {
+      fetchAutomationSettings();
+    }
+  }, [activeClientId, fetchAutomationSettings]);
 
   const fetchUser = async () => {
     try {
@@ -93,7 +98,7 @@ export default function SettingsPage() {
         setUser(session.user);
         const { data: profile } = await supabase
           .from('profiles')
-          .select('company_name, default_gstin, tally_ledgers, maker_checker_enabled, whatsapp_number, active_whatsapp_client_id')
+          .select('company_name, default_gstin, tally_ledgers, maker_checker_enabled, whatsapp_number, active_whatsapp_client_id, export_columns, export_include_items')
           .eq('id', session.user.id)
           .single();
 
@@ -108,6 +113,13 @@ export default function SettingsPage() {
           }
           if (profile.whatsapp_number) setWhatsappNumber(profile.whatsapp_number);
           if (profile.active_whatsapp_client_id) setActiveWhatsappClientId(profile.active_whatsapp_client_id);
+          
+          if (profile.export_columns) {
+            setExportColumns(new Set(profile.export_columns));
+          }
+          if (profile.export_include_items !== undefined) {
+            setExportIncludeItems(profile.export_include_items);
+          }
         }
 
         const { data: clientsData } = await supabase
@@ -171,6 +183,25 @@ export default function SettingsPage() {
       toast.error('Failed to update profile.');
     } else {
       toast.success('Profile saved successfully!');
+    }
+  };
+
+  const handleSaveExport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        export_columns: Array.from(exportColumns),
+        export_include_items: exportIncludeItems
+      })
+      .eq('id', user.id);
+    setSaving(false);
+    if (error) {
+      toast.error('Failed to update export preferences.');
+    } else {
+      toast.success('Export preferences saved successfully!');
     }
   };
 
@@ -242,6 +273,7 @@ export default function SettingsPage() {
     { key: 'company', label: 'Company defaults', icon: Building2 },
     { key: 'team', label: 'Team Management', icon: Users },
     { key: 'automation', label: 'Automation', icon: Zap },
+    { key: 'export', label: 'Export Defaults', icon: Table2 },
     { key: 'security', label: 'Security', icon: Shield },
   ];
 
@@ -639,6 +671,91 @@ export default function SettingsPage() {
                   <button type="submit" disabled={saving || !activeClientId || fetchingAutomation} className="btn-primary">
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                     Save Automation
+                  </button>
+                </div>
+              </motion.form>
+            )}
+
+            {/* ── EXPORT DEFAULTS TAB ── */}
+            {activeTab === 'export' && (
+              <motion.form
+                key="export"
+                variants={tabSlide}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                onSubmit={handleSaveExport}
+                className="card p-6 space-y-6"
+              >
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 rounded-xl bg-accent-subtle text-accent flex items-center justify-center">
+                    <Table2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-display font-semibold text-text-primary">Custom Export Defaults</h2>
+                    <p className="text-sm text-text-secondary font-light">Select the fields to include when you generate a Custom Report.</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-6">
+                  <div className="flex items-center gap-2 mb-2">
+                    <button type="button" onClick={() => setExportColumns(new Set(AVAILABLE_COLUMNS.map(c => c.key)))} className="text-xs text-accent hover:underline font-medium">Select All</button>
+                    <span className="text-border">|</span>
+                    <button type="button" onClick={() => setExportColumns(new Set())} className="text-xs text-text-secondary hover:text-text-primary">Clear All</button>
+                    <span className="text-border">|</span>
+                    <button type="button" onClick={() => setExportColumns(new Set(DEFAULT_COLUMNS))} className="text-xs text-text-secondary hover:text-text-primary">Reset Defaults</button>
+                  </div>
+
+                  {Object.entries(EXPORT_CATEGORIES).map(([catName, keys]) => (
+                    <div key={catName}>
+                      <h4 className="text-sm font-bold text-text-primary mb-3 border-b border-border/50 pb-1">{catName}</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {keys.map(key => {
+                          const colDef = AVAILABLE_COLUMNS.find(c => c.key === key);
+                          if (!colDef) return null;
+                          const isSelected = exportColumns.has(key);
+                          return (
+                            <label 
+                              key={key} 
+                              onClick={() => {
+                                const next = new Set(exportColumns);
+                                if (next.has(key)) next.delete(key);
+                                else next.add(key);
+                                setExportColumns(next);
+                              }}
+                              className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
+                                isSelected ? 'bg-accent/5 border-accent/30 text-accent' : 'bg-bg-sunken border-border text-text-secondary hover:bg-bg-surface'
+                              }`}
+                            >
+                              {isSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4 opacity-50" />}
+                              <span className="text-sm truncate" title={colDef.label}>{colDef.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                  
+                  <div className="pt-4 border-t border-border flex flex-col gap-2">
+                    <h4 className="text-sm font-bold text-text-primary">Line Items</h4>
+                    <label className="flex items-center gap-2 cursor-pointer group">
+                      <input 
+                        type="checkbox" 
+                        className="rounded border-border text-accent focus:ring-accent w-4 h-4" 
+                        checked={exportIncludeItems}
+                        onChange={(e) => setExportIncludeItems(e.target.checked)}
+                      />
+                      <span className="text-sm font-medium text-text-primary group-hover:text-accent transition-colors">
+                        Include Line Items <span className="text-xs text-text-secondary font-normal">(creates 1 row per item)</span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="pt-6 flex justify-end border-t border-border">
+                  <button type="submit" disabled={saving || exportColumns.size === 0} className="btn-primary" id="settings-save-export-btn">
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    Save Export Preferences
                   </button>
                 </div>
               </motion.form>

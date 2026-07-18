@@ -2,17 +2,35 @@ import pandas as pd
 import io
 import asyncio
 import calendar
+import re
+import json
+import math
+import os
+import logging
 from datetime import date
 from fastapi import APIRouter, File, UploadFile, HTTPException, Header, Form
 import httpx
-import os
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
 
 from collections import defaultdict
 import rapidfuzz
+from openai import AsyncOpenAI
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+async def _verify_client_ownership_reconcile(token: str, client_id: str, user_id: str):
+    """Verify that a client_id belongs to the authenticated user before reconcile operations."""
+    async with httpx.AsyncClient() as http_client:
+        client_resp = await http_client.get(
+            f"{SUPABASE_URL}/rest/v1/clients?id=eq.{client_id}&user_id=eq.{user_id}&select=id",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+        )
+        if not client_resp.json():
+            raise HTTPException(status_code=403, detail="Access denied: client not found")
 
 def period_to_date_range(period: str):
     """
@@ -34,7 +52,6 @@ def clean_str(s):
     slashes, and stripping leading zeros from numeric sequences. 
     """
     if not s: return ""
-    import re
     s = str(s).strip().upper().replace("-", "").replace("/", "").replace(" ", "")
     return re.sub(r'(\D)0+(\d)', r'\1\2', s)
 
@@ -60,6 +77,9 @@ async def reconcile_gstr2b(
         if user_resp.status_code != 200:
             raise HTTPException(status_code=401, detail="Invalid session token")
         user_id = user_resp.json().get("id")
+    
+    # Verify client ownership (fixes #14 — data leak prevention)
+    await _verify_client_ownership_reconcile(token, client_id, user_id)
         
     content = await file.read()
     
@@ -259,8 +279,6 @@ async def reconcile_gstr2b(
     return {"status": "success", "message": f"Reconciled {len(records)} records from 2B against {len(pr_invoices)} Purchase Register invoices using {tol_val} tolerance."}
 
 
-import json
-
 @router.post("/api/reconcile/deep-match")
 async def deep_match_reconcile(
     client_id: str = Form(...),
@@ -274,9 +292,6 @@ async def deep_match_reconcile(
     token = authorization.split(" ")[1]
     tol_val = float(tolerance)
     
-    # We must use httpx instead of create_async_client to keep dependencies light
-    import httpx
-    
     async with httpx.AsyncClient() as http_client:
         user_resp = await http_client.get(
             f"{SUPABASE_URL}/auth/v1/user",
@@ -285,7 +300,11 @@ async def deep_match_reconcile(
         if user_resp.status_code != 200:
             raise HTTPException(status_code=401, detail="Invalid session token")
         user_id = user_resp.json().get("id")
-        
+    
+    # Verify client ownership (fixes #14 — data leak prevention)
+    await _verify_client_ownership_reconcile(token, client_id, user_id)
+    
+    async with httpx.AsyncClient() as http_client:
         # Fetch PR Invoices
         pr_resp = await http_client.get(
             f"{SUPABASE_URL}/rest/v1/invoices?client_id=eq.{client_id}&recon_period=eq.{period}&select=id,supplier_name,supplier_gstin,invoice_number,invoice_date,taxable_amount,total_amount,recon_status",
@@ -320,7 +339,6 @@ async def deep_match_reconcile(
         if not unmatched_2b:
             return {"status": "success", "message": "No unmatched GSTR-2B records available for Deep Match."}
             
-        import math
         total_items = len(missing_in_2b) + len(unmatched_2b)
         cost = max(5, math.ceil(total_items / 20) * 5)
 
@@ -332,19 +350,16 @@ async def deep_match_reconcile(
         )
         if rpc_resp.status_code != 200:
             raise HTTPException(status_code=500, detail="Internal error during credit deduction.")
-            
-        try:
-            if rpc_resp.json() == -1:
-                raise HTTPException(status_code=402, detail="Insufficient credits for AI Deep Match.")
-        except ValueError:
-            pass
+        
+        # Robust -1 insufficient credits check (fixes Bug #7 — fragile try/except ValueError)
+        rpc_result = rpc_resp.json()
+        if rpc_result == -1:
+            raise HTTPException(status_code=402, detail="Insufficient credits for AI Deep Match.")
             
     # Prepare Gemini Payloads
     pr_subset = [{"id": inv["id"], "supplier": inv.get("supplier_name"), "gstin": inv.get("supplier_gstin"), "inv_num": inv.get("invoice_number"), "amount": inv.get("taxable_amount")} for inv in missing_in_2b]
     b2b_subset = [{"id": rec["id"], "gstin": rec.get("supplier_gstin"), "inv_num": rec.get("invoice_number"), "amount": rec.get("taxable_value")} for rec in unmatched_2b]
     
-    import os
-    from openai import AsyncOpenAI
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
     gemini_client = AsyncOpenAI(api_key=GEMINI_API_KEY, base_url="https://generativelanguage.googleapis.com/v1beta/openai/") if GEMINI_API_KEY else None
     
@@ -391,7 +406,7 @@ async def deep_match_reconcile(
             
             return json.loads(result_text)
         except Exception as e:
-            print(f"Chunk failed: {e}")
+            logger.warning(f"Chunk failed: {e}")
             return []
 
     # Process all chunks in parallel using asyncio.gather

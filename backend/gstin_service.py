@@ -1,7 +1,10 @@
 import os
 import httpx
+import logging
 from datetime import datetime, timezone, timedelta
 import random
+
+logger = logging.getLogger(__name__)
 
 # AppyFlow configuration
 GSTIN_API_KEY = os.getenv("GSTIN_API_KEY", "mock_key")
@@ -69,8 +72,8 @@ async def verify_gstin(supabase_client, gstin: str) -> str:
         return status
         
     except httpx.TimeoutException:
-        print(f"AppyFlow API timeout for {gstin}")
+        logger.warning(f"AppyFlow API timeout for {gstin}")
         return "Unknown"
     except Exception as e:
-        print(f"Error verifying GSTIN {gstin}: {e}")
+        logger.error(f"Error verifying GSTIN {gstin}: {e}")
         return "Unknown"

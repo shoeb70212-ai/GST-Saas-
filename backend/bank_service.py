@@ -1,6 +1,7 @@
 import os
 import io
 import csv
+import logging
 import fitz # PyMuPDF
 import pymupdf4llm
 from openai import AsyncOpenAI
@@ -9,6 +10,8 @@ from typing import Optional
 from supabase import create_async_client
 import json
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -107,7 +110,7 @@ async def extract_bank_statement_chunk(md_text: str, statement_period: str) -> B
                     )
                     transactions.append(txn)
                 except Exception as row_err:
-                    print(f"Error parsing CSV row {row}: {row_err}")
+                    logger.warning(f"Error parsing CSV row {row}: {row_err}")
                     continue
 
         tokens = response.usage.total_tokens if response.usage else 0
@@ -118,17 +121,18 @@ async def extract_bank_statement_chunk(md_text: str, statement_period: str) -> B
             transactions=transactions
         ), tokens
     except Exception as e:
-        print(f"GPT-4o-mini extraction failed: {e}")
+        logger.error(f"GPT-4o-mini extraction failed: {e}")
         return BankStatementExtract(transactions=[], account_number=None, bank_name=None), 0
 
-async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes, user_id: str, client_id: str, extension: str = '.pdf', pdf_password: str = None):
+async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes, user_id: str, client_id: str, extension: str = '.pdf', pdf_password: str = None, cost: int = 2):
     """
     Background worker that chunks the file, runs extraction, performs math checks, and saves to DB.
+    If processing fails, refunds the upfront-deducted credits.
     """
     SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_ANON_KEY)
     sc = await create_async_client(SUPABASE_URL, SERVICE_ROLE)
     
-    print(f"DEBUG BG: Starting process_bank_statement_bg for {statement_id}")
+    logger.info(f"Starting process_bank_statement_bg for {statement_id}")
     all_transactions = []
     overall_bank_name = None
     overall_account_number = None
@@ -168,7 +172,7 @@ async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes
                     all_transactions.extend(extract_result.transactions)
                     
         else:
-            print(f"DEBUG BG: Opening PDF stream")
+            logger.info(f"Opening PDF stream for statement {statement_id}")
             doc = fitz.open(stream=file_path_or_bytes, filetype="pdf")
             if doc.needs_pass and pdf_password:
                 doc.authenticate(pdf_password)
@@ -176,13 +180,13 @@ async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes
             statement_period_context = "Unknown. Look at the text for context."
             
             total_pages = len(doc)
-            print(f"DEBUG BG: Extracted first page text. Total pages: {total_pages}")
+            logger.info(f"Extracted first page text. Total pages: {total_pages}")
             chunk_size = 10
             
             for i in range(0, total_pages, chunk_size):
                 status_check = await sc.table("bank_statements").select("status").eq("id", statement_id).execute()
                 if status_check.data and status_check.data[0].get("status") == "cancelled":
-                    print(f"DEBUG BG: Statement {statement_id} was cancelled. Halting.")
+                    logger.info(f"Statement {statement_id} was cancelled. Halting.")
                     return
                 
                 start_page = i + 1
@@ -195,16 +199,16 @@ async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes
                 for j in range(i, min(i + chunk_size, total_pages)):
                     chunk_doc.insert_pdf(doc, from_page=j, to_page=j)
                     
-                print(f"DEBUG BG: Generating markdown for chunk {i}")
+                logger.debug(f"Generating markdown for chunk {i}")
                 md_text = pymupdf4llm.to_markdown(chunk_doc)
                 if len(md_text) < 50:
-                    print(f"DEBUG BG: Markdown too short, skipping chunk {i}")
+                    logger.debug(f"Markdown too short, skipping chunk {i}")
                     continue
                     
-                print(f"DEBUG BG: Requesting AI extraction for chunk {i}")
+                logger.debug(f"Requesting AI extraction for chunk {i}")
                 extract_result, tokens = await extract_bank_statement_chunk(md_text, statement_period_context)
                 total_statement_tokens += tokens
-                print(f"DEBUG BG: AI extraction completed for chunk {i}")
+                logger.debug(f"AI extraction completed for chunk {i}")
                 
                 if extract_result.bank_name and not overall_bank_name: overall_bank_name = extract_result.bank_name
                 if extract_result.account_number and not overall_account_number: overall_account_number = extract_result.account_number
@@ -277,7 +281,19 @@ async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes
         }).execute()
         
     except Exception as e:
-        print(f"Error processing bank statement: {e}")
+        logger.error(f"Error processing bank statement: {e}")
         await sc.table("bank_statements").update({
             "status": "failed"
         }).eq("id", statement_id).execute()
+        # Refund the upfront-deducted credits since processing failed
+        try:
+            await sc.rpc("decrement_credits", {
+                "user_id_param": user_id,
+                "amount": -cost,  # Negative amount = refund (adds credits back)
+                "task_type_param": "bank_statement_refund",
+                "file_name_param": f"statement_{statement_id}",
+                "tokens_used_param": total_statement_tokens
+            }).execute()
+            logger.info(f"Refunded {cost} credits for failed statement {statement_id}")
+        except Exception as refund_e:
+            logger.error(f"Failed to refund credits for statement {statement_id}: {refund_e}")

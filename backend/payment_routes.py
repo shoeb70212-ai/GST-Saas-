@@ -1,131 +1,201 @@
 import os
+import logging
+import httpx
 from fastapi import APIRouter, HTTPException, Header, Request, Depends
 from pydantic import BaseModel
 import razorpay
 from supabase import create_async_client
-import os
+
+logger = logging.getLogger(__name__)
+
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
-
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 router = APIRouter()
 
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "rzp_test_mock")
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "rzp_test_secret")
+RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", RAZORPAY_KEY_SECRET)
 
 rzp_client = None
 if RAZORPAY_KEY_ID != "rzp_test_mock":
     rzp_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
+
 class OrderRequest(BaseModel):
-    amount: int # Amount in INR
+    amount: float  # Amount in INR (float to handle paise correctly)
     credits: int
-    plan_type: str # 'starter' or 'pro'
+    plan_type: str  # 'starter' or 'pro'
 
-@router.post("/api/create-order")
-async def create_order(req: OrderRequest, authorization: str = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-        
-    token = authorization.split(" ")[1]
+
+async def _verify_user(token: str):
+    """Shared helper: verify JWT and return (user_id, supabase_client)."""
+    if not token:
+        raise HTTPException(status_code=401, detail="Unauthorized: Missing token")
     supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-    
-    try:
-        user_resp = await supabase_client.auth.get_user(token)
-        user_id = user_resp.user.id
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid session token")
-        
-    if not rzp_client:
-        # Mock response for testing without keys
-        return {
-            "order_id": "order_mock_" + os.urandom(4).hex(),
-            "amount": req.amount * 100,
-            "currency": "INR",
-            "key_id": RAZORPAY_KEY_ID
-        }
-
-    try:
-        order_amount = req.amount * 100 # Razorpay expects paise
-        order_currency = "INR"
-        order_receipt = f"rcptid_{user_id[:8]}"
-        
-        razorpay_order = rzp_client.order.create({
-            "amount": order_amount,
-            "currency": order_currency,
-            "receipt": order_receipt,
-            "payment_capture": "1"
-        })
-        
-        return {
-            "order_id": razorpay_order["id"],
-            "amount": order_amount,
-            "currency": order_currency,
-            "key_id": RAZORPAY_KEY_ID
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/api/webhooks/payment")
-async def razorpay_webhook(request: Request):
-    body = await request.body()
-    signature = request.headers.get("x-razorpay-signature")
-    
-    if not rzp_client:
-        # Handle mock webhook
-        data = await request.json()
-        if data.get("event") == "payment.captured":
-            # For mock, we'd need a secure way to know who to credit, but webhooks are stateless.
-            # In real scenario, we verify signature.
-            pass
-        return {"status": "ok"}
-        
-    try:
-        rzp_client.utility.verify_webhook_signature(body.decode("utf-8"), signature, os.getenv("RAZORPAY_WEBHOOK_SECRET", RAZORPAY_KEY_SECRET))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail="Invalid Signature")
-
-    payload = await request.json()
-    if payload.get("event") == "payment.captured":
-        payment = payload["payload"]["payment"]["entity"]
-        order_id = payment.get("order_id")
-        amount = payment.get("amount") / 100
-        
-        # Here we need to map the order_id back to a user and grant credits.
-        # This requires storing the pending order in the DB during /api/create-order.
-        # For MVP, we can handle payment verification directly from the frontend after success instead of webhooks,
-        # OR require the frontend to pass the user_id in the payment notes.
-        pass
-        
-    return {"status": "ok"}
-
-@router.post("/api/verify-payment")
-async def verify_payment(
-    request: Request,
-    authorization: str = Header(None)
-):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-        
-    token = authorization.split(" ")[1]
-    supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-    
     try:
         user_resp = await supabase_client.auth.get_user(token)
         user_id = user_resp.user.id
         supabase_client.postgrest.auth(token)
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid session token")
-        
+    return user_id, supabase_client
+
+
+@router.post("/api/create-order")
+async def create_order(req: OrderRequest, authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    token = authorization.split(" ")[1]
+    user_id, supabase_client = await _verify_user(token)
+
+    if not rzp_client:
+        # Mock response for testing without keys
+        mock_order_id = "order_mock_" + os.urandom(4).hex()
+        # Persist mock order in DB for verify-payment to look up
+        try:
+            await supabase_client.table("payment_orders").insert({
+                "order_id": mock_order_id,
+                "user_id": user_id,
+                "expected_credits": req.credits,
+                "expected_amount": int(req.amount * 100),
+                "plan_type": req.plan_type,
+                "status": "pending"
+            }).execute()
+        except Exception as e:
+            logger.error(f"Failed to persist mock order: {e}")
+            # Non-fatal for mock mode
+
+        return {
+            "order_id": mock_order_id,
+            "amount": int(req.amount * 100),
+            "currency": "INR",
+            "key_id": RAZORPAY_KEY_ID
+        }
+
+    try:
+        order_amount = int(req.amount * 100)  # Razorpay expects paise
+        order_currency = "INR"
+        order_receipt = f"rcptid_{user_id[:8]}"
+
+        razorpay_order = rzp_client.order.create({
+            "amount": order_amount,
+            "currency": order_currency,
+            "receipt": order_receipt,
+            "payment_capture": "1"
+        })
+
+        order_id = razorpay_order["id"]
+
+        # Persist order in DB for secure verification later
+        try:
+            await supabase_client.table("payment_orders").insert({
+                "order_id": order_id,
+                "user_id": user_id,
+                "expected_credits": req.credits,
+                "expected_amount": order_amount,
+                "plan_type": req.plan_type,
+                "status": "pending"
+            }).execute()
+        except Exception as e:
+            logger.error(f"Failed to persist order {order_id}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to create order record")
+
+        return {
+            "order_id": order_id,
+            "amount": order_amount,
+            "currency": order_currency,
+            "key_id": RAZORPAY_KEY_ID
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Create order error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/webhooks/payment")
+async def razorpay_webhook(request: Request):
+    """Razorpay webhook — trusted server-to-server source for credit granting."""
+    body = await request.body()
+    signature = request.headers.get("x-razorpay-signature")
+
+    if not rzp_client:
+        # Mock mode — accept without verification (dev only)
+        return {"status": "ok"}
+
+    # Verify webhook signature
+    try:
+        rzp_client.utility.verify_webhook_signature(
+            body.decode("utf-8"),
+            signature,
+            RAZORPAY_WEBHOOK_SECRET
+        )
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid Signature")
+
+    payload = await request.json()
+    if payload.get("event") == "payment.captured":
+        payment = payload["payload"]["payment"]["entity"]
+        order_id = payment.get("order_id")
+        payment_id = payment.get("id")
+        amount_paid = payment.get("amount")  # in paise
+
+        if not order_id or not payment_id:
+            logger.warning("Webhook received without order_id or payment_id")
+            return {"status": "ok"}
+
+        # Use service role key to fulfill order (idempotent RPC)
+        if not SUPABASE_SERVICE_KEY:
+            logger.error("SUPABASE_SERVICE_ROLE_KEY not configured for webhook fulfillment")
+            return {"status": "error", "detail": "Server misconfiguration"}
+
+        try:
+            async with httpx.AsyncClient() as http_client:
+                rpc_response = await http_client.post(
+                    f"{SUPABASE_URL}/rest/v1/rpc/fulfill_payment_order",
+                    headers={
+                        "apikey": SUPABASE_SERVICE_KEY,
+                        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "p_order_id": order_id,
+                        "p_payment_id": payment_id,
+                        "p_amount_paid": amount_paid
+                    }
+                )
+                if rpc_response.status_code >= 400:
+                    logger.error(f"Webhook fulfillment failed: {rpc_response.text}")
+        except Exception as e:
+            logger.error(f"Webhook fulfillment error: {e}")
+
+    return {"status": "ok"}
+
+
+@router.post("/api/verify-payment")
+async def verify_payment(
+    request: Request,
+    authorization: str = Header(None)
+):
+    """Verify payment — uses server-stored order data, NOT client-supplied credits."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    token = authorization.split(" ")[1]
+    user_id, supabase_client = await _verify_user(token)
+
     data = await request.json()
     payment_id = data.get("razorpay_payment_id")
     order_id = data.get("razorpay_order_id")
     signature = data.get("razorpay_signature")
-    credits_to_add = data.get("credits", 0)
-    amount_paid = data.get("amount", 0)
-    plan_type = data.get("plan_type", "free")
-    
+
+    if not order_id or not payment_id:
+        raise HTTPException(status_code=400, detail="Missing payment_id or order_id")
+
+    # Verify Razorpay signature
     if rzp_client:
         try:
             rzp_client.utility.verify_payment_signature({
@@ -133,48 +203,75 @@ async def verify_payment(
                 'razorpay_payment_id': payment_id,
                 'razorpay_signature': signature
             })
-        except Exception as e:
+        except Exception:
             raise HTTPException(status_code=400, detail="Invalid payment signature")
-            
-    # Atomic DB Update via RPC
+
+    # Fetch order from DB — use stored expected_credits/expected_amount (NOT client-supplied)
+    order_resp = await supabase_client.table("payment_orders").select("*").eq("order_id", order_id).execute()
+
+    if not order_resp.data:
+        raise HTTPException(status_code=404, detail="Order not found. Please contact support.")
+
+    order_data = order_resp.data[0]
+
+    # Verify order belongs to this user
+    if order_data.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Order does not belong to authenticated user")
+
+    # Idempotency: if already fulfilled, return success
+    if order_data.get("status") == "fulfilled":
+        return {"status": "success", "message": "Payment already verified and credits granted."}
+
+    expected_credits = order_data["expected_credits"]
+    expected_amount = order_data["expected_amount"]
+    plan_type = order_data["plan_type"]
+
+    # Fulfill order via idempotent RPC (uses service role key for upgrade_user_tier)
+    if not SUPABASE_SERVICE_KEY:
+        raise HTTPException(status_code=500, detail="Missing Service Role Key")
+
     try:
-        import httpx
         async with httpx.AsyncClient() as http_client:
-            service_role = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-            if service_role:
-                # Use atomic RPC upgrade_user_tier defined in phase 37
-                rpc_response = await http_client.post(
-                    f"{SUPABASE_URL}/rest/v1/rpc/upgrade_user_tier",
-                    headers={
-                        "apikey": service_role, 
-                        "Authorization": f"Bearer {service_role}", 
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "user_id_param": user_id,
-                        "plan_type_param": plan_type,
-                        "credits_param": credits_to_add,
-                        "amount_paid_param": amount_paid,
-                        "payment_id_param": payment_id,
-                        "order_id_param": order_id
-                    }
-                )
-                if rpc_response.status_code >= 400:
-                    raise HTTPException(status_code=500, detail=f"Database update failed: {rpc_response.text}")
-            else:
-                raise HTTPException(status_code=500, detail="Missing Service Role Key")
-            
-        return {"status": "success", "message": f"Successfully upgraded to {plan_type} and added {credits_to_add} credits."}
+            rpc_response = await http_client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/fulfill_payment_order",
+                headers={
+                    "apikey": SUPABASE_SERVICE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "p_order_id": order_id,
+                    "p_payment_id": payment_id,
+                    "p_amount_paid": expected_amount
+                }
+            )
+            if rpc_response.status_code >= 400:
+                logger.error(f"Payment fulfillment RPC failed: {rpc_response.text}")
+                raise HTTPException(status_code=500, detail="Database update failed")
+
+            result = rpc_response.json()
+            if not result.get("success"):
+                error_msg = result.get("error", "Unknown error")
+                raise HTTPException(status_code=400, detail=f"Payment verification failed: {error_msg}")
+
+        return {
+            "status": "success",
+            "message": f"Successfully upgraded to {plan_type} and added {expected_credits} credits.",
+            "credits_granted": expected_credits
+        }
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Verify payment error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/api/audit/usage-logs")
 async def get_usage_logs(authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")
-        
+
     token = authorization.split(" ")[1]
-    
     sc = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
     try:
         user_resp = await sc.auth.get_user(token)
@@ -182,18 +279,18 @@ async def get_usage_logs(authorization: str = Header(None)):
         sc.postgrest.auth(token)
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid session token")
-        
+
     # Get active org
     profile_resp = await sc.table("profiles").select("active_org_id").eq("id", user_id).execute()
     active_org_id = None
     if profile_resp.data:
         active_org_id = profile_resp.data[0].get("active_org_id")
-        
+
     if not active_org_id:
         org_resp = await sc.table("organizations").select("id").eq("owner_id", user_id).execute()
         if org_resp.data:
             active_org_id = org_resp.data[0].get("id")
-            
+
     if not active_org_id:
         return {"status": "success", "data": []}
 

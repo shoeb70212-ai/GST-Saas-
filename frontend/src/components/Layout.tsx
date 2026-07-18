@@ -1,7 +1,7 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ScanLine, FileText, Settings, LogOut, Sparkles, Sun, Moon, Building2, ChevronDown, CreditCard, MoreHorizontal, TrendingUp, Banknote, Network, ShieldAlert } from 'lucide-react';
+import { LayoutDashboard, ScanLine, FileText, Settings, LogOut, Sparkles, Sun, Moon, Building2, ChevronDown, CreditCard, MoreHorizontal, TrendingUp, Banknote, Network, ShieldAlert, Search } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useClient } from '../lib/ClientContext';
 import { cn } from '../lib/utils';
@@ -22,8 +22,17 @@ export default function Layout() {
   const location = useLocation();
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [clientMenuOpen, setClientMenuOpen] = useState(false);
+  const [clientSearch, setClientSearch] = useState('');
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const { clients, activeClientId, setActiveClientId, credits } = useClient();
+
+  const filteredClients = useMemo(() => {
+    if (!clientSearch) return clients;
+    return clients.filter((c: any) => 
+      c.client_name.toLowerCase().includes(clientSearch.toLowerCase()) || 
+      (c.gstin && c.gstin.toLowerCase().includes(clientSearch.toLowerCase()))
+    );
+  }, [clients, clientSearch]);
 
   useEffect(() => {
     // Check initial theme from localStorage or system preference
@@ -59,13 +68,13 @@ export default function Layout() {
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Scan', path: '/scan', icon: ScanLine },
-    { name: 'Tax Liability', path: '/tax-liability', icon: TrendingUp },
-    { name: 'Virtual CFO', path: '/cfo', icon: Sparkles },
     { name: 'Invoices', path: '/invoices', icon: FileText },
-    { name: 'GSTR-2B', path: '/reconcile', icon: FileText },
   ];
   
   const moreNavItems = [
+    { name: 'Tax Liability', path: '/tax-liability', icon: TrendingUp },
+    { name: 'Virtual CFO', path: '/cfo', icon: Sparkles },
+    { name: 'GSTR-2B', path: '/reconcile', icon: FileText },
     { name: 'Bank Stmts', path: '/bank-statements', icon: Banknote },
     { name: 'Bank Match', path: '/bank-reconcile', icon: Network },
     { name: isBusiness ? 'Businesses' : 'Clients', path: '/clients', icon: Building2 },
@@ -111,7 +120,10 @@ export default function Layout() {
           <motion.button 
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={() => setClientMenuOpen(!clientMenuOpen)}
+            onClick={() => {
+              setClientSearch('');
+              setClientMenuOpen(!clientMenuOpen);
+            }}
             className="w-full flex items-center justify-between p-2.5 rounded-lg bg-bg-sunken border border-border hover:border-border-focus transition-colors shadow-sm"
           >
             <div className="flex items-center gap-2 overflow-hidden">
@@ -135,11 +147,24 @@ export default function Layout() {
                 exit={{ opacity: 0, y: -5 }}
                 className="absolute left-4 right-4 top-[calc(100%+4px)] bg-bg-surface border border-border rounded-xl shadow-lg z-[60] overflow-hidden"
               >
+                <div className="p-2 border-b border-border">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-disabled" />
+                    <input
+                      type="text"
+                      placeholder={`Search ${isBusiness ? 'businesses' : 'clients'}...`}
+                      value={clientSearch}
+                      onChange={(e) => setClientSearch(e.target.value)}
+                      className="w-full h-8 pl-9 pr-3 text-sm bg-bg-sunken border border-border rounded-md outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all placeholder:text-text-disabled"
+                      autoFocus
+                    />
+                  </div>
+                </div>
                 <div className="max-h-48 overflow-y-auto custom-scrollbar p-1.5 space-y-0.5">
-                  {clients.length === 0 ? (
-                    <div className="p-3 text-xs text-text-secondary text-center">No {isBusiness ? 'businesses' : 'clients'} found</div>
+                  {filteredClients.length === 0 ? (
+                    <div className="p-3 text-xs text-text-secondary text-center">No results found</div>
                   ) : (
-                    clients.map((client: any) => (
+                    filteredClients.map((client: any) => (
                       <button
                         key={client.id}
                         onClick={() => {
@@ -218,13 +243,14 @@ export default function Layout() {
       <div className="flex-1 flex flex-col overflow-hidden relative w-full">
         
         {/* Desktop Topbar */}
-        <div className="hidden md:flex h-[90px] items-center justify-between px-8 bg-transparent z-40 sticky top-0">
+        <div className="hidden md:flex h-[56px] items-center justify-between px-8 bg-bg-surface/80 backdrop-blur-xl border-b border-border/50 z-40 sticky top-0">
           <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold text-text-primary capitalize tracking-tight">
-              {location.pathname.replace('/', '') || 'Dashboard'}
-            </h1>
+            {/* Removed capitalize for better aesthetics */}
           </div>
-          <div className="flex items-center gap-5">
+          <div className="flex items-center gap-4">
+            <Link to="/scan" className="btn-primary !h-8 !text-xs !rounded-full px-4 shadow-accent/20">
+              <ScanLine className="w-3.5 h-3.5" /> Quick Scan
+            </Link>
             {credits !== null && (
               <div className="flex px-3 py-1.5 bg-accent-subtle text-accent text-sm font-semibold rounded-full border border-accent/20 items-center gap-1.5 shadow-sm">
                 <Sparkles className="w-4 h-4" />
@@ -248,7 +274,10 @@ export default function Layout() {
         <div className="md:hidden px-4 py-2 bg-bg-surface border-b border-border flex items-center justify-between z-40">
            <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">{isBusiness ? 'Business' : 'Client'}</span>
            <button 
-            onClick={() => setClientMenuOpen(!clientMenuOpen)}
+            onClick={() => {
+              setClientSearch('');
+              setClientMenuOpen(!clientMenuOpen);
+            }}
             className="flex items-center gap-1 text-sm font-semibold text-accent active:opacity-70"
           >
             {activeClientId 
@@ -276,17 +305,29 @@ export default function Layout() {
                 className="w-full bg-bg-surface rounded-t-2xl max-h-[80vh] flex flex-col shadow-2xl"
                 onClick={e => e.stopPropagation()}
               >
-                <div className="p-4 border-b border-border flex items-center justify-between">
-                  <h3 className="font-bold text-lg">Select {isBusiness ? 'Business' : 'Client'}</h3>
-                  <button onClick={() => setClientMenuOpen(false)} className="p-2 rounded-full bg-bg-sunken text-text-secondary">
-                    <ChevronDown className="w-5 h-5" />
-                  </button>
+                <div className="p-4 border-b border-border flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-bold text-lg">Select {isBusiness ? 'Business' : 'Client'}</h3>
+                    <button onClick={() => setClientMenuOpen(false)} className="p-2 rounded-full bg-bg-sunken text-text-secondary">
+                      <ChevronDown className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-disabled" />
+                    <input
+                      type="text"
+                      placeholder="Search..."
+                      value={clientSearch}
+                      onChange={(e) => setClientSearch(e.target.value)}
+                      className="w-full h-10 pl-10 pr-4 text-sm bg-bg-sunken border border-border rounded-lg outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all placeholder:text-text-disabled"
+                    />
+                  </div>
                 </div>
                 <div className="overflow-y-auto p-4 space-y-2 flex-1 pb-8">
-                  {clients.length === 0 ? (
-                    <div className="p-4 text-center text-text-secondary">No {isBusiness ? 'businesses' : 'clients'} found</div>
+                  {filteredClients.length === 0 ? (
+                    <div className="p-4 text-center text-text-secondary">No results found</div>
                   ) : (
-                    clients.map((client: any) => (
+                    filteredClients.map((client: any) => (
                       <button
                         key={client.id}
                         onClick={() => {

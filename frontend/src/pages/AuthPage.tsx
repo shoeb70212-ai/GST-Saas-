@@ -1,6 +1,6 @@
 import { useState  } from "react";
 import { supabase } from '../lib/supabase';
-import { Loader2, Mail, Lock, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { Loader2, Mail, Lock, ArrowLeft, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -13,6 +13,7 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resetSent, setResetSent] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const resetForm = () => {
     setError(null);
@@ -179,15 +180,24 @@ export default function AuthPage() {
                         <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-disabled pointer-events-none" aria-hidden="true" />
                         <input
                           id="auth-password"
-                          type="password"
+                          type={showPassword ? "text" : "password"}
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          className="input-field w-full !pl-10"
+                          className="input-field w-full !pl-10 !pr-10"
                           placeholder={mode === 'sign-up' ? 'Min. 8 characters' : 'Enter your password'}
                           required
                           minLength={mode === 'sign-up' ? 8 : undefined}
                           autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-text-disabled hover:text-text-primary transition-colors focus:outline-none"
+                          tabIndex={-1}
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
                       </div>
                     </div>
                   )}

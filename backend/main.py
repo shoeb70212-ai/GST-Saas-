@@ -2,15 +2,20 @@ import os
 import base64
 import json
 import io
+import logging
 import httpx
-from fastapi import FastAPI, File, UploadFile, HTTPException, Header, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Header, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 import re
+import asyncio
 from tenacity import retry, stop_after_attempt, wait_exponential
 from utils import validate_file_content
+
+logger = logging.getLogger(__name__)
 
 def compute_confidence(extracted: dict, computed_total: float) -> dict:
     """
@@ -114,12 +119,6 @@ def apply_tax_calculations(data_dict: dict) -> dict:
 
 load_dotenv()
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Header, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-
-# ... (skipped unchanged lines) ...
-
 app = FastAPI(title="InvoiceScanner AI Backend")
 
 # 1. Strict Security Headers Middleware
@@ -145,7 +144,7 @@ app.add_middleware(
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
 )
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -301,6 +300,9 @@ async def scan_invoice(
                     credits = org_resp.json()[0].get("credits", 0)
         else:
             credits = 0 # Fallback if profile row is missing
+        
+        # Credit pre-check (lightweight guard — prevents AI cost exploitation by 0-credit users)
+        # The atomic RPC deduction at the end still handles race conditions for concurrent requests
         if credits <= 0:
             raise HTTPException(status_code=402, detail="Insufficient credits. Please recharge your wallet.")
 
@@ -336,7 +338,7 @@ async def scan_invoice(
                     # Successfully extracted tabular markdown, bypass JPEG rendering
                     return md_text, "text/markdown"
             except Exception as e:
-                print(f"Markdown extraction failed or skipped: {e}")
+                logger.info(f"Markdown extraction failed or skipped: {e}")
             
             gst_keywords = ["gstin", "invoice", "taxable", "cgst", "sgst", "igst", "hsn", "total", "amount", "qty", "rate"]
             valid_pages = []
@@ -412,23 +414,30 @@ async def scan_invoice(
     try:
         data_dict, tokens = await run_ai_extraction(content, mime_type, tally_ledgers)
         
-        # Verify GSTIN if it exists
+        # Verify GSTIN if it exists (non-blocking — log warning on failure, don't fail the scan)
         gstin = data_dict.get("Supplier_GSTIN")
         if gstin:
-            from supabase import create_async_client
-            sc = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-            sc.postgrest.auth(token)
-            from gstin_service import verify_gstin
-            data_dict["Supplier_GSTIN_Status"] = await verify_gstin(sc, gstin)
+            sc = None
+            try:
+                from supabase import create_async_client
+                sc = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+                sc.postgrest.auth(token)
+                from gstin_service import verify_gstin
+                data_dict["Supplier_GSTIN_Status"] = await verify_gstin(sc, gstin)
+            except Exception as gstin_e:
+                logger.warning(f"GSTIN verification failed (non-blocking): {gstin_e}")
             
-            # Deep Duplicate Detection Check
+            # Deep Duplicate Detection Check — only if sc was successfully created
             inv_num = data_dict.get("Invoice_Number")
-            if inv_num:
-                dup_resp = await sc.table("invoices").select("id").eq("user_id", user_id).eq("supplier_gstin", gstin).eq("invoice_number", inv_num).execute()
-                if dup_resp.data and len(dup_resp.data) > 0:
-                    data_dict["Extraction_State"] = "duplicate_warning"
+            if inv_num and sc:
+                try:
+                    dup_resp = await sc.table("invoices").select("id").eq("user_id", user_id).eq("supplier_gstin", gstin).eq("invoice_number", inv_num).execute()
+                    if dup_resp.data and len(dup_resp.data) > 0:
+                        data_dict["Extraction_State"] = "duplicate_warning"
+                except Exception as dup_e:
+                    logger.warning(f"Duplicate detection check failed (non-blocking): {dup_e}")
             
-        # Deduct Credit (Atomic RPC)
+        # Deduct Credit (Atomic RPC) — this is the authoritative credit check (fixes race condition)
         async with httpx.AsyncClient() as http_client:
             rpc_resp = await http_client.post(
                 f"{SUPABASE_URL}/rest/v1/rpc/decrement_credits",
@@ -442,7 +451,7 @@ async def scan_invoice(
                 }
             )
             if rpc_resp.status_code != 200:
-                print(f"Failed to deduct credits. RPC response: {rpc_resp.text}")
+                logger.error(f"Failed to deduct credits. RPC response: {rpc_resp.text}")
                 raise HTTPException(status_code=500, detail="Internal error during credit deduction")
             
             try:
@@ -453,7 +462,10 @@ async def scan_invoice(
                 pass
                 
         return {"status": "success", "data": data_dict}
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions without wrapping
     except Exception as e:
+        logger.error(f"Scan invoice error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -508,7 +520,7 @@ async def run_ai_extraction(content: bytes | str, mime_type: str, tally_ledgers:
         return data_dict, tokens
         
     except Exception as e:
-        print(f"Primary AI failed with error: {e}. Attempting fallback to Gemini...")
+        logger.warning(f"Primary AI failed with error: {e}. Attempting fallback to Gemini...")
         if gemini_client:
             try:
                 response = await gemini_client.beta.chat.completions.parse(

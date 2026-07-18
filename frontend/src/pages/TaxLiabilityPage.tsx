@@ -2,19 +2,12 @@ import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useClient } from '../lib/ClientContext';
+import { formatCurrency } from '../utils/format';
 import { UploadCloud, TrendingUp, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ErrorState } from '../components/ui/ErrorState';
 import { Skeleton } from '../components/ui/Skeleton';
 import { motion } from 'framer-motion';
-
-const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-IN', { 
-    style: 'currency', 
-    currency: 'INR', 
-    maximumFractionDigits: 0 
-  }).format(amount || 0);
-};
 
 export default function TaxLiabilityPage() {
   const { activeClientId } = useClient();
