@@ -136,7 +136,9 @@ async def add_security_headers(request: Request, call_next):
 ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://gst-saas.vercel.app" # Placeholder for actual prod URL
+    "https://gst-saas.vercel.app", # Placeholder for actual prod URL
+    "https://www.khatalens.com",
+    "https://khatalens.com"
 ]
 
 app.add_middleware(
