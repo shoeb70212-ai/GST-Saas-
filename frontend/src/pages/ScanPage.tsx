@@ -734,38 +734,6 @@ export default function ScanPage() {
     }
   };
 
-  const handleExportExcelTally = async () => {
-    setIsExporting(true);
-    try {
-      const invoices = fileStates
-        .filter(fs => fs.extractedData)
-        .map(fs => ({ ...fs.extractedData, id: fs.id })) as (InvoiceData & { id: string })[];
-
-      if (invoices.length === 0) {
-        alert("No extracted data available to export.");
-        setIsExporting(false);
-        return;
-      }
-
-      // Group all line items
-      const allLineItems: (LineItem & { invoice_id: string })[] = [];
-      invoices.forEach(inv => {
-        if (inv.Line_Items && Array.isArray(inv.Line_Items)) {
-          inv.Line_Items.forEach(li => {
-            allLineItems.push({ ...li, invoice_id: inv.id });
-          });
-        }
-      });
-
-      const { exportToExcelMultiSheet } = await import('../lib/exportService');
-      exportToExcelMultiSheet(invoices, allLineItems);
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to export Tally Excel');
-    } finally {
-      setIsExporting(false);
-    }
-  };
 
   const handleCustomExportConfirm = async (columns: string[], includeItems: boolean, remember: boolean) => {
     setShowExportPicker(false);
@@ -1008,14 +976,7 @@ export default function ScanPage() {
                   {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Table2 className="w-4 h-4" />}
                   Custom Report
                 </button>
-                <button 
-                  onClick={handleExportExcelTally}
-                  disabled={successfullyExtractedCount === 0 || isExporting}
-                  className="btn-ghost flex-1 sm:flex-none justify-center"
-                >
-                  <Download className="w-4 h-4" />
-                  <span className="hidden sm:inline">Tally Excel</span>
-                </button>
+
               </div>
             </div>
             

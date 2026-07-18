@@ -160,31 +160,6 @@ export default function SavedInvoicesPage() {
     return toExport;
   };
 
-  const handleExportExcel = async () => {
-    const toExport = getInvoicesToExport();
-    if (toExport.length === 0) {
-      toast.error("No invoices to export.");
-      return;
-    }
-    
-    setIsExporting(true);
-    try {
-      const invoiceIds = toExport.map(inv => inv.id);
-      const { data: allLineItems, error } = await supabase
-        .from('invoice_line_items')
-        .select('*')
-        .in('invoice_id', invoiceIds);
-        
-      if (error) throw error;
-      
-      exportToExcelMultiSheet(toExport, allLineItems || []);
-    } catch (err) {
-      console.error("Export failed:", err);
-      toast.error("Failed to export invoices.");
-    } finally {
-      setIsExporting(false);
-    }
-  };
 
   const handleCustomExportConfirm = async (columns: string[], includeItems: boolean, remember: boolean) => {
     setShowExportPicker(false);
@@ -370,14 +345,7 @@ export default function SavedInvoicesPage() {
             </button>
           )}
 
-          <button 
-            onClick={handleExportExcel}
-            disabled={isExporting || filteredInvoices.length === 0}
-            className="btn-ghost flex-1 md:flex-none disabled:opacity-50"
-          >
-            {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            {selectedIds.size > 0 ? `Excel (${selectedIds.size})` : 'Excel'}
-          </button>
+
           
           <button 
             onClick={handleExportTallyXML}
@@ -705,13 +673,7 @@ export default function SavedInvoicesPage() {
             >
               <Table2 className="w-4 h-4" /> <span className="hidden sm:inline">Custom Report</span>
             </button>
-            <button 
-              onClick={handleExportExcel}
-              disabled={isExporting}
-              className="flex items-center gap-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50 whitespace-nowrap"
-            >
-              <Download className="w-4 h-4" /> <span className="hidden sm:inline">Tally Excel</span>
-            </button>
+
             <button 
               onClick={handleExportTallyXML}
               disabled={isExporting}
