@@ -673,8 +673,9 @@ export default function ScanPage() {
       
       await saveSingleInvoiceToDb(fileId, fs, data, session.user.id);
       setFileStates(prev => prev.map(f => f.id === fileId ? { ...f, savedToCloud: true } : f));
-    } catch (err) {
+    } catch (err: any) {
       console.error("Auto-save failed:", err);
+      toast.error(`Auto-save failed: ${err.message || 'Unknown error'}`);
     }
   };
 
