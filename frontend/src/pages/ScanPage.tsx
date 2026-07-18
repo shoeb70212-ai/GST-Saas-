@@ -43,7 +43,14 @@ function formatDateToIso(dateStr: string | null | undefined): string | null {
     return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
   }
   
-  return s; 
+  // Fallback to JS Date parsing
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    return d.toISOString().split('T')[0];
+  }
+  
+  // If we can't parse it, return null to avoid database errors
+  return null;
 }
 
 // Auth logic moved to App.tsx
