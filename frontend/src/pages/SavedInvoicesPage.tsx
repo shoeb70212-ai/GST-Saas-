@@ -348,6 +348,15 @@ export default function SavedInvoicesPage() {
 
           
           <button 
+            onClick={() => setShowExportPicker(true)}
+            disabled={isExporting || filteredInvoices.length === 0}
+            className="btn-ghost flex-1 md:flex-none disabled:opacity-50"
+          >
+            {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Table2 className="w-4 h-4" />}
+            {selectedIds.size > 0 ? `Custom Report (${selectedIds.size})` : 'Custom Report'}
+          </button>
+          
+          <button 
             onClick={handleExportTallyXML}
             disabled={isExporting || filteredInvoices.length === 0}
             className="btn-primary flex-1 md:flex-none disabled:opacity-50"
