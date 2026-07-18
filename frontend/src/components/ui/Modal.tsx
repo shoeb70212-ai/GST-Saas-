@@ -106,7 +106,7 @@ export function Modal({
           
           {/* Content */}
           <motion.div
-            variants={isDrawer ? drawerVariants : dialogVariants}
+            variants={(isDrawer ? drawerVariants : dialogVariants) as any}
             initial="hidden"
             animate="visible"
             exit={isDrawer ? "exit" : "hidden"}
@@ -122,7 +122,7 @@ export function Modal({
             )}
             onClick={(e) => e.stopPropagation()}
           >
-            {!hideHeader && (title || onClose) && (
+            {!hideHeader && (
               <div className="flex items-center justify-between p-4 md:p-6 border-b border-border bg-bg-surface/90 backdrop-blur-md sticky top-0 z-10">
                 {typeof title === 'string' ? (
                   <h2 className="text-xl font-bold text-text-primary">{title}</h2>

@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from 'framer-motion';
+
 import { useState, useEffect } from 'react';
 import { X, Building2, Settings, MapPin, DollarSign, Loader2, CheckCircle2 } from 'lucide-react';
 import { isValidGSTIN } from '../utils/gstin';

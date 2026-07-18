@@ -5,7 +5,6 @@ import { supabase } from '../lib/supabase';
 import { Link } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { useClient } from '../lib/ClientContext';
-import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Skeleton } from '../components/ui/Skeleton';
 import AnalyticsCharts, { type AnalyticsData, AnalyticsSkeleton } from '../components/AnalyticsCharts';
@@ -26,7 +25,7 @@ const DEFAULT_WIDGETS = ['total_taxable', 'total_cgst', 'total_sgst', 'invoice_c
 const DEFAULT_METRICS = { totalTaxable: 0, totalCgst: 0, totalSgst: 0, totalIgst: 0, totalOutstanding: 0, invoiceCount: 0 };
 
 export default function DashboardPage() {
-  const { activeClientId, clients } = useClient();
+  const { activeClientId, clients, setActiveClientId } = useClient();
   const [showSettings, setShowSettings] = useState(false);
   const [visibleWidgets, setVisibleWidgets] = useState<string[]>(DEFAULT_WIDGETS);
   
