@@ -7,11 +7,11 @@ RETURNS TRIGGER AS $$
 DECLARE
     new_org_id UUID;
 BEGIN
-    -- 1. Create Profile
+    -- 1. Create Profile with 100 credits
     INSERT INTO public.profiles (id, credits)
     VALUES (new.id, 100);
     
-    -- 2. Create Default Organization
+    -- 2. Create Default Organization (Using 100 credits)
     INSERT INTO public.organizations (name, owner_id, join_code, credits)
     VALUES (
         COALESCE(new.raw_user_meta_data->>'company', 'My Firm'), 
@@ -37,17 +37,22 @@ DO $$
 DECLARE
     r RECORD;
     new_org_id UUID;
+    existing_credits INT;
 BEGIN
-    FOR r IN SELECT id FROM auth.users WHERE id NOT IN (SELECT owner_id FROM public.organizations)
+    -- Only target users who are NOT members of ANY organization
+    FOR r IN SELECT id FROM auth.users WHERE id NOT IN (SELECT user_id FROM public.organization_members)
     LOOP
-        -- Check if profile exists, if not create it
-        INSERT INTO public.profiles (id, credits)
-        VALUES (r.id, 100)
-        ON CONFLICT (id) DO NOTHING;
+        -- Get existing credits from profile (default to 100 if profile is missing)
+        SELECT credits INTO existing_credits FROM public.profiles WHERE id = r.id;
+        IF existing_credits IS NULL THEN
+            existing_credits := 100;
+            -- Create the missing profile
+            INSERT INTO public.profiles (id, credits) VALUES (r.id, 100) ON CONFLICT (id) DO NOTHING;
+        END IF;
 
-        -- Create Organization
+        -- Create Organization carrying over the existing credits
         INSERT INTO public.organizations (name, owner_id, join_code, credits)
-        VALUES ('My Firm', r.id, UPPER(SUBSTRING(md5(random()::text) FROM 1 FOR 8)), 100)
+        VALUES ('My Firm', r.id, UPPER(SUBSTRING(md5(random()::text) FROM 1 FOR 8)), existing_credits)
         RETURNING id INTO new_org_id;
         
         -- Assign Owner
