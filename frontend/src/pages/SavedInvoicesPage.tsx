@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import { Loader2, FileText, Search, Download, Filter, Settings, CheckCircle2, Trash2, AlertTriangle, Table2 } from 'lucide-react';
+import { Loader2, FileText, Search, Filter, Settings, CheckCircle2, Trash2, AlertTriangle, Table2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { cn } from '../lib/utils';
 import { AVAILABLE_COLUMNS, DEFAULT_COLUMNS } from '../lib/constants';
 import { useClient } from '../lib/ClientContext';
-import { exportToExcelMultiSheet, exportToTallyXML, exportToRawExcel } from '../lib/exportService';
+import { exportToTallyXML, exportToRawExcel } from '../lib/exportService';
 import { InvoiceDetailsModal } from '../components/InvoiceDetailsModal';
 import { ExportFieldPicker } from '../components/ExportFieldPicker';
 import { Skeleton } from '../components/ui/Skeleton';

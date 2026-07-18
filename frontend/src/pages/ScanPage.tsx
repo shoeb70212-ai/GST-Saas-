@@ -2,7 +2,7 @@ import React from 'react';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UploadCloud, CheckCircle2, FileText, Loader2, Sparkles, Download, Settings, X, File as FileIcon, ChevronDown, ChevronUp, Cloud, RefreshCw, AlertCircle, AlertTriangle, Table2 } from 'lucide-react';
+import { UploadCloud, CheckCircle2, FileText, Loader2, Sparkles, Settings, X, File as FileIcon, ChevronDown, ChevronUp, Cloud, RefreshCw, AlertCircle, AlertTriangle, Table2 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { supabase } from '../lib/supabase';
