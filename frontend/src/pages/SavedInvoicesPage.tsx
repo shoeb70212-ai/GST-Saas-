@@ -13,7 +13,8 @@ import { ExportFieldPicker } from '../components/ExportFieldPicker';
 import { Skeleton } from '../components/ui/Skeleton';
 import { ErrorState } from '../components/ui/ErrorState';
 import { formatCurrency } from '../utils/format';
-
+import { maskPAN, maskBankAccount, maskPhone, maskEmail } from '../utils/masking';
+import { Eye, EyeOff } from 'lucide-react';
 
 export default function SavedInvoicesPage() {
   const { activeClientId } = useClient();
@@ -83,6 +84,7 @@ export default function SavedInvoicesPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showExportPicker, setShowExportPicker] = useState(false);
+  const [showSensitiveData, setShowSensitiveData] = useState(false);
   
   // Filters
   const [showFilters, setShowFilters] = useState(false);
@@ -367,6 +369,16 @@ export default function SavedInvoicesPage() {
 
           <div className="relative">
             <button 
+              onClick={() => setShowSensitiveData(!showSensitiveData)}
+              title={showSensitiveData ? "Hide Sensitive Data (PAN, Account)" : "Show Sensitive Data"}
+              className="p-2 text-text-secondary hover:text-text-primary hover:bg-bg-sunken rounded-lg transition-colors border border-transparent hover:border-border"
+            >
+              {showSensitiveData ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+            </button>
+          </div>
+
+          <div className="relative">
+            <button 
               onClick={() => setShowSettings(!showSettings)}
               className="p-2 text-text-secondary hover:text-text-primary hover:bg-bg-sunken rounded-lg transition-colors border border-transparent hover:border-border"
               
@@ -578,7 +590,15 @@ export default function SavedInvoicesPage() {
                   </td>
                   {visibleColumns.map(col => {
                     const isAmount = col.includes('Amount') || col === 'Round_Off';
-                    const val = inv[col.toLowerCase()] || '';
+                    let val = inv[col.toLowerCase()] || '';
+                    
+                    if (!showSensitiveData && val) {
+                      if (col.includes('PAN')) val = maskPAN(val);
+                      else if (col === 'Account_Number') val = maskBankAccount(val);
+                      else if (col === 'Supplier_Phone') val = maskPhone(val);
+                      else if (col === 'Supplier_Email') val = maskEmail(val);
+                    }
+
                     return (
                       <td key={col} className={cn("p-4 text-sm text-text-secondary whitespace-nowrap", isAmount ? "text-right font-mono" : "")}>
                         {col === 'Supplier_GSTIN_Status' ? (

@@ -326,15 +326,15 @@ export default function ReconciliationPage() {
           </div>
 
           {/* Desktop Table View */}
-          <div className="hidden md:block overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto" tabIndex={0} aria-label="Reconciliation data table" role="region">
             <table className="w-full text-sm text-left">
               <thead className="table-header">
                 <tr>
-                  <th className="p-4">Vendor GSTIN</th>
-                  <th className="p-4">Invoice #</th>
-                  <th className="p-4">Date</th>
-                  <th className="p-4 text-right">Taxable Amount</th>
-                  <th className="p-4 text-center">Status</th>
+                  <th scope="col" className="p-4">Vendor GSTIN</th>
+                  <th scope="col" className="p-4">Invoice #</th>
+                  <th scope="col" className="p-4">Date</th>
+                  <th scope="col" className="p-4 text-right">Taxable Amount</th>
+                  <th scope="col" className="p-4 text-center">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">

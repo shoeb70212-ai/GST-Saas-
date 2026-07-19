@@ -169,3 +169,24 @@
   - Chose to completely decrypt PDFs using PyMuPDF (`tobytes()`) rather than just unlocking them, so users only need to provide the password once.
 - **Next Time**:
   - Debug why the PDF password is not being accepted on the frontend/backend when uploaded.
+## Session: 2026-07-19
+**Accomplished**: 
+- Phase 1.2: Implemented PII masking on SavedInvoicesPage & InvoiceDetailsModal for DPO compliance.
+- Phase 2.1: Solved dashboard lag by normalizing vendor data and materializing dashboard stats via PostgreSQL triggers.
+- Phase 2.2: Added sliding-window global rate limiting to protect AI OCR billing from spam uploads.
+- Phase 3.1: Enforced 2-decimal financial precision globally for UI trust.
+- Phase 4.1: Upgraded modals and data tables (ReconciliationPage) to meet WCAG accessibility standards (ARIA bindings).
+- Documented all changes in a unified Master_Implementation_Report.md.
+
+**Pending/Open**: 
+- E2E Playwright tests are currently re-running in the background after the Phase 44 (Organization generation) RLS fix.
+
+**Decisions**: 
+- PII masking is purely visual/UI-level to ensure backend exports and fuzzy-search aren't broken.
+- Rate limits are set to 100 per 10 minutes at the database level to provide absolute protection against OCR spam.
+- New users receive an automatic "My Firm" default organization via the handle_new_user trigger to comply with the Enterprise RBAC policy.
+
+**Next Time**: 
+- Verify that the Playwright E2E tests have passed following the Phase 44 RLS database migration.
+- Spin up gency-email-intelligence-engineer to build the Auto-Ingest pipeline.
+- Spin up gency-ai-citation-strategist to optimize KhataLens for AI search.

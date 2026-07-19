@@ -1,8 +1,9 @@
 
 import { useState, useEffect } from 'react';
-import { X, Building2, Settings, MapPin, DollarSign, Loader2, CheckCircle2 } from 'lucide-react';
+import { X, Building2, Settings, MapPin, DollarSign, Loader2, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { isValidGSTIN } from '../utils/gstin';
 import { formatCurrency } from '../utils/format';
+import { maskPAN, maskBankAccount, maskPhone, maskEmail } from '../utils/masking';
 import { Modal } from './ui/Modal';
 
 
@@ -28,6 +29,7 @@ export function InvoiceDetailsModal({
 }: InvoiceDetailsModalProps) {
   const [page, setPage] = useState(1);
   const itemsPerPage = 50;
+  const [showSensitiveData, setShowSensitiveData] = useState(false);
 
   const [cachedInvoice, setCachedInvoice] = useState(selectedInvoice);
 
@@ -50,15 +52,16 @@ export function InvoiceDetailsModal({
       size="2xl"
       hideHeader
     >
-      <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-6 p-6 border-b border-border flex justify-between items-start sticky top-0 bg-bg-surface/90 backdrop-blur-md z-10 shadow-sm">
+          <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-6 p-6 border-b border-border flex justify-between items-start sticky top-0 bg-bg-surface/90 backdrop-blur-md z-10 shadow-sm">
             <div>
-              <h2 className="text-xl font-bold text-text-primary mb-1">Invoice Details</h2>
+              <h2 id="modal-title" className="text-xl font-bold text-text-primary mb-1">Invoice Details</h2>
               <p className="text-sm text-text-secondary font-mono">{invoice.invoice_number}</p>
             </div>
             <div className="flex items-center gap-4">
               {invoice.approval_status === 'pending_approval' && handleApprove && (
                 <button 
                   onClick={() => handleApprove(invoice.id)}
+                  aria-label="Approve invoice"
                   className="flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:bg-accent-hover transition-colors"
                 >
                   <CheckCircle2 className="w-4 h-4" />
@@ -66,7 +69,17 @@ export function InvoiceDetailsModal({
                 </button>
               )}
               <button 
+                onClick={() => setShowSensitiveData(!showSensitiveData)}
+                title={showSensitiveData ? "Hide Sensitive Data" : "Show Sensitive Data"}
+                aria-label={showSensitiveData ? "Hide Sensitive Data" : "Show Sensitive Data"}
+                aria-pressed={showSensitiveData}
+                className="p-2 hover:bg-bg-sunken active:scale-[0.95] rounded-lg text-text-secondary transition-all"
+              >
+                {showSensitiveData ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+              <button 
                 onClick={closeModal}
+                aria-label="Close invoice details"
                 className="p-2 hover:bg-bg-sunken active:scale-[0.95] rounded-lg text-text-secondary transition-all"
               >
                 <X className="w-5 h-5" />
@@ -112,7 +125,7 @@ export function InvoiceDetailsModal({
                     </div>
                     <div>
                       <div className="text-xs text-text-secondary uppercase">PAN</div>
-                      <div className="font-mono text-sm">{invoice.supplier_pan || '-'}</div>
+                      <div className="font-mono text-sm">{showSensitiveData ? (invoice.supplier_pan || '-') : maskPAN(invoice.supplier_pan)}</div>
                     </div>
                   </div>
                   <div>
@@ -122,11 +135,11 @@ export function InvoiceDetailsModal({
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <div className="text-xs text-text-secondary uppercase">Phone</div>
-                      <div className="text-sm">{invoice.supplier_phone || '-'}</div>
+                      <div className="text-sm">{showSensitiveData ? (invoice.supplier_phone || '-') : maskPhone(invoice.supplier_phone)}</div>
                     </div>
                     <div>
                       <div className="text-xs text-text-secondary uppercase">Email</div>
-                      <div className="text-sm break-all">{invoice.supplier_email || '-'}</div>
+                      <div className="text-sm break-all">{showSensitiveData ? (invoice.supplier_email || '-') : maskEmail(invoice.supplier_email)}</div>
                     </div>
                   </div>
                 </div>
@@ -168,7 +181,7 @@ export function InvoiceDetailsModal({
                     </div>
                     <div>
                       <div className="text-xs text-text-secondary uppercase">PAN</div>
-                      <div className="font-mono text-sm">{invoice.buyer_pan || '-'}</div>
+                      <div className="font-mono text-sm">{showSensitiveData ? (invoice.buyer_pan || '-') : maskPAN(invoice.buyer_pan)}</div>
                     </div>
                   </div>
                   <div>
@@ -353,7 +366,7 @@ export function InvoiceDetailsModal({
                   {invoice.account_number && (
                     <div>
                       <div className="text-xs text-text-secondary uppercase mb-1">Bank Account</div>
-                      <div className="font-mono text-text-primary">{invoice.account_number}</div>
+                      <div className="font-mono text-text-primary">{showSensitiveData ? invoice.account_number : maskBankAccount(invoice.account_number)}</div>
                       <div className="text-sm text-text-secondary">{invoice.bank_name || ''} {invoice.ifsc_code ? `(IFSC: ${invoice.ifsc_code})` : ''}</div>
                     </div>
                   )}
