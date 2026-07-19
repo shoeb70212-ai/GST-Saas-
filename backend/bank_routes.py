@@ -2,6 +2,7 @@ import os
 import uuid
 import logging
 import httpx
+from http_client import get_shared_client
 import pandas as pd
 import io
 from fastapi import APIRouter, File, UploadFile, HTTPException, Header, BackgroundTasks, Form
@@ -19,7 +20,7 @@ SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
 
 
 async def get_user_from_token(token: str):
-    async with httpx.AsyncClient() as client:
+    async with get_shared_client() as client:
         resp = await client.get(
             f"{SUPABASE_URL}/auth/v1/user",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}

@@ -4,6 +4,7 @@ import json
 import io
 import logging
 import httpx
+from http_client import get_shared_client
 from fastapi import FastAPI, File, UploadFile, HTTPException, Header, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -270,7 +271,7 @@ async def scan_invoice(
     token = authorization.split(" ")[1]
     
     # 1. Verify User and Get Profile
-    async with httpx.AsyncClient() as http_client:
+    async with get_shared_client() as http_client:
         # Get User
         user_resp = await http_client.get(
             f"{SUPABASE_URL}/auth/v1/user",
@@ -423,7 +424,7 @@ async def scan_invoice(
 
     try:
         # Deduct Credit (Atomic RPC) before AI extraction
-        async with httpx.AsyncClient() as http_client:
+        async with get_shared_client() as http_client:
             rpc_resp = await http_client.post(
                 f"{SUPABASE_URL}/rest/v1/rpc/decrement_credits",
                 headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
@@ -450,7 +451,7 @@ async def scan_invoice(
             data_dict, tokens = await run_ai_extraction(content, mime_type, tally_ledgers)
         except Exception as ai_e:
             # Refund credit on failure
-            async with httpx.AsyncClient() as http_client:
+            async with get_shared_client() as http_client:
                 await http_client.post(
                     f"{SUPABASE_URL}/rest/v1/rpc/refund_credits",
                     headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},

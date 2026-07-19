@@ -1,6 +1,7 @@
 import os
 import logging
 import httpx
+from http_client import get_shared_client
 from fastapi import APIRouter, HTTPException, Header, Request, Depends
 from pydantic import BaseModel
 import razorpay
@@ -153,7 +154,7 @@ async def razorpay_webhook(request: Request):
             return {"status": "error", "detail": "Server misconfiguration"}
 
         try:
-            async with httpx.AsyncClient() as http_client:
+            async with get_shared_client() as http_client:
                 rpc_response = await http_client.post(
                     f"{SUPABASE_URL}/rest/v1/rpc/fulfill_payment_order",
                     headers={
@@ -231,7 +232,7 @@ async def verify_payment(
         raise HTTPException(status_code=500, detail="Missing Service Role Key")
 
     try:
-        async with httpx.AsyncClient() as http_client:
+        async with get_shared_client() as http_client:
             rpc_response = await http_client.post(
                 f"{SUPABASE_URL}/rest/v1/rpc/fulfill_payment_order",
                 headers={

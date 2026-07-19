@@ -10,6 +10,7 @@ import logging
 from datetime import date
 from fastapi import APIRouter, File, UploadFile, HTTPException, Header, Form
 import httpx
+from http_client import get_shared_client
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
 
@@ -24,7 +25,7 @@ router = APIRouter()
 
 async def _verify_client_ownership_reconcile(token: str, client_id: str, user_id: str):
     """Verify that a client_id belongs to the authenticated user before reconcile operations."""
-    async with httpx.AsyncClient() as http_client:
+    async with get_shared_client() as http_client:
         client_resp = await http_client.get(
             f"{SUPABASE_URL}/rest/v1/clients?id=eq.{client_id}&user_id=eq.{user_id}&select=id",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
@@ -69,7 +70,7 @@ async def reconcile_gstr2b(
     token = authorization.split(" ")[1]
     tol_val = float(tolerance)
     
-    async with httpx.AsyncClient() as http_client:
+    async with get_shared_client() as http_client:
         user_resp = await http_client.get(
             f"{SUPABASE_URL}/auth/v1/user",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
@@ -136,7 +137,7 @@ async def reconcile_gstr2b(
             "raw_json": {str(k): str(v) for k,v in row.to_dict().items() if not pd.isna(v)}
         })
         
-    async with httpx.AsyncClient() as http_client:
+    async with get_shared_client() as http_client:
         fetch_resp = await http_client.get(
             f"{SUPABASE_URL}/rest/v1/gstr2b_records?client_id=eq.{client_id}&period=eq.{period}",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
@@ -266,7 +267,7 @@ async def reconcile_gstr2b(
                     })
                 
     if updates:
-        async with httpx.AsyncClient() as http_client:
+        async with get_shared_client() as http_client:
             # Chunk the RPC updates as well to prevent huge payloads
             update_chunk_size = 500
             for i in range(0, len(updates), update_chunk_size):
@@ -292,7 +293,7 @@ async def deep_match_reconcile(
     token = authorization.split(" ")[1]
     tol_val = float(tolerance)
     
-    async with httpx.AsyncClient() as http_client:
+    async with get_shared_client() as http_client:
         user_resp = await http_client.get(
             f"{SUPABASE_URL}/auth/v1/user",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
@@ -304,7 +305,7 @@ async def deep_match_reconcile(
     # Verify client ownership (fixes #14 — data leak prevention)
     await _verify_client_ownership_reconcile(token, client_id, user_id)
     
-    async with httpx.AsyncClient() as http_client:
+    async with get_shared_client() as http_client:
         # Fetch PR Invoices
         pr_resp = await http_client.get(
             f"{SUPABASE_URL}/rest/v1/invoices?client_id=eq.{client_id}&recon_period=eq.{period}&select=id,supplier_name,supplier_gstin,invoice_number,invoice_date,taxable_amount,total_amount,recon_status",
@@ -425,7 +426,7 @@ async def deep_match_reconcile(
             })
             
     if updates:
-        async with httpx.AsyncClient() as http_client:
+        async with get_shared_client() as http_client:
             await http_client.post(
                 f"{SUPABASE_URL}/rest/v1/rpc/bulk_update_invoices_recon",
                 headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},

@@ -12,10 +12,11 @@ SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
 
 import httpx
+from http_client import get_shared_client
 
 async def _verify_client_ownership_batch(token: str, client_id: str, user_id: str):
     """Verify that a client_id belongs to the authenticated user."""
-    async with httpx.AsyncClient() as http_client:
+    async with get_shared_client() as http_client:
         client_resp = await http_client.get(
             f"{SUPABASE_URL}/rest/v1/clients?id=eq.{client_id}&user_id=eq.{user_id}&select=id",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}

@@ -7,6 +7,7 @@ import re
 from datetime import date
 from fastapi import APIRouter, File, UploadFile, HTTPException, Header, Form
 import httpx
+from http_client import get_shared_client
 import os
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
@@ -18,7 +19,7 @@ router = APIRouter()
 
 async def _verify_client_ownership_sales(token: str, client_id: str, user_id: str):
     """Verify that a client_id belongs to the authenticated user before sales operations."""
-    async with httpx.AsyncClient() as http_client:
+    async with get_shared_client() as http_client:
         client_resp = await http_client.get(
             f"{SUPABASE_URL}/rest/v1/clients?id=eq.{client_id}&user_id=eq.{user_id}&select=id",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
@@ -58,7 +59,7 @@ async def upload_sales_register(
         
     token = authorization.split(" ")[1]
     
-    async with httpx.AsyncClient() as http_client:
+    async with get_shared_client() as http_client:
         user_resp = await http_client.get(
             f"{SUPABASE_URL}/auth/v1/user",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
@@ -176,7 +177,7 @@ async def upload_sales_register(
     if not records:
         raise HTTPException(status_code=400, detail="No valid B2B or B2C sales records found in the uploaded GSTR-1 file. If uploading an .xls file, ensure the xlrd package is installed.")
 
-    async with httpx.AsyncClient() as http_client:
+    async with get_shared_client() as http_client:
         # Delete old records for this period (Idempotency)
         await http_client.delete(
             f"{SUPABASE_URL}/rest/v1/sales_records?client_id=eq.{client_id}&period=eq.{period}",
@@ -208,7 +209,7 @@ async def get_prediction(
         
     token = authorization.split(" ")[1]
     
-    async with httpx.AsyncClient() as http_client:
+    async with get_shared_client() as http_client:
         # Execute the RPC to calculate the exact cash liability
         rpc_resp = await http_client.post(
             f"{SUPABASE_URL}/rest/v1/rpc/get_tax_liability_prediction",

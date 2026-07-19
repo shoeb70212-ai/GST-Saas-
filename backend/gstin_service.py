@@ -1,5 +1,6 @@
 import os
 import httpx
+from http_client import get_shared_client
 import logging
 from datetime import datetime, timezone, timedelta
 import random
@@ -44,7 +45,7 @@ async def verify_gstin(supabase_client, gstin: str) -> str:
             legal_name = "Mock Company Pvt Ltd"
         else:
             # AppyFlow API Call with 5-second timeout
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with get_shared_client(timeout=5.0) as client:
                 resp = await client.get(f"{GSTIN_API_URL}?gstNo={gstin}&key={GSTIN_API_KEY}")
                 if resp.status_code == 200:
                     data = resp.json()

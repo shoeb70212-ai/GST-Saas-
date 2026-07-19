@@ -1,5 +1,6 @@
 import os
 import httpx
+from http_client import get_shared_client
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 from supabase import create_async_client
@@ -12,7 +13,7 @@ SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
 
 async def get_user_from_token(token: str):
-    async with httpx.AsyncClient() as client:
+    async with get_shared_client() as client:
         resp = await client.get(
             f"{SUPABASE_URL}/auth/v1/user",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
@@ -24,7 +25,7 @@ async def get_user_from_token(token: str):
 
 async def _verify_client_ownership_bank_recon(token: str, client_id: str, user_id: str):
     """Verify that a client_id belongs to the authenticated user before bank reconciliation."""
-    async with httpx.AsyncClient() as http_client:
+    async with get_shared_client() as http_client:
         client_resp = await http_client.get(
             f"{SUPABASE_URL}/rest/v1/clients?id=eq.{client_id}&user_id=eq.{user_id}&select=id",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
@@ -101,6 +102,9 @@ async def approve_match(req: MatchActionRequest, authorization: str = Header(Non
 
 @router.post("/reject")
 async def reject_match(req: MatchActionRequest, authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
     sc = await get_user_supabase_client(authorization)
     
     await sc.table("reconciliation_matches").update({"status": "REJECTED"}).eq("id", req.match_id).execute()

@@ -5,6 +5,7 @@ from typing import List
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Request
 from supabase import create_async_client
 import httpx
+from http_client import get_shared_client
 from utils import validate_file_content, sanitize_filename, compute_file_hash, SUPABASE_URL, SUPABASE_SERVICE_KEY
 # to avoid circular imports, import run_ai_extraction where used
 
@@ -43,7 +44,7 @@ async def process_public_worker(invoice_id: str, content: bytes, mime_type: str,
             data_dict["Supplier_GSTIN_Status"] = await verify_gstin(supabase_client, gstin)
 
         # Deduct Credit (using RPC via http client since RPC via python client can be tricky without auth)
-        async with httpx.AsyncClient() as http_client:
+        async with get_shared_client() as http_client:
             rpc_resp = await http_client.post(
                 f"{SUPABASE_URL}/rest/v1/rpc/decrement_credits",
                 headers={"apikey": SUPABASE_SERVICE_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}", "Content-Type": "application/json"},
@@ -169,7 +170,7 @@ async def public_upload(
         storage_path = f"{user_id}/{client_id}/{uuid.uuid4()}{file_ext}"
         
         # Upload to storage using HTTPX because Python supabase-storage-py is sync
-        async with httpx.AsyncClient() as http_client:
+        async with get_shared_client() as http_client:
             await http_client.post(
                 f"{SUPABASE_URL}/storage/v1/object/raw_invoices/{storage_path}",
                 headers={"apikey": SUPABASE_SERVICE_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}", "Content-Type": mime_type},

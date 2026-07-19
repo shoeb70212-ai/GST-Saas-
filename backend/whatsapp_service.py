@@ -1,5 +1,6 @@
 import os
 import httpx
+from http_client import get_shared_client
 import base64
 import json
 import asyncio
@@ -27,8 +28,8 @@ except ImportError:
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
 
-META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "your_meta_token_here")
-META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID", "your_meta_phone_id_here")
+META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
+META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID")
 
 _wa_processing_semaphore = asyncio.Semaphore(4)
 
@@ -48,14 +49,14 @@ async def send_whatsapp_message(to_number: str, text: str):
         "text": {"body": text}
     }
     
-    async with httpx.AsyncClient() as client:
+    async with get_shared_client() as client:
         resp = await client.post(url, headers=headers, json=payload)
         if resp.status_code not in (200, 201):
             logger.warning(f"Failed to send WA message: {resp.text}")
 
 async def download_whatsapp_media(media_id: str) -> bytes:
     headers = {"Authorization": f"Bearer {META_ACCESS_TOKEN}"}
-    async with httpx.AsyncClient() as client:
+    async with get_shared_client() as client:
         url_resp = await client.get(
             f"https://graph.facebook.com/v19.0/{media_id}",
             headers=headers
