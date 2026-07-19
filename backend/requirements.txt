@@ -13,3 +13,10 @@ pandas
 numpy
 networkx
 pypdf
+pydantic
+httpx
+tenacity
+pillow_heif
+Pillow
+requests
+rapidfuzz
