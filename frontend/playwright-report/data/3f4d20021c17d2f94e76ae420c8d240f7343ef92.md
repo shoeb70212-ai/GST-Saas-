@@ -1,0 +1,693 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: auth.spec.ts >> landing page loads and has login button
+- Location: e2e\auth.spec.ts:3:1
+
+# Error details
+
+```
+Error: expect(locator).toBeVisible() failed
+
+Locator: getByRole('link', { name: /sign in/i })
+Expected: visible
+Error: strict mode violation: getByRole('link', { name: /sign in/i }) resolved to 2 elements:
+    1) <a href="/auth" data-discover="true" class="px-6 py-2.5 rounded-full border border-border hover:border-accent/50 text-text-primary hover:text-accent text-sm font-medium transition-all duration-200">Sign In</a> aka getByLabel('Primary navigation').getByRole('link', { name: 'Sign In' })
+    2) <a href="/auth" data-discover="true" class="hover:text-text-primary transition-colors">Sign In</a> aka getByRole('contentinfo').getByRole('link', { name: 'Sign In' })
+
+Call log:
+  - Expect "toBeVisible" with timeout 5000ms
+  - waiting for getByRole('link', { name: /sign in/i })
+
+```
+
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - navigation "Primary navigation" [ref=e5]:
+      - link "KhataLens Home" [ref=e6] [cursor=pointer]:
+        - /url: /
+        - img [ref=e9]
+        - generic [ref=e14]: KhataLens
+      - generic [ref=e15]:
+        - link "Features" [ref=e16] [cursor=pointer]:
+          - /url: "#features"
+        - link "Pricing" [ref=e17] [cursor=pointer]:
+          - /url: "#pricing"
+        - link "FAQ" [ref=e18] [cursor=pointer]:
+          - /url: "#faq"
+        - link "Sign In" [ref=e19] [cursor=pointer]:
+          - /url: /auth
+        - link "Start Free" [ref=e20] [cursor=pointer]:
+          - /url: /auth
+  - region "From receipt scan to bank reconciliation." [ref=e21]:
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - generic [ref=e27]: Built exclusively for Indian Chartered Accountants
+        - heading "From receipt scan to bank reconciliation." [level=1] [ref=e29]:
+          - text: From receipt scan
+          - generic [ref=e30]: to bank reconciliation.
+        - paragraph [ref=e31]:
+          - text: KhataLens reads your messy bills, extracts the data, and reconciles it against bank statements.
+          - strong [ref=e32]: All AI. Zero typing.
+        - generic [ref=e33]:
+          - link "Start Free Beta" [ref=e34] [cursor=pointer]:
+            - /url: /auth
+            - text: Start Free Beta
+            - img [ref=e35]
+          - link "See how it works" [ref=e37] [cursor=pointer]:
+            - /url: "#how-it-works"
+            - img [ref=e38]
+            - text: See how it works
+        - paragraph [ref=e41]: 100 free extractions · No credit card · Instant access
+      - generic [ref=e47]:
+        - generic [ref=e48]:
+          - generic [ref=e49]: Messy Bills
+          - img [ref=e58]
+        - generic [ref=e64]:
+          - generic [ref=e69]: KhataLens AI
+          - img [ref=e72]
+        - generic [ref=e89]:
+          - generic [ref=e90]: Ready to File
+          - generic [ref=e93]:
+            - img [ref=e94]
+            - generic [ref=e97]: Excel Sheet
+  - region "Platform statistics" [ref=e111]:
+    - generic [ref=e112]:
+      - generic [ref=e113]:
+        - generic [ref=e115]:
+          - generic [ref=e116]: 0+
+          - generic [ref=e117]: Fields Extracted
+        - generic [ref=e119]:
+          - generic [ref=e120]: 0s
+          - generic [ref=e121]: Avg Scan Time
+        - generic [ref=e123]:
+          - generic [ref=e124]: 0%
+          - generic [ref=e125]: Recon Accuracy
+        - generic [ref=e127]:
+          - generic [ref=e128]: "0"
+          - generic [ref=e129]: Manual Typing
+      - generic [ref=e130]:
+        - generic [ref=e131]:
+          - img [ref=e132]
+          - text: Supabase RLS Isolation
+        - generic [ref=e135]:
+          - img [ref=e136]
+          - text: End-to-end Encrypted
+        - generic [ref=e139]:
+          - img [ref=e140]
+          - text: GSTIN Verified Output
+        - generic [ref=e143]:
+          - img [ref=e144]
+          - text: Tally & Zoho Compatible
+        - generic [ref=e148]:
+          - img [ref=e149]
+          - text: No Data Retention
+  - region "Three steps. Zero typing." [ref=e152]:
+    - generic [ref=e153]:
+      - generic [ref=e154]:
+        - generic [ref=e155]: How It Works
+        - heading "Three steps. Zero typing." [level=2] [ref=e156]
+        - paragraph [ref=e157]: From a crumpled bill on your desk to a filed return in minutes.
+      - generic [ref=e158]:
+        - generic [ref=e160]:
+          - generic [ref=e161]: "01"
+          - img [ref=e163]
+          - heading "Upload Invoices" [level=3] [ref=e166]
+          - paragraph [ref=e167]: Drag & drop PDFs, JPGs, PNGs — even compressed WhatsApp photos. Bulk upload 200 files at once.
+        - generic [ref=e168]:
+          - generic [ref=e169]: AI Magic Here
+          - generic [ref=e170]: "02"
+          - img [ref=e172]
+          - heading "AI Extracts Everything" [level=3] [ref=e174]
+          - paragraph [ref=e175]: AI reads GSTIN, HSN codes, line items, tax breakdowns, and validates totals in seconds.
+        - generic [ref=e176]:
+          - generic [ref=e177]: "03"
+          - img [ref=e179]
+          - heading "Export & File" [level=3] [ref=e182]
+          - paragraph [ref=e183]: Download a Tally-ready Excel file. Import directly into your accounting software. Done.
+  - region "Built for the way CAs actually work." [ref=e184]:
+    - generic [ref=e185]:
+      - generic [ref=e186]:
+        - generic [ref=e187]: Features
+        - heading "Built for the way CAs actually work." [level=2] [ref=e188]
+        - paragraph [ref=e189]: Every feature was designed after talking to practicing Chartered Accountants about their real pain points.
+      - generic [ref=e190]:
+        - generic [ref=e191]:
+          - generic [ref=e192]:
+            - generic [ref=e193]:
+              - img [ref=e195]
+              - generic [ref=e199]: Core AI Engine
+            - heading "48-field extraction. Nothing slips through." [level=3] [ref=e200]
+            - paragraph [ref=e201]: KhataLens acts like a Senior Accountant, not a simple OCR tool. It understands the distinction between CGST, SGST, and IGST. It cross-verifies line-item subtotals against the grand total. It reads Place of Supply and derives the correct inter-state or intra-state tax treatment — automatically. It even flags suspicious HSN codes that don't match item descriptions.
+            - list "Core AI Engine feature list" [ref=e202]:
+              - listitem [ref=e203]:
+                - img [ref=e204]
+                - text: Full line-item extraction with HSN codes
+              - listitem [ref=e207]:
+                - img [ref=e208]
+                - text: Automatic CGST / SGST / IGST classification
+              - listitem [ref=e211]:
+                - img [ref=e212]
+                - text: Cross-verification of tax totals with confidence scoring
+              - listitem [ref=e215]:
+                - img [ref=e216]
+                - text: Reads skewed photos & WhatsApp-compressed images
+              - listitem [ref=e219]:
+                - img [ref=e220]
+                - text: Duplicate invoice detection
+              - listitem [ref=e223]:
+                - img [ref=e224]
+                - text: AI fallback (OpenAI → Gemini) for reliability
+          - generic [ref=e231]:
+            - generic [ref=e232]:
+              - generic [ref=e233]:
+                - generic [ref=e234]: Supplier GSTIN
+                - generic [ref=e235]: 27ABCDE1234F1Z5
+              - generic [ref=e236]:
+                - generic [ref=e237]: State Code
+                - generic [ref=e238]: 27 — Maharashtra
+            - generic [ref=e239]:
+              - generic [ref=e240]:
+                - generic [ref=e241]: Item
+                - generic [ref=e242]: Steel Pipes
+              - generic [ref=e243]:
+                - generic [ref=e244]: HSN
+                - generic [ref=e245]: "7306"
+              - generic [ref=e246]:
+                - generic [ref=e247]: Qty
+                - generic [ref=e248]: 50 pcs
+              - generic [ref=e249]:
+                - generic [ref=e250]: Taxable
+                - generic [ref=e251]: ₹25,000
+              - generic [ref=e252]:
+                - generic [ref=e253]: CGST 9%
+                - generic [ref=e254]: ₹2,250
+              - generic [ref=e255]:
+                - generic [ref=e256]: SGST 9%
+                - generic [ref=e257]: ₹2,250
+              - generic [ref=e258]:
+                - generic [ref=e259]: Total
+                - generic [ref=e260]: ₹29,500
+        - generic [ref=e261]:
+          - generic [ref=e262]:
+            - generic [ref=e263]:
+              - img [ref=e265]
+              - generic [ref=e269]: Multi-Tenancy
+            - heading "One dashboard. Every client, perfectly isolated." [level=3] [ref=e270]
+            - paragraph [ref=e271]: Managing 50 firms is a different beast from managing 1. KhataLens is built from the ground up for CA practices. Each client gets a fully segregated workspace with its own GSTIN, invoice history, and export records. You can switch between clients in one click — with zero risk of data bleed.
+            - list "Multi-Tenancy feature list" [ref=e272]:
+              - listitem [ref=e273]:
+                - img [ref=e274]
+                - text: Unlimited client workspaces
+              - listitem [ref=e277]:
+                - img [ref=e278]
+                - text: Instant one-click context switching
+              - listitem [ref=e281]:
+                - img [ref=e282]
+                - text: Database-level isolation (RLS enforced)
+              - listitem [ref=e285]:
+                - img [ref=e286]
+                - text: Per-client GSTIN registration & tracking
+          - generic [ref=e293]:
+            - generic [ref=e294]:
+              - generic [ref=e295]:
+                - generic [ref=e296]: TechCorp India Pvt Ltd
+                - generic [ref=e297]: 27ABCDE1234F1Z5
+              - generic [ref=e298]:
+                - generic [ref=e299]: "148"
+                - generic [ref=e300]: invoices
+            - generic [ref=e301]:
+              - generic [ref=e302]:
+                - generic [ref=e303]: Sharma Textile Traders
+                - generic [ref=e304]: 06XYZAB5678C2Z1
+              - generic [ref=e305]:
+                - generic [ref=e306]: "93"
+                - generic [ref=e307]: invoices
+            - generic [ref=e308]:
+              - generic [ref=e309]:
+                - generic [ref=e310]: Gupta Manufacturing Co.
+                - generic [ref=e311]: 29PQRST9012D3Z7
+              - generic [ref=e312]:
+                - generic [ref=e313]: "211"
+                - generic [ref=e314]: invoices
+        - generic [ref=e315]:
+          - generic [ref=e316]:
+            - generic [ref=e317]:
+              - img [ref=e319]
+              - generic [ref=e322]: Export Engine
+            - heading "One click. Tally-ready in seconds." [level=3] [ref=e323]
+            - paragraph [ref=e324]: Stop reformatting spreadsheets. KhataLens generates an Excel file that maps directly to Tally Prime's purchase voucher import format, Zoho Books' import template, and the GST portal's offline tool. Your data flows from bill to software with zero manual touch.
+            - list "Export Engine feature list" [ref=e325]:
+              - listitem [ref=e326]:
+                - img [ref=e327]
+                - text: Tally Prime purchase voucher format
+              - listitem [ref=e330]:
+                - img [ref=e331]
+                - text: Zoho Books & Busy Accounting compatible
+              - listitem [ref=e334]:
+                - img [ref=e335]
+                - text: GST portal offline tool export
+              - listitem [ref=e338]:
+                - img [ref=e339]
+                - text: Custom column mapping for any software
+          - generic [ref=e346]:
+            - generic [ref=e347]:
+              - generic [ref=e348]: Export Ready
+              - generic [ref=e349]: Tally Format
+            - generic [ref=e350]:
+              - generic [ref=e351]: Date
+              - generic [ref=e352]: Party
+              - generic [ref=e353]: GSTIN
+              - generic [ref=e354]: Amount
+            - generic [ref=e355]:
+              - generic [ref=e356]: 12/05
+              - generic [ref=e357]: Steel Corp
+              - generic [ref=e358]: 27AB…
+              - generic [ref=e359]: ₹29,500
+            - generic [ref=e360]:
+              - generic [ref=e361]: 14/05
+              - generic [ref=e362]: Tech Ltd
+              - generic [ref=e363]: 06XY…
+              - generic [ref=e364]: ₹1,18,000
+            - generic [ref=e365]:
+              - generic [ref=e366]: 15/05
+              - generic [ref=e367]: Paper Co.
+              - generic [ref=e368]: 29PQ…
+              - generic [ref=e369]: ₹8,850
+            - button "Download .xlsx" [ref=e370]:
+              - img [ref=e371]
+              - text: Download .xlsx
+        - generic [ref=e374]:
+          - generic [ref=e375]:
+            - generic [ref=e376]:
+              - img [ref=e378]
+              - generic [ref=e380]: Batch Processing
+            - heading "100 invoices. 3 minutes flat." [level=3] [ref=e381]
+            - paragraph [ref=e382]: Don't process bills one at a time. KhataLens accepts bulk uploads of up to 200 files at once. Our background queue processes them in parallel — while you work on something else. You get a single notification when the full batch is ready to export.
+            - list "Batch Processing feature list" [ref=e383]:
+              - listitem [ref=e384]:
+                - img [ref=e385]
+                - text: Bulk upload up to 200 files at once
+              - listitem [ref=e388]:
+                - img [ref=e389]
+                - text: Background parallel processing queue
+              - listitem [ref=e392]:
+                - img [ref=e393]
+                - text: Real-time progress tracking
+              - listitem [ref=e396]:
+                - img [ref=e397]
+                - text: Failed items requeued automatically
+          - generic [ref=e404]:
+            - generic [ref=e405]:
+              - generic [ref=e406]: "Batch #247"
+              - generic [ref=e407]: Processing…
+            - generic [ref=e409]:
+              - generic [ref=e410]: invoice_batch_01.pdf
+              - generic [ref=e411]: Done
+            - generic [ref=e414]:
+              - generic [ref=e415]: whatsapp_img_1932.jpg
+              - generic [ref=e416]: Done
+            - generic [ref=e419]:
+              - generic [ref=e420]: bill_gupta_may.pdf
+              - generic [ref=e421]: Reading…
+            - generic [ref=e424]:
+              - generic [ref=e425]: purchase_order.png
+              - generic [ref=e426]: Queued
+            - generic [ref=e428]:
+              - generic [ref=e429]: 2 of 4 complete
+              - generic [ref=e430]: ~45 sec remaining
+        - generic [ref=e431]:
+          - generic [ref=e432]:
+            - generic [ref=e433]:
+              - img [ref=e435]
+              - generic [ref=e438]: Bank Statements
+            - heading "Your PDFs, turned into data." [level=3] [ref=e439]
+            - paragraph [ref=e440]: Upload any PDF bank statement. Our specialized extractor pulls every transaction—deposits, withdrawals, and running balances—accurately, no matter how many pages.
+            - list "Bank Statements feature list" [ref=e441]:
+              - listitem [ref=e442]:
+                - img [ref=e443]
+                - text: Multi-page PDF extraction
+              - listitem [ref=e446]:
+                - img [ref=e447]
+                - text: Debit/Credit categorization
+              - listitem [ref=e450]:
+                - img [ref=e451]
+                - text: Math verification on balances
+              - listitem [ref=e454]:
+                - img [ref=e455]
+                - text: Instant Tally-ready export
+          - generic [ref=e462]:
+            - generic [ref=e463]:
+              - generic [ref=e464]: HDFC Bank Statement.pdf
+              - generic [ref=e465]:
+                - img [ref=e466]
+                - text: Extracted
+            - generic [ref=e469]:
+              - generic [ref=e470]:
+                - generic [ref=e471]:
+                  - generic [ref=e472]: 12/05
+                  - generic [ref=e473]: NEFT-UBIN-TechCorp
+                - generic [ref=e474]: + ₹1,18,000
+              - generic [ref=e475]:
+                - generic [ref=e476]:
+                  - generic [ref=e477]: 14/05
+                  - generic [ref=e478]: UPI/Zomato/Food
+                - generic [ref=e479]: "- ₹850"
+              - generic [ref=e480]:
+                - generic [ref=e481]:
+                  - generic [ref=e482]: 15/05
+                  - generic [ref=e483]: RTGS-SBIN-SteelCorp
+                - generic [ref=e484]: "- ₹29,500"
+            - generic [ref=e485]:
+              - generic [ref=e486]: "Total deposits: ₹1,18,000"
+              - generic [ref=e487]: "Balance: ₹8,45,200"
+        - generic [ref=e488]:
+          - generic [ref=e489]:
+            - generic [ref=e490]:
+              - img [ref=e492]
+              - generic [ref=e497]: AI Reconciliation
+            - heading "Invoices meet bank txns. Automatically." [level=3] [ref=e498]
+            - paragraph [ref=e499]: Stop checking off lines with a pencil. Our AI matching engine pairs your extracted invoices with your bank statement transactions. Approve exact matches with one click.
+            - list "AI Reconciliation feature list" [ref=e500]:
+              - listitem [ref=e501]:
+                - img [ref=e502]
+                - text: 2-way fuzzy matching
+              - listitem [ref=e505]:
+                - img [ref=e506]
+                - text: Handles partial & advance payments
+              - listitem [ref=e509]:
+                - img [ref=e510]
+                - text: Auto-approve mode for exact matches
+              - listitem [ref=e513]:
+                - img [ref=e514]
+                - text: Undo history and audit trail
+          - generic [ref=e521]:
+            - generic [ref=e522]:
+              - generic [ref=e523]:
+                - img [ref=e524]
+                - generic [ref=e527]:
+                  - generic [ref=e528]: Steel Corp Invoice
+                  - generic [ref=e529]: INV-2026-041
+              - generic [ref=e530]: ₹29,500
+            - generic [ref=e532]:
+              - img [ref=e533]
+              - generic [ref=e538]: 100% Exact Match
+            - generic [ref=e539]:
+              - generic [ref=e540]:
+                - generic [ref=e542]: Tx
+                - generic [ref=e543]:
+                  - generic [ref=e544]: NEFT-RTGS-SteelCorp
+                  - generic [ref=e545]: 15 May 2026
+              - generic [ref=e546]: "- ₹29,500"
+        - generic [ref=e547]:
+          - generic [ref=e548]:
+            - generic [ref=e549]:
+              - img [ref=e551]
+              - generic [ref=e553]: WhatsApp Engine
+            - heading "Clients forward bills. We do the rest." [level=3] [ref=e554]
+            - paragraph [ref=e555]: Give your clients a dedicated WhatsApp number. They forward photos of restaurant bills, taxi receipts, or vendor invoices. KhataLens automatically assigns them to their workspace and extracts the data.
+            - list "WhatsApp Engine feature list" [ref=e556]:
+              - listitem [ref=e557]:
+                - img [ref=e558]
+                - text: Zero-friction client uploads
+              - listitem [ref=e561]:
+                - img [ref=e562]
+                - text: Auto-assign to client workspaces
+              - listitem [ref=e565]:
+                - img [ref=e566]
+                - text: Handles compressed images
+              - listitem [ref=e569]:
+                - img [ref=e570]
+                - text: Instant confirmation to clients
+          - generic [ref=e579]:
+            - generic [ref=e581]:
+              - img [ref=e584]
+              - generic [ref=e586]: Here's the restaurant bill
+              - generic [ref=e587]: 10:42 AM
+            - generic [ref=e589]:
+              - generic [ref=e590]: KhataLens AI
+              - paragraph [ref=e591]:
+                - text: ✅ Extracted successfully.
+                - text: "Vendor: Biryani House"
+                - text: "Amount: ₹1,250"
+                - text: "Mapped to: Meals & Entertainment"
+              - generic [ref=e592]: 10:43 AM
+  - region "The Tax OS is just getting started." [ref=e593]:
+    - generic [ref=e594]:
+      - generic [ref=e595]:
+        - generic [ref=e596]: Roadmap
+        - heading "The Tax OS is just getting started." [level=2] [ref=e597]
+        - paragraph [ref=e598]: These features are actively being built. Beta users get first access.
+      - generic [ref=e599]:
+        - article [ref=e600]:
+          - generic [ref=e601]:
+            - img [ref=e603]
+            - generic [ref=e606]: Q3 2026
+          - heading "GSTR-2B AI Deep Match" [level=3] [ref=e607]
+          - paragraph [ref=e608]: Upload the government's GSTR-2B JSON. Our AI fuzzy-matches it against your scanned bills, instantly flagging lost ITC due to vendor typos.
+        - article [ref=e609]:
+          - generic [ref=e610]:
+            - img [ref=e612]
+            - generic [ref=e614]: Q3 2026
+          - heading "Native Android App" [level=3] [ref=e615]
+          - paragraph [ref=e616]: A dedicated Android app for you and your clients. Offline scanning, better edge detection, and push notifications for required approvals.
+        - article [ref=e617]:
+          - generic [ref=e618]:
+            - img [ref=e620]
+            - generic [ref=e622]: Q4 2026
+          - heading "Tax Liability Predictor" [level=3] [ref=e623]
+          - paragraph [ref=e624]: Import a sales register. KhataLens calculates real-time GST liability (Sales Tax minus ITC), giving clients a cashflow dashboard before filing.
+        - article [ref=e625]:
+          - generic [ref=e626]:
+            - img [ref=e628]
+            - generic [ref=e630]: Q4 2026
+          - heading "Multi-Currency Recon" [level=3] [ref=e631]
+          - paragraph [ref=e632]: Handle international invoices and bank statements with automatic real-time exchange rate conversions and forex gain/loss calculations.
+  - region "Simple, honest pricing." [ref=e633]:
+    - generic [ref=e634]:
+      - generic [ref=e635]:
+        - generic [ref=e636]: Pricing
+        - heading "Simple, honest pricing." [level=2] [ref=e637]
+        - paragraph [ref=e638]: Start for free. Scale as your practice grows. No hidden fees.
+      - generic [ref=e639]:
+        - generic [ref=e640]:
+          - generic [ref=e641]:
+            - generic [ref=e642]: Starter
+            - generic [ref=e643]:
+              - generic [ref=e644]: ₹2,499
+              - generic [ref=e645]: / month
+            - paragraph [ref=e646]: Perfect for solo practitioners and small businesses.
+          - list "Starter plan features" [ref=e647]:
+            - listitem [ref=e648]:
+              - img [ref=e649]
+              - generic [ref=e652]: 1,000 invoice extractions
+            - listitem [ref=e653]:
+              - img [ref=e654]
+              - generic [ref=e657]: 10 bank statement pages
+            - listitem [ref=e658]:
+              - img [ref=e659]
+              - generic [ref=e662]: Unlimited workspaces
+            - listitem [ref=e663]:
+              - img [ref=e664]
+              - generic [ref=e667]: Excel + CSV export
+            - listitem [ref=e668]:
+              - img [ref=e669]
+              - generic [ref=e672]: Email support
+          - link "Get Started" [ref=e673] [cursor=pointer]:
+            - /url: /auth
+        - generic [ref=e676]:
+          - generic [ref=e677]:
+            - generic [ref=e678]: Pro
+            - generic [ref=e679]:
+              - img [ref=e680]
+              - text: Most Popular
+          - generic [ref=e682]:
+            - generic [ref=e683]: ₹7,999
+            - generic [ref=e684]: / month
+          - paragraph [ref=e685]: Everything in Starter, plus AI Reconciliation and WhatsApp.
+          - list "Pro plan features" [ref=e686]:
+            - listitem [ref=e687]:
+              - img [ref=e688]
+              - generic [ref=e691]: 5,000 invoice extractions
+            - listitem [ref=e692]:
+              - img [ref=e693]
+              - generic [ref=e696]: Unlimited bank statements
+            - listitem [ref=e697]:
+              - img [ref=e698]
+              - generic [ref=e701]: AI Recon Engine (Auto-match)
+            - listitem [ref=e702]:
+              - img [ref=e703]
+              - generic [ref=e706]: WhatsApp Receipt Engine
+            - listitem [ref=e707]:
+              - img [ref=e708]
+              - generic [ref=e711]: Batch processing queue
+            - listitem [ref=e712]:
+              - img [ref=e713]
+              - generic [ref=e716]: Dedicated CA support
+          - link "Start Pro Trial" [ref=e717] [cursor=pointer]:
+            - /url: /auth
+        - generic [ref=e718]:
+          - generic [ref=e719]:
+            - generic [ref=e720]: CA Firm / Enterprise
+            - generic [ref=e722]: Custom
+            - paragraph [ref=e723]: Tailored for large practices with high volumes.
+          - list "Enterprise plan features" [ref=e724]:
+            - listitem [ref=e725]:
+              - img [ref=e726]
+              - generic [ref=e729]: Custom extraction volumes
+            - listitem [ref=e730]:
+              - img [ref=e731]
+              - generic [ref=e734]: White-labeled portal
+            - listitem [ref=e735]:
+              - img [ref=e736]
+              - generic [ref=e739]: API Access for integrations
+            - listitem [ref=e740]:
+              - img [ref=e741]
+              - generic [ref=e744]: On-premise deployment options
+            - listitem [ref=e745]:
+              - img [ref=e746]
+              - generic [ref=e749]: Dedicated Account Manager
+          - link "Contact Sales" [ref=e750] [cursor=pointer]:
+            - /url: mailto:sales@khatalens.com
+  - region "CAs who switched. They didn't switch back." [ref=e751]:
+    - generic [ref=e752]:
+      - generic [ref=e753]:
+        - generic [ref=e754]: Testimonials
+        - heading "CAs who switched. They didn't switch back." [level=2] [ref=e755]:
+          - text: CAs who switched.
+          - emphasis [ref=e756]: They didn't switch back.
+      - generic [ref=e757]:
+        - blockquote [ref=e758]:
+          - generic "5 out of 5 stars" [ref=e759]:
+            - img [ref=e760]
+            - img [ref=e762]
+            - img [ref=e764]
+            - img [ref=e766]
+            - img [ref=e768]
+          - img [ref=e770]
+          - paragraph [ref=e773]: "\"A practice processing 200 invoices per quarter can reduce that to under 20 minutes with KhataLens. The GSTIN validation alone catches suspended or cancelled dealers before export. The multi-client workspace means each client's data is fully isolated.\""
+          - generic [ref=e774]:
+            - generic [ref=e775]: Example Scenario
+            - generic [ref=e776]: Mid-size CA Practice (40+ clients)
+        - blockquote [ref=e777]:
+          - generic "5 out of 5 stars" [ref=e778]:
+            - img [ref=e779]
+            - img [ref=e781]
+            - img [ref=e783]
+            - img [ref=e785]
+            - img [ref=e787]
+          - img [ref=e789]
+          - paragraph [ref=e792]: "\"The Excel output is pre-formatted for Tally Prime with native XML voucher export. The duplicate invoice detection flags invoices already in the system. The accuracy on blurry WhatsApp-compressed bills is achieved through AI vision models, not basic OCR.\""
+          - generic [ref=e793]:
+            - generic [ref=e794]: Example Scenario
+            - generic [ref=e795]: Multi-Client Tax Consultancy
+        - blockquote [ref=e796]:
+          - generic "5 out of 5 stars" [ref=e797]:
+            - img [ref=e798]
+            - img [ref=e800]
+            - img [ref=e802]
+            - img [ref=e804]
+            - img [ref=e806]
+          - img [ref=e808]
+          - paragraph [ref=e811]: "\"The cross-verification logic compares AI-extracted totals against computed line-item sums. When confidence drops below 95%, the field is flagged for manual review rather than silently guessed. That auditability is essential for compliance work.\""
+          - generic [ref=e812]:
+            - generic [ref=e813]: Example Scenario
+            - generic [ref=e814]: Independent Practitioner
+  - region "Questions CAs actually ask." [ref=e815]:
+    - generic [ref=e816]:
+      - generic [ref=e817]:
+        - generic [ref=e818]: FAQ
+        - heading "Questions CAs actually ask." [level=2] [ref=e819]
+        - paragraph [ref=e820]: No marketing fluff. Straight answers.
+      - list [ref=e821]:
+        - listitem [ref=e822]:
+          - button "What file formats does KhataLens support?" [ref=e824] [cursor=pointer]:
+            - generic [ref=e825]: What file formats does KhataLens support?
+            - img [ref=e827]
+        - listitem [ref=e828]:
+          - button "How accurate is the AI extraction?" [ref=e830] [cursor=pointer]:
+            - generic [ref=e831]: How accurate is the AI extraction?
+            - img [ref=e833]
+        - listitem [ref=e834]:
+          - button "Is my client data secure?" [ref=e836] [cursor=pointer]:
+            - generic [ref=e837]: Is my client data secure?
+            - img [ref=e839]
+        - listitem [ref=e840]:
+          - button "Can I manage multiple clients from one account?" [ref=e842] [cursor=pointer]:
+            - generic [ref=e843]: Can I manage multiple clients from one account?
+            - img [ref=e845]
+        - listitem [ref=e846]:
+          - button "Which accounting software can I export to?" [ref=e848] [cursor=pointer]:
+            - generic [ref=e849]: Which accounting software can I export to?
+            - img [ref=e851]
+        - listitem [ref=e852]:
+          - button "How many invoices can I process per month?" [ref=e854] [cursor=pointer]:
+            - generic [ref=e855]: How many invoices can I process per month?
+            - img [ref=e857]
+        - listitem [ref=e858]:
+          - button "Is there a mobile app?" [ref=e860] [cursor=pointer]:
+            - generic [ref=e861]: Is there a mobile app?
+            - img [ref=e863]
+        - listitem [ref=e864]:
+          - button "How do I get started?" [ref=e866] [cursor=pointer]:
+            - generic [ref=e867]: How do I get started?
+            - img [ref=e869]
+  - contentinfo [ref=e870]:
+    - generic [ref=e871]:
+      - img [ref=e875]
+      - heading "Your practice deserves better tools." [level=2] [ref=e880]:
+        - text: Your practice deserves
+        - emphasis [ref=e881]: better tools.
+      - paragraph [ref=e882]: Join 500+ Chartered Accountants who are already processing invoices in seconds, not hours.
+      - link "Start Free — 100 Extractions" [ref=e884] [cursor=pointer]:
+        - /url: /auth
+        - text: Start Free — 100 Extractions
+        - img [ref=e885]
+      - paragraph [ref=e887]: No credit card · Instant access · Cancel anytime
+    - generic [ref=e889]:
+      - generic [ref=e890]:
+        - img [ref=e893]
+        - generic [ref=e898]: KhataLens
+      - generic [ref=e899]:
+        - link "Features" [ref=e900] [cursor=pointer]:
+          - /url: "#features"
+        - link "Pricing" [ref=e901] [cursor=pointer]:
+          - /url: "#pricing"
+        - link "FAQ" [ref=e902] [cursor=pointer]:
+          - /url: "#faq"
+        - link "Sign In" [ref=e903] [cursor=pointer]:
+          - /url: /auth
+        - link "Contact" [ref=e904] [cursor=pointer]:
+          - /url: mailto:support@khatalens.com
+      - paragraph [ref=e905]: © 2026 KhataLens. All rights reserved.
+```
+
+# Test source
+
+```ts
+  1  | import { test, expect } from '@playwright/test';
+  2  | 
+  3  | test('landing page loads and has login button', async ({ page }) => {
+  4  |   await page.goto('/');
+  5  |   await expect(page).toHaveTitle(/KhataLens/i);
+  6  |   const loginButton = page.getByRole('link', { name: /sign in/i });
+> 7  |   await expect(loginButton).toBeVisible();
+     |                             ^ Error: expect(locator).toBeVisible() failed
+  8  | });
+  9  | 
+  10 | test('auth page shows login form', async ({ page }) => {
+  11 |   await page.goto('/auth');
+  12 |   await expect(page.getByRole('heading', { name: /Welcome back/i })).toBeVisible();
+  13 |   await expect(page.getByPlaceholder(/email/i)).toBeVisible();
+  14 |   await expect(page.getByPlaceholder(/password/i)).toBeVisible();
+  15 | });
+  16 | 
+```

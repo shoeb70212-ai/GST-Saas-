@@ -1,0 +1,141 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: client-management.spec.ts >> Client Management Edge Cases >> Client Creation succeeds with valid data
+- Location: e2e\client-management.spec.ts:39:3
+
+# Error details
+
+```
+Error: expect(locator).toBeVisible() failed
+
+Locator: locator('text=/added successfully/i')
+Expected: visible
+Timeout: 10000ms
+Error: element(s) not found
+
+Call log:
+  - Expect "toBeVisible" with timeout 10000ms
+  - waiting for locator('text=/added successfully/i')
+
+```
+
+```yaml
+- img
+- text: KhataLens
+- button "Select Client"
+- text: Menu
+- navigation:
+  - link "Dashboard":
+    - /url: /dashboard
+  - link "Scan":
+    - /url: /scan
+  - link "Invoices":
+    - /url: /invoices
+  - link "Tax Liability":
+    - /url: /tax-liability
+  - link "Virtual CFO":
+    - /url: /cfo
+  - link "GSTR-2B":
+    - /url: /reconcile
+  - link "Bank Stmts":
+    - /url: /bank-statements
+  - link "Bank Match":
+    - /url: /bank-reconcile
+  - link "Clients":
+    - /url: /clients
+  - link "Audit Logs":
+    - /url: /audit-logs
+  - link "Wallet & Billing":
+    - /url: /wallet
+  - link "Settings":
+    - /url: /settings
+- button "Sign Out"
+- link "Quick Scan":
+  - /url: /scan
+- text: 100 Credits
+- button "Toggle Theme"
+- text: ME
+- heading "Client Management" [level=1]
+- paragraph: Manage your clients to keep their invoices strictly separated.
+- heading "Add New Client" [level=2]
+- text: Client Name *
+- textbox "e.g. Acme Corp": Unique Client 1784419410192
+- text: GSTIN (Optional)
+- textbox "29XXXXX1234X1X1": 29ABCDE1234F1Z5
+- text: PAN (Optional)
+- textbox "XXXXX1234X"
+- button "Cancel"
+- button "Create Client"
+```
+
+# Test source
+
+```ts
+  1  | import { test, expect } from '@playwright/test';
+  2  | import { signUpTestUser, loginViaSessionInjection } from './test-helpers';
+  3  | 
+  4  | let testAccessToken = '';
+  5  | 
+  6  | test.beforeAll(async () => {
+  7  |   const { access_token } = await signUpTestUser();
+  8  |   testAccessToken = access_token;
+  9  | });
+  10 | 
+  11 | test.describe('Client Management Edge Cases', () => {
+  12 |   test.beforeEach(async ({ page }) => {
+  13 |     await loginViaSessionInjection(page, testAccessToken);
+  14 |     await page.goto('/clients');
+  15 |     await page.waitForLoadState('networkidle');
+  16 |   });
+  17 | 
+  18 |   test('Form Validation prevents empty submission', async ({ page }) => {
+  19 |     // Click add client button (could be "Add Client" or "Add Your First Client")
+  20 |     await page.locator('button:has-text("Add")').first().click();
+  21 | 
+  22 |     // Ensure the input field for name is empty
+  23 |     const nameInput = page.getByPlaceholder('e.g. Acme Corp');
+  24 |     await nameInput.fill('');
+  25 | 
+  26 |     // Try to submit
+  27 |     await page.locator('button[type="submit"]').click();
+  28 | 
+  29 |     // Since it's a required field, HTML5 validation will likely block it,
+  30 |     // OR we will see a toast error.
+  31 |     // The easiest way to verify is to check that we are still in adding mode.
+  32 |     await expect(nameInput).toBeVisible();
+  33 | 
+  34 |     // Check if the input is flagged as invalid using pseudo class
+  35 |     const isInvalid = await nameInput.evaluate((el: HTMLInputElement) => !el.checkValidity());
+  36 |     expect(isInvalid).toBe(true);
+  37 |   });
+  38 | 
+  39 |   test('Client Creation succeeds with valid data', async ({ page }) => {
+  40 |     await page.locator('button:has-text("Add")').first().click();
+  41 | 
+  42 |     const uniqueClientName = `Unique Client ${Date.now()}`;
+  43 |     await page.getByPlaceholder('e.g. Acme Corp').fill(uniqueClientName);
+  44 |     
+  45 |     // Fill optional fields
+  46 |     await page.getByPlaceholder('29XXXXX1234X1X1').fill('29ABCDE1234F1Z5');
+  47 |     
+  48 |     // Submit
+  49 |     await page.locator('button[type="submit"]').click();
+  50 | 
+  51 |     // Wait for the success toast
+  52 |     const successToast = page.locator('text=/added successfully/i');
+> 53 |     await expect(successToast).toBeVisible({ timeout: 10000 });
+     |                                ^ Error: expect(locator).toBeVisible() failed
+  54 | 
+  55 |     // Ensure the new client appears in the list (or card grid)
+  56 |     const newClientCard = page.locator(`h3:has-text("${uniqueClientName}")`);
+  57 |     await expect(newClientCard).toBeVisible();
+  58 |   });
+  59 | });
+  60 | 
+```

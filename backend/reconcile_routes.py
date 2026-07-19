@@ -55,7 +55,7 @@ def clean_str(s):
     s = str(s).strip().upper().replace("-", "").replace("/", "").replace(" ", "")
     return re.sub(r'(\D)0+(\d)', r'\1\2', s)
 
-@router.post("/api/reconcile")
+@router.post("")
 async def reconcile_gstr2b(
     file: UploadFile = File(...),
     client_id: str = Form(...),
@@ -279,7 +279,7 @@ async def reconcile_gstr2b(
     return {"status": "success", "message": f"Reconciled {len(records)} records from 2B against {len(pr_invoices)} Purchase Register invoices using {tol_val} tolerance."}
 
 
-@router.post("/api/reconcile/deep-match")
+@router.post("/deep-match")
 async def deep_match_reconcile(
     client_id: str = Form(...),
     period: str = Form(...),

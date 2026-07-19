@@ -789,7 +789,7 @@ export default function ScanPage() {
       {/* Main Content */}
       <main className="p-4 lg:p-6 max-w-[1600px] mx-auto h-full flex flex-col">
         
-        <div className="card flex-1 flex flex-col lg:flex-row p-0 overflow-hidden shadow-lg border-border">
+        <div className="card flex-1 flex flex-col lg:flex-row p-0 overflow-hidden shadow-lg border-border animate-fade-in">
           
           {/* Left Column: Upload & List */}
           <div className="w-full lg:w-[40%] xl:w-[35%] flex flex-col border-b lg:border-b-0 lg:border-r border-border bg-bg-surface">
@@ -807,7 +807,7 @@ export default function ScanPage() {
                 <div
                   {...getRootProps()}
                   className={cn(
-                    "w-full h-full min-h-[250px] rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group text-center shadow-none",
+                    "w-full h-full min-h-[250px] rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group text-center shadow-none hover-lift",
                     isDragActive ? "border-accent bg-accent-subtle" : "border-border hover:border-accent hover:bg-bg-sunken bg-bg-base"
                   )}
                 >
@@ -857,7 +857,7 @@ export default function ScanPage() {
                   <button onClick={clearAll} className="text-xs text-textMuted hover:text-white px-2 py-1 rounded transition-colors">Clear</button>
                   <button 
                     onClick={handleScanAll} 
-                    className="text-xs bg-primary text-white hover:bg-primary/90 px-3 py-1.5 rounded-md flex items-center gap-1 transition-colors"
+                    className="text-xs bg-primary text-white hover:bg-primary/90 px-3 py-1.5 rounded-md flex items-center gap-1 transition-colors hover-lift"
                   >
                     <Sparkles className="w-3 h-3" /> Extract All
                   </button>
@@ -865,8 +865,8 @@ export default function ScanPage() {
               </div>
 
               <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
-                {fileStates.map((fs) => (
-                  <div key={fs.id} className="card p-3 flex gap-3 items-center group shadow-none">
+                {fileStates.map((fs, idx) => (
+                  <div key={fs.id} className="card p-3 flex gap-3 items-center group shadow-none hover-lift animate-slide-up" style={{ animationDelay: `${idx * 50}ms` }}>
                     {fs.previewUrl ? (
                       <img src={fs.previewUrl} alt="preview" className="w-10 h-10 rounded object-cover border border-border" />
                     ) : (

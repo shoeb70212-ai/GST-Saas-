@@ -320,7 +320,7 @@ export default function SavedInvoicesPage() {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 pb-20">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 pb-20 animate-fade-in">
       
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
@@ -450,10 +450,11 @@ export default function SavedInvoicesPage() {
         
         {/* Mobile Card View */}
         <div className="md:hidden flex flex-col p-4 gap-3 overflow-y-auto max-h-[70vh] custom-scrollbar">
-          {filteredInvoices.map(inv => (
+          {filteredInvoices.map((inv, idx) => (
             <div 
               key={inv.id} 
-              className="bg-bg-surface border border-border rounded-xl p-4 flex flex-col gap-3 shadow-sm active:scale-[0.98] transition-transform"
+              className="bg-bg-surface border border-border rounded-xl p-4 flex flex-col gap-3 shadow-sm active:scale-[0.98] transition-transform hover-lift animate-slide-up"
+              style={{ animationDelay: `${idx * 50}ms` }}
               onClick={() => handleRowClick(inv)}
             >
               <div className="flex justify-between items-start gap-2">

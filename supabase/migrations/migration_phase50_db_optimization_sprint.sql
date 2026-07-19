@@ -13,6 +13,12 @@ ON invoices (client_id, user_id, COALESCE(supplier_name, 'Unknown Vendor'));
 CREATE INDEX IF NOT EXISTS idx_invoices_analytics_recon 
 ON invoices (client_id, user_id, COALESCE(recon_status, 'unreconciled'));
 
+CREATE INDEX IF NOT EXISTS idx_invoices_total_amount 
+ON invoices ( (COALESCE(total_amount, 0)) );
+
+CREATE INDEX IF NOT EXISTS idx_invoices_taxable_amount 
+ON invoices ( (COALESCE(taxable_amount, 0)) );
+
 -- 2. Indexes for GSTR-2B Reconciliation speedups
 -- The frontend often filters matches by 'SUGGESTED' or 'APPROVED' status for a specific client.
 CREATE INDEX IF NOT EXISTS idx_reconciliation_client_status 

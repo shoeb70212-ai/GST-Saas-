@@ -76,7 +76,15 @@ def apply_tax_calculations(data_dict: dict) -> dict:
     Returns:
         dict: The updated data dictionary with precise tax amounts and confidence scores.
     """
-    taxable = sum((item.get("Amount") or 0) for item in data_dict.get("Line_Items", []))
+    line_items = data_dict.get("Line_Items", [])
+    if not line_items:
+        computed_total = data_dict.get("Total_Amount") or 0.0
+        confidence = compute_confidence(data_dict, computed_total)
+        data_dict["Confidence_Score"] = confidence["score"]
+        data_dict["Extraction_State"] = confidence["state"]
+        return data_dict
+
+    taxable = sum((item.get("Amount") or 0) for item in line_items)
     cgst = 0
     sgst = 0
     igst = 0
@@ -414,7 +422,41 @@ async def scan_invoice(
             raise HTTPException(status_code=500, detail=f"Failed to process file. Error: {str(e)}")
 
     try:
-        data_dict, tokens = await run_ai_extraction(content, mime_type, tally_ledgers)
+        # Deduct Credit (Atomic RPC) before AI extraction
+        async with httpx.AsyncClient() as http_client:
+            rpc_resp = await http_client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/decrement_credits",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={
+                    "user_id_param": user_id, 
+                    "amount": 1,
+                    "task_type_param": "invoice_scan",
+                    "file_name_param": file.filename,
+                    "tokens_used_param": 0
+                }
+            )
+            if rpc_resp.status_code != 200:
+                logger.error(f"Failed to deduct credits. RPC response: {rpc_resp.text}")
+                raise HTTPException(status_code=500, detail="Internal error during credit deduction")
+            
+            try:
+                result = rpc_resp.json()
+                if result == -1:
+                    raise HTTPException(status_code=402, detail="Insufficient credits. Please recharge your wallet.")
+            except ValueError:
+                pass
+
+        try:
+            data_dict, tokens = await run_ai_extraction(content, mime_type, tally_ledgers)
+        except Exception as ai_e:
+            # Refund credit on failure
+            async with httpx.AsyncClient() as http_client:
+                await http_client.post(
+                    f"{SUPABASE_URL}/rest/v1/rpc/refund_credits",
+                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json={"user_id_param": user_id, "amount": 1}
+                )
+            raise ai_e
         
         # Verify GSTIN if it exists (non-blocking — log warning on failure, don't fail the scan)
         gstin = data_dict.get("Supplier_GSTIN")
@@ -439,30 +481,6 @@ async def scan_invoice(
                 except Exception as dup_e:
                     logger.warning(f"Duplicate detection check failed (non-blocking): {dup_e}")
             
-        # Deduct Credit (Atomic RPC) — this is the authoritative credit check (fixes race condition)
-        async with httpx.AsyncClient() as http_client:
-            rpc_resp = await http_client.post(
-                f"{SUPABASE_URL}/rest/v1/rpc/decrement_credits",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json={
-                    "user_id_param": user_id, 
-                    "amount": 1,
-                    "task_type_param": "invoice_scan",
-                    "file_name_param": file.filename,
-                    "tokens_used_param": tokens
-                }
-            )
-            if rpc_resp.status_code != 200:
-                logger.error(f"Failed to deduct credits. RPC response: {rpc_resp.text}")
-                raise HTTPException(status_code=500, detail="Internal error during credit deduction")
-            
-            try:
-                result = rpc_resp.json()
-                if result == -1:
-                    raise HTTPException(status_code=402, detail="Insufficient credits. Please recharge your wallet.")
-            except ValueError:
-                pass
-                
         return {"status": "success", "data": data_dict}
     except HTTPException:
         raise  # Re-raise HTTP exceptions without wrapping

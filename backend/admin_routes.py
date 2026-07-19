@@ -57,7 +57,7 @@ async def verify_super_admin(authorization: str = Header(None)):
     return user_resp.user
 
 
-@router.get("/api/admin/metrics")
+@router.get("/metrics")
 async def get_admin_metrics(user=Depends(verify_super_admin)):
     if not SUPABASE_SERVICE_KEY:
         raise HTTPException(status_code=500, detail="Missing SUPABASE_SERVICE_ROLE_KEY in backend/.env. Cannot fetch metrics.")
@@ -91,7 +91,7 @@ class QuotaUpdate(BaseModel):
     new_quota: int
 
 
-@router.post("/api/admin/tenants/{tenant_id}/update")
+@router.post("/tenants/{tenant_id}/update")
 async def update_tenant_quota(tenant_id: str, data: QuotaUpdate, user=Depends(verify_super_admin)):
     if not SUPABASE_SERVICE_KEY:
         raise HTTPException(status_code=500, detail="Missing SUPABASE_SERVICE_ROLE_KEY in backend/.env. Cannot update quotas.")
@@ -108,7 +108,7 @@ async def update_tenant_quota(tenant_id: str, data: QuotaUpdate, user=Depends(ve
     return {"status": "success", "message": f"Quota updated to {data.new_quota}"}
 
 
-@router.get("/api/admin/tenants")
+@router.get("/tenants")
 async def get_all_tenants(user=Depends(verify_super_admin)):
     if not SUPABASE_SERVICE_KEY:
         raise HTTPException(status_code=500, detail="Missing SUPABASE_SERVICE_ROLE_KEY in backend/.env. Cannot fetch tenants.")
@@ -215,7 +215,7 @@ class ProfileUpdate(BaseModel):
     company_name: str
 
 
-@router.post("/api/admin/tenants/{tenant_id}/profile")
+@router.post("/tenants/{tenant_id}/profile")
 async def update_tenant_profile(tenant_id: str, data: ProfileUpdate, user=Depends(verify_super_admin)):
     if not SUPABASE_SERVICE_KEY:
         raise HTTPException(status_code=500, detail="Missing SUPABASE_SERVICE_ROLE_KEY in backend/.env. Cannot update profile.")
@@ -232,7 +232,7 @@ async def update_tenant_profile(tenant_id: str, data: ProfileUpdate, user=Depend
     return {"status": "success", "message": "Profile updated successfully."}
 
 
-@router.delete("/api/admin/tenants/{tenant_id}")
+@router.delete("/tenants/{tenant_id}")
 async def delete_tenant(tenant_id: str, user=Depends(verify_super_admin)):
     if not SUPABASE_SERVICE_KEY:
         raise HTTPException(status_code=500, detail="Missing SUPABASE_SERVICE_ROLE_KEY in backend/.env. Cannot delete tenant.")

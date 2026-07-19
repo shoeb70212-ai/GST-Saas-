@@ -248,9 +248,33 @@ async def process_whatsapp_message_bg(message_data: dict):
             except Exception as e:
                 logger.error(f"Storage upload failed: {e}")
             
+            # 4.5 Deduct Credit BEFORE AI Extraction
+            rpc_resp = await sc.rpc("decrement_credits", {
+                "user_id_param": user_id, 
+                "amount": 1,
+                "task_type_param": "whatsapp_scan",
+                "file_name_param": f"WhatsApp_{media_id}",
+                "tokens_used_param": 0
+            }).execute()
+            
+            if rpc_resp.data == -1:
+                await send_whatsapp_message(
+                    from_number,
+                    "⚠️ *Insufficient Credits*\nYour organization has run out of AI credits. Please recharge your wallet via the web dashboard to process this invoice."
+                )
+                return
+
             # 5. AI Extraction
             from main import run_ai_extraction
-            data_dict, tokens = await run_ai_extraction(content_bytes, mime_type, tally_ledgers)
+            try:
+                data_dict, tokens = await run_ai_extraction(content_bytes, mime_type, tally_ledgers)
+            except Exception as ai_e:
+                # Refund on failure
+                await sc.rpc("refund_credits", {
+                    "user_id_param": user_id,
+                    "amount": 1
+                }).execute()
+                raise ai_e
             
             state = data_dict.get("Extraction_State")
             if state == "needs_retry":
@@ -298,22 +322,6 @@ async def process_whatsapp_message_bg(message_data: dict):
                 for item in items:
                     item["invoice_id"] = invoice_id
                 await sc.table("invoice_line_items").insert(items).execute()
-
-            # 7. Deduct Credit and log tokens
-            rpc_resp = await sc.rpc("decrement_credits", {
-                "user_id_param": user_id, 
-                "amount": 1,
-                "task_type_param": "whatsapp_scan",
-                "file_name_param": f"WhatsApp_{media_id}",
-                "tokens_used_param": tokens
-            }).execute()
-            
-            if rpc_resp.data == -1:
-                await send_whatsapp_message(
-                    from_number,
-                    "⚠️ *Insufficient Credits*\nYour organization has run out of AI credits. Please recharge your wallet via the web dashboard to process this invoice."
-                )
-                return {"status": "insufficient_credits"}
 
             # 8. Send Success Message
             supplier = data_dict.get("Supplier_Name", "Unknown Vendor")
