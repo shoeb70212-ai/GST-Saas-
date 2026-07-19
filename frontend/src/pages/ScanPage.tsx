@@ -598,9 +598,9 @@ export default function ScanPage() {
     setFileStates([]);
   };
 
-  const updateExtractedData = (id: string, data: InvoiceData) => {
+  const updateExtractedData = useCallback((id: string, data: InvoiceData) => {
     setFileStates(prev => prev.map(f => f.id === id ? { ...f, extractedData: data, savedToCloud: false } : f));
-  };
+  }, [setFileStates]);
 
   const saveSingleInvoiceToDb = async (_fileId: string, fs: FileState, data: any, userId: string) => {
     const invoiceData = {

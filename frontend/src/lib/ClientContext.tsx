@@ -81,6 +81,43 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     fetchClients();
     fetchCredits();
+
+    let channel: any;
+    const setupRealtime = async () => {
+      try {
+        const { data: orgData } = await supabase.rpc('get_user_orgs');
+        if (orgData && orgData.length > 0) {
+          const orgId = orgData[0].org_id;
+          channel = supabase
+            .channel(`organizations_credits_${orgId}`)
+            .on(
+              'postgres_changes',
+              {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'organizations',
+                filter: `id=eq.${orgId}`,
+              },
+              (payload) => {
+                if (payload.new && payload.new.credits !== undefined) {
+                  setCredits(payload.new.credits);
+                }
+              }
+            )
+            .subscribe();
+        }
+      } catch (e) {
+        console.error("Realtime setup failed:", e);
+      }
+    };
+    
+    setupRealtime();
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, [fetchClients, fetchCredits]);
 
   // Persist active client selection

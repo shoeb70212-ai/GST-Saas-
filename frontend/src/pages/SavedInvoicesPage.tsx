@@ -15,7 +15,94 @@ import { ErrorState } from '../components/ui/ErrorState';
 import { formatCurrency } from '../utils/format';
 import { maskPAN, maskBankAccount, maskPhone, maskEmail } from '../utils/masking';
 import { Eye, EyeOff } from 'lucide-react';
+import React from 'react';
 
+const MemoizedInvoiceRow = React.memo(({ 
+  inv, 
+  selectedIds, 
+  visibleColumns, 
+  showSensitiveData,
+  categoryOptions,
+  handleRowClick,
+  handleUpdateCategory,
+  setSelectedIds
+}: any) => {
+  return (
+    <tr className="table-row cursor-pointer" onClick={() => handleRowClick(inv)}>
+      <td className="p-4" onClick={(e) => e.stopPropagation()}>
+        <input 
+          type="checkbox"
+          className="rounded border-border bg-bg-sunken text-accent focus:ring-accent"
+          checked={selectedIds.has(inv.id)}
+          onChange={(e) => {
+            const newSet = new Set(selectedIds);
+            if (e.target.checked) newSet.add(inv.id);
+            else newSet.delete(inv.id);
+            setSelectedIds(newSet);
+          }}
+        />
+      </td>
+      <td className="p-4 whitespace-nowrap text-text-primary text-sm font-medium">
+        <div className="flex items-center gap-2">
+          {inv.file_name || 'Unknown'}
+          {inv.hsn_audit_warning && <AlertTriangle className="w-4 h-4 text-error shrink-0"  />}
+        </div>
+      </td>
+      {visibleColumns.map((col: string) => {
+        const isAmount = col.includes('Amount') || col === 'Round_Off';
+        let val = inv[col.toLowerCase()] || '';
+        
+        if (!showSensitiveData && val) {
+          if (col.includes('PAN')) val = maskPAN(val);
+          else if (col === 'Account_Number') val = maskBankAccount(val);
+          else if (col === 'Supplier_Phone') val = maskPhone(val);
+          else if (col === 'Supplier_Email') val = maskEmail(val);
+        }
+
+        return (
+          <td key={col} className={cn("p-4 text-sm text-text-secondary whitespace-nowrap", isAmount ? "text-right font-mono" : "")}>
+            {col === 'Supplier_GSTIN_Status' ? (
+              val === 'Active' ? (
+                <span className="badge bg-success-subtle text-success border border-success/20 px-2 py-0.5 rounded-full text-xs">Active</span>
+              ) : val === 'Cancelled' ? (
+                <span className="badge bg-error-subtle text-error border border-error/20 px-2 py-0.5 rounded-full text-xs">Cancelled</span>
+              ) : val ? (
+                <span className="badge bg-bg-sunken text-text-secondary border border-border px-2 py-0.5 rounded-full text-xs">{val}</span>
+              ) : '-'
+            ) : col === 'Expense_Category' ? (
+              <select
+                onClick={(e) => e.stopPropagation()}
+                value={val}
+                onChange={(e) => handleUpdateCategory(inv.id, e.target.value)}
+                className="bg-bg-sunken border border-border rounded px-2 py-1 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+              >
+                <option value="">Select Category</option>
+                {categoryOptions.map((cat: string) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+                {!categoryOptions.includes(val) && val && <option value={val}>{val}</option>}
+              </select>
+            ) : isAmount && val ? formatCurrency(Number(val)) : val || '-'}
+          </td>
+        );
+      })}
+      <td className="p-4 text-center">
+        {inv.extraction_state === 'needs_retry' ? (
+          <span className="badge bg-error-subtle text-error border border-error/20">Needs Retry</span>
+        ) : inv.extraction_state === 'needs_review' ? (
+          <span className="badge bg-warning-subtle text-warning border border-warning/20">Review</span>
+        ) : (
+          <span className="badge bg-success-subtle text-success border border-success/20">Processed</span>
+        )}
+        {inv.approval_status === 'pending_approval' && (
+          <div className="mt-1">
+            <span className="badge bg-warning-subtle text-warning border border-warning/20 text-[10px]">Pending Appr.</span>
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+});
 export default function SavedInvoicesPage() {
   const { activeClientId } = useClient();
   const queryClient = useQueryClient();
@@ -569,79 +656,17 @@ export default function SavedInvoicesPage() {
             </thead>
             <tbody>
               {filteredInvoices.map((inv) => (
-                <tr key={inv.id} className="table-row cursor-pointer" onClick={() => handleRowClick(inv)}>
-                  <td className="p-4" onClick={(e) => e.stopPropagation()}>
-                    <input 
-                      type="checkbox"
-                      className="rounded border-border bg-bg-sunken text-accent focus:ring-accent"
-                      checked={selectedIds.has(inv.id)}
-                      onChange={(e) => {
-                        const newSet = new Set(selectedIds);
-                        if (e.target.checked) newSet.add(inv.id);
-                        else newSet.delete(inv.id);
-                        setSelectedIds(newSet);
-                      }}
-                    />
-                  </td>
-                  <td className="p-4 whitespace-nowrap text-text-primary text-sm font-medium">
-                    <div className="flex items-center gap-2">
-                      {inv.file_name || 'Unknown'}
-                      {inv.hsn_audit_warning && <AlertTriangle className="w-4 h-4 text-error shrink-0"  />}
-                    </div>
-                  </td>
-                  {visibleColumns.map(col => {
-                    const isAmount = col.includes('Amount') || col === 'Round_Off';
-                    let val = inv[col.toLowerCase()] || '';
-                    
-                    if (!showSensitiveData && val) {
-                      if (col.includes('PAN')) val = maskPAN(val);
-                      else if (col === 'Account_Number') val = maskBankAccount(val);
-                      else if (col === 'Supplier_Phone') val = maskPhone(val);
-                      else if (col === 'Supplier_Email') val = maskEmail(val);
-                    }
-
-                    return (
-                      <td key={col} className={cn("p-4 text-sm text-text-secondary whitespace-nowrap", isAmount ? "text-right font-mono" : "")}>
-                        {col === 'Supplier_GSTIN_Status' ? (
-                          val === 'Active' ? (
-                            <span className="badge bg-success-subtle text-success border border-success/20 px-2 py-0.5 rounded-full text-xs">Active</span>
-                          ) : val === 'Cancelled' ? (
-                            <span className="badge bg-error-subtle text-error border border-error/20 px-2 py-0.5 rounded-full text-xs">Cancelled</span>
-                          ) : val ? (
-                            <span className="badge bg-bg-sunken text-text-secondary border border-border px-2 py-0.5 rounded-full text-xs">{val}</span>
-                          ) : '-'
-                        ) : col === 'Expense_Category' ? (
-                          <select
-                            onClick={(e) => e.stopPropagation()}
-                            value={val}
-                            onChange={(e) => handleUpdateCategory(inv.id, e.target.value)}
-                            className="bg-bg-sunken border border-border rounded px-2 py-1 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
-                          >
-                            <option value="">Select Category</option>
-                            {categoryOptions.map((cat: string) => (
-                              <option key={cat} value={cat}>{cat}</option>
-                            ))}
-                            {!categoryOptions.includes(val) && val && <option value={val}>{val}</option>}
-                          </select>
-                        ) : isAmount && val ? formatCurrency(Number(val)) : val || '-'}
-                      </td>
-                    );
-                  })}
-                  <td className="p-4 text-center">
-                    {inv.extraction_state === 'needs_retry' ? (
-                      <span className="badge bg-error-subtle text-error border border-error/20">Needs Retry</span>
-                    ) : inv.extraction_state === 'needs_review' ? (
-                      <span className="badge bg-warning-subtle text-warning border border-warning/20">Review</span>
-                    ) : (
-                      <span className="badge bg-success-subtle text-success border border-success/20">Processed</span>
-                    )}
-                    {inv.approval_status === 'pending_approval' && (
-                      <div className="mt-1">
-                        <span className="badge bg-warning-subtle text-warning border border-warning/20 text-[10px]">Pending Appr.</span>
-                      </div>
-                    )}
-                  </td>
-                </tr>
+                <MemoizedInvoiceRow 
+                  key={inv.id} 
+                  inv={inv} 
+                  selectedIds={selectedIds} 
+                  visibleColumns={visibleColumns} 
+                  showSensitiveData={showSensitiveData} 
+                  categoryOptions={categoryOptions} 
+                  handleRowClick={handleRowClick} 
+                  handleUpdateCategory={handleUpdateCategory} 
+                  setSelectedIds={setSelectedIds} 
+                />
               ))}
               
               {filteredInvoices.length === 0 && (

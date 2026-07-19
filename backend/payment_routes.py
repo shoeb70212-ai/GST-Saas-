@@ -53,6 +53,9 @@ async def create_order(req: OrderRequest, authorization: str = Header(None)):
     user_id, supabase_client = await _verify_user(token)
 
     if not rzp_client:
+        if os.getenv("ENVIRONMENT", "development") == "production":
+            raise HTTPException(status_code=500, detail="Mock payments are disabled in production")
+        
         # Mock response for testing without keys
         mock_order_id = "order_mock_" + os.urandom(4).hex()
         # Persist mock order in DB for verify-payment to look up
@@ -124,6 +127,9 @@ async def razorpay_webhook(request: Request):
     signature = request.headers.get("x-razorpay-signature")
 
     if not rzp_client:
+        if os.getenv("ENVIRONMENT", "development") == "production":
+            logger.error("Mock webhook triggered in production environment")
+            return {"status": "error"}
         # Mock mode — accept without verification (dev only)
         return {"status": "ok"}
 
@@ -196,17 +202,6 @@ async def verify_payment(
     if not order_id or not payment_id:
         raise HTTPException(status_code=400, detail="Missing payment_id or order_id")
 
-    # Verify Razorpay signature
-    if rzp_client:
-        try:
-            rzp_client.utility.verify_payment_signature({
-                'razorpay_order_id': order_id,
-                'razorpay_payment_id': payment_id,
-                'razorpay_signature': signature
-            })
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid payment signature")
-
     # Fetch order from DB — use stored expected_credits/expected_amount (NOT client-supplied)
     order_resp = await supabase_client.table("payment_orders").select("*").eq("order_id", order_id).execute()
 
@@ -227,6 +222,30 @@ async def verify_payment(
     expected_amount = order_data["expected_amount"]
     plan_type = order_data["plan_type"]
 
+    # Verify Razorpay signature and fetch actual payment amount
+    actual_amount = expected_amount
+    if rzp_client:
+        try:
+            rzp_client.utility.verify_payment_signature({
+                'razorpay_order_id': order_id,
+                'razorpay_payment_id': payment_id,
+                'razorpay_signature': signature
+            })
+            
+            # Fetch actual payment details
+            payment_info = rzp_client.payment.fetch(payment_id)
+            actual_amount = payment_info.get("amount", expected_amount)
+            
+            if actual_amount < expected_amount:
+                raise HTTPException(status_code=400, detail="Payment amount is less than expected amount")
+                
+        except Exception as e:
+            logger.error(f"Payment verification error: {e}")
+            raise HTTPException(status_code=400, detail="Invalid payment signature or details")
+    else:
+        if os.getenv("ENVIRONMENT", "development") == "production":
+            raise HTTPException(status_code=500, detail="Mock payments are disabled in production")
+
     # Fulfill order via idempotent RPC (uses service role key for upgrade_user_tier)
     if not SUPABASE_SERVICE_KEY:
         raise HTTPException(status_code=500, detail="Missing Service Role Key")
@@ -243,7 +262,7 @@ async def verify_payment(
                 json={
                     "p_order_id": order_id,
                     "p_payment_id": payment_id,
-                    "p_amount_paid": expected_amount
+                    "p_amount_paid": actual_amount
                 }
             )
             if rpc_response.status_code >= 400:

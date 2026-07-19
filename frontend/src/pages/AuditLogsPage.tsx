@@ -36,9 +36,9 @@ export default function AuditLogsPage() {
   }, []);
 
   const filteredLogs = logs.filter(l => 
-    l.table_name.toLowerCase().includes(search.toLowerCase()) || 
-    l.action.toLowerCase().includes(search.toLowerCase()) ||
-    l.record_id.toLowerCase().includes(search.toLowerCase())
+    (l.table_name || '').toLowerCase().includes(search.toLowerCase()) || 
+    (l.action || '').toLowerCase().includes(search.toLowerCase()) ||
+    (l.record_id || '').toLowerCase().includes(search.toLowerCase())
   );
 
   if (loading) {

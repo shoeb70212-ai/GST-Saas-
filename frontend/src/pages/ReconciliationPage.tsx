@@ -6,6 +6,7 @@ import { UploadCloud, CheckCircle2, AlertTriangle, AlertCircle, Loader2, FileSea
 import toast from 'react-hot-toast';
 import { ErrorState } from '../components/ui/ErrorState';
 import { Skeleton } from '../components/ui/Skeleton';
+import { Edit2, Check, X } from 'lucide-react';
 
 /**
  * ReconciliationPage compares local AI-extracted invoices against government GSTR-2B data.
@@ -22,7 +23,9 @@ const cleanStr = (s: string) => (s || '').toString().trim().toUpperCase().replac
 
 export default function ReconciliationPage() {
   const { activeClientId } = useClient();
-  const [period, setPeriod] = useState('03-2024'); // Example default
+  const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+  const currentYear = new Date().getFullYear();
+  const [period, setPeriod] = useState(`${currentMonth}-${currentYear}`);
   const [tolerance, setTolerance] = useState(1.0);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -135,6 +138,51 @@ export default function ReconciliationPage() {
   ], [invoices, missingInPR]);
 
   const [isDeepMatching, setIsDeepMatching] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ supplier_gstin: '', invoice_number: '' });
+
+  const handleEditClick = (row: any) => {
+    setEditingId(row.id);
+    setEditForm({ supplier_gstin: row.supplier_gstin || '', invoice_number: row.invoice_number || '' });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingId) return;
+    try {
+      const { error } = await supabase
+        .from('invoices')
+        .update({
+           supplier_gstin: editForm.supplier_gstin.toUpperCase(),
+           invoice_number: editForm.invoice_number.toUpperCase()
+        })
+        .eq('id', editingId);
+      
+      if (error) throw error;
+      toast.success("Updated invoice details");
+      setEditingId(null);
+      refetchInvoices();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update");
+    }
+  };
+
+  const handleAcknowledge = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('invoices')
+        .update({
+           recon_status: 'matched',
+           error_message: 'Acknowledged manually'
+        })
+        .eq('id', id);
+      
+      if (error) throw error;
+      toast.success("Invoice acknowledged and marked as matched");
+      refetchInvoices();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to acknowledge");
+    }
+  };
 
   const handleDeepMatch = useCallback(async () => {
     if (!activeClientId) return;
@@ -320,7 +368,35 @@ export default function ReconciliationPage() {
                       <span className="badge bg-error-subtle text-error border border-error/20 text-[10px]">Missing in 2B</span>
                     )}
                   </div>
+                  {row.status !== 'missing_in_pr' && row.status !== 'matched' && (
+                    <div className="flex gap-2">
+                      <button onClick={() => handleEditClick(row)} className="text-xs text-accent hover:underline flex items-center gap-1"><Edit2 className="w-3 h-3"/> Edit</button>
+                      <button onClick={() => handleAcknowledge(row.id)} className="text-xs text-success hover:underline flex items-center gap-1"><Check className="w-3 h-3"/> Acknowledge</button>
+                    </div>
+                  )}
                 </div>
+                {editingId === row.id && (
+                  <div className="mt-2 p-3 bg-bg-sunken rounded border border-border flex flex-col gap-2">
+                    <input 
+                      type="text" 
+                      placeholder="GSTIN"
+                      value={editForm.supplier_gstin}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, supplier_gstin: e.target.value }))}
+                      className="w-full px-2 py-1 bg-bg-surface border border-border rounded text-xs focus:border-accent outline-none"
+                    />
+                    <input 
+                      type="text" 
+                      placeholder="Invoice #"
+                      value={editForm.invoice_number}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, invoice_number: e.target.value }))}
+                      className="w-full px-2 py-1 bg-bg-surface border border-border rounded text-xs focus:border-accent outline-none"
+                    />
+                    <div className="flex justify-end gap-2 mt-1">
+                      <button onClick={() => setEditingId(null)} className="px-2 py-1 text-xs text-text-secondary hover:text-text-primary"><X className="w-4 h-4"/></button>
+                      <button onClick={handleSaveEdit} className="px-2 py-1 text-xs bg-accent text-white rounded"><Check className="w-4 h-4"/></button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -340,23 +416,69 @@ export default function ReconciliationPage() {
               <tbody className="divide-y divide-border">
                 {tableData.map((row) => (
                   <tr key={row.id} className="hover:bg-bg-subtle transition-colors group">
-                    <td className="p-4 font-medium text-text-primary">{row.supplier_gstin || 'N/A'}</td>
-                    <td className="p-4 font-mono text-text-secondary">{row.invoice_number || 'N/A'}</td>
+                    <td className="p-4 font-medium text-text-primary">
+                      {editingId === row.id ? (
+                        <input 
+                          type="text" 
+                          value={editForm.supplier_gstin}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, supplier_gstin: e.target.value }))}
+                          className="w-full px-2 py-1 bg-bg-surface border border-border rounded text-xs focus:border-accent outline-none"
+                        />
+                      ) : (
+                        row.supplier_gstin || 'N/A'
+                      )}
+                    </td>
+                    <td className="p-4 font-mono text-text-secondary">
+                      {editingId === row.id ? (
+                        <input 
+                          type="text" 
+                          value={editForm.invoice_number}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, invoice_number: e.target.value }))}
+                          className="w-full px-2 py-1 bg-bg-surface border border-border rounded text-xs focus:border-accent outline-none"
+                        />
+                      ) : (
+                        row.invoice_number || 'N/A'
+                      )}
+                    </td>
                     <td className="p-4 font-mono text-text-secondary">{row.invoice_date || 'N/A'}</td>
                     <td className="p-4 font-mono text-right font-medium">₹{row.taxable_amount?.toFixed(2) || '0.00'}</td>
-                    <td className="p-4 text-center">
-                      {row.status === 'matched' ? (
-                        <span className="badge bg-success-subtle text-success border border-success/20">Matched</span>
-                      ) : row.status === 'mismatch' ? (
-                        <span className="badge bg-warning-subtle text-warning border border-warning/20" title={row.error_message || "Mismatch"}>
-                          {row.error_message?.includes('Consolidation') ? (
-                            <span className="flex items-center gap-1 cursor-help"><AlertTriangle className="w-3 h-3"/> Grouped</span>
-                          ) : 'Mismatch'}
-                        </span>
-                      ) : row.status === 'missing_in_pr' ? (
-                        <span className="badge bg-accent/10 text-accent border border-accent/20">Missing in PR</span>
+                    <td className="p-4 text-center relative">
+                      {editingId === row.id ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <button onClick={handleSaveEdit} className="text-success hover:bg-success-subtle p-1 rounded transition-colors" title="Save">
+                            <Check className="w-4 h-4"/>
+                          </button>
+                          <button onClick={() => setEditingId(null)} className="text-error hover:bg-error-subtle p-1 rounded transition-colors" title="Cancel">
+                            <X className="w-4 h-4"/>
+                          </button>
+                        </div>
                       ) : (
-                        <span className="badge bg-error-subtle text-error border border-error/20">Missing in 2B</span>
+                        <div className="flex items-center justify-center gap-2">
+                          {row.status === 'matched' ? (
+                            <span className="badge bg-success-subtle text-success border border-success/20">Matched</span>
+                          ) : row.status === 'mismatch' ? (
+                            <span className="badge bg-warning-subtle text-warning border border-warning/20" title={row.error_message || "Mismatch"}>
+                              {row.error_message?.includes('Consolidation') ? (
+                                <span className="flex items-center gap-1 cursor-help"><AlertTriangle className="w-3 h-3"/> Grouped</span>
+                              ) : 'Mismatch'}
+                            </span>
+                          ) : row.status === 'missing_in_pr' ? (
+                            <span className="badge bg-accent/10 text-accent border border-accent/20">Missing in PR</span>
+                          ) : (
+                            <span className="badge bg-error-subtle text-error border border-error/20">Missing in 2B</span>
+                          )}
+                          
+                          {row.status !== 'missing_in_pr' && row.status !== 'matched' && (
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 bg-bg-surface border border-border rounded shadow-sm p-1">
+                              <button onClick={() => handleEditClick(row)} className="text-accent hover:bg-accent/10 p-1 rounded" title="Edit PR Invoice">
+                                <Edit2 className="w-3 h-3"/>
+                              </button>
+                              <button onClick={() => handleAcknowledge(row.id)} className="text-success hover:bg-success-subtle p-1 rounded" title="Acknowledge & Force Match">
+                                <Check className="w-3 h-3"/>
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </td>
                   </tr>
