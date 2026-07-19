@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 
 # Install system dependencies including poppler for pdf2image
-RUN apt-get update && apt-get install -y poppler-utils && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y poppler-utils build-essential libpq-dev python3-dev && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
