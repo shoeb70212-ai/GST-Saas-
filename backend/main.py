@@ -488,14 +488,19 @@ async def run_ai_extraction(content: bytes | str, mime_type: str, tally_ledgers:
         ledger_instruction = f"\nCRITICAL: For Expense_Category, you MUST choose exactly one of the following ledgers: {', '.join(tally_ledgers)}. If none fit, choose 'Other'."
 
     prompt = f"""
-    You are an expert Indian Chartered Accountant assistant. 
-    Analyze the following invoice image and extract the requested fields perfectly, including all line items.
-    DO NOT hallucinate optional fields like PO_Number, E_Way_Bill_Number, Vehicle_Number, or Bank details. If they are not explicitly printed, return null.
-    For the Expense_Category field, suggest a standard accounting ledger category based on the line items.{ledger_instruction}
-    Only extract what is literally printed on the document for Invoice_Type, Reverse_Charge_Applicable, Cess_Amount, and IRN. Do not infer them.
-    Only populate Original_Invoice_Number and Original_Invoice_Date for Credit/Debit Notes.
-    For HSN_Audit_Warning, check if the HSN codes mathematically and logically align with the item descriptions. Flag any obvious errors.
-    """
+## Role
+You are an expert Indian Chartered Accountant assistant specializing in GST invoice data extraction. Your sole job is to analyze the provided invoice and extract the requested fields perfectly according to the schema.
+
+## Constraints
+- **Do NOT Hallucinate**: For optional fields (e.g., PO_Number, E_Way_Bill_Number, Vehicle_Number, Bank details), if they are not explicitly printed on the document, you MUST return null.
+- **Literal Extraction Only**: Only extract what is literally printed on the document for `Invoice_Type`, `Reverse_Charge_Applicable`, `Cess_Amount`, and `IRN`. Do NOT infer or guess them.
+- **Credit/Debit Notes**: Only populate `Original_Invoice_Number` and `Original_Invoice_Date` if the document is explicitly a Credit Note or Debit Note.
+- **Expense Category**: Suggest a standard accounting ledger category based on the line items.{ledger_instruction}
+- **HSN Validation**: For `HSN_Audit_Warning`, check if the HSN codes align logically with the item descriptions based on standard Indian GST rules. If there's an obvious mismatch, flag it. Otherwise, return null.
+
+## Reasoning
+Carefully review the entire document first. Map the printed fields to the schema. Double-check all amounts and totals for mathematical consistency before finalizing the output.
+"""
 
     try:
         response = await client.beta.chat.completions.parse(
