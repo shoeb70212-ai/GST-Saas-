@@ -16,6 +16,7 @@ export default function ClientsPage() {
 
   // Enterprise RBAC State
   const [userRole, setUserRole] = useState<string>('accountant');
+  const [currentOrgId, setCurrentOrgId] = useState<string | null>(null);
   const [managingAccessFor, setManagingAccessFor] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [assignedMembers, setAssignedMembers] = useState<string[]>([]);
@@ -40,6 +41,7 @@ export default function ClientsPage() {
       const { data: orgData } = await supabase.rpc('get_user_orgs');
       if (orgData && orgData.length > 0) {
         setUserRole(orgData[0].role);
+        setCurrentOrgId(orgData[0].org_id);
         if (orgData[0].role === 'owner' || orgData[0].role === 'admin') {
           const { data: members } = await supabase
             .from('organization_members')
@@ -90,7 +92,7 @@ export default function ClientsPage() {
       } else {
         const { error, data } = await supabase
           .from('clients')
-          .insert({ ...formData, user_id: session.user.id })
+          .insert({ ...formData, user_id: session.user.id, org_id: currentOrgId })
           .select()
           .single();
         if (error) throw error;
