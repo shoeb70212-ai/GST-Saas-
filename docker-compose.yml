@@ -6,8 +6,6 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    ports:
-      - "8000:8000"
     environment:
       # These will be populated by Coolify's Environment Variables section
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
@@ -22,8 +20,6 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     restart: unless-stopped
-    ports:
-      - "80:80"
     depends_on:
       - backend
     environment:
