@@ -206,11 +206,20 @@ export default function DashboardPage() {
                onClick={async () => {
                  const { data: { session } } = await supabase.auth.getSession();
                  if (session) {
-                   const { data, error } = await supabase.from('clients').insert({
-                     user_id: session.user.id,
-                     client_name: "My Company",
-                     is_active: true
-                   }).select().single();
+                    const { data: orgData } = await supabase.rpc('get_user_orgs');
+                    let currentOrgId = null;
+                    if (orgData && orgData.length > 0) {
+                      currentOrgId = orgData[0].org_id;
+                      // Ensure the profile's active_org_id is set before inserting
+                      await supabase.from('profiles').update({ active_org_id: currentOrgId }).eq('id', session.user.id);
+                    }
+
+                    const { data, error } = await supabase.from('clients').insert({
+                      user_id: session.user.id,
+                      org_id: currentOrgId,
+                      client_name: "My Company",
+                      is_active: true
+                    }).select().single();
                    if (!error && data) {
                      setActiveClientId(data.id);
                      localStorage.setItem('accountType', 'business');

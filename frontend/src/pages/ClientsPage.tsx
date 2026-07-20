@@ -90,6 +90,12 @@ export default function ClientsPage() {
         if (error) throw error;
         toast.success(`${entityName} updated successfully`);
       } else {
+        // Fix for backend trigger: Ensure the user's profile has active_org_id set
+        // before inserting the client, otherwise the trigger will overwrite org_id with NULL.
+        if (currentOrgId) {
+          await supabase.from('profiles').update({ active_org_id: currentOrgId }).eq('id', session.user.id);
+        }
+
         const { error, data } = await supabase
           .from('clients')
           .insert({ ...formData, user_id: session.user.id, org_id: currentOrgId })
