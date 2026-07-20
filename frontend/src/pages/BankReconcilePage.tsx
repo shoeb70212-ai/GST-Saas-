@@ -130,7 +130,7 @@ export default function BankReconcilePage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
       
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
       const res = await fetch(`${apiUrl}/api/bank-reconcile/suggestions/${activeClientId}`, {
         headers: { 'Authorization': `Bearer ${session.access_token}` }
       });
@@ -152,7 +152,7 @@ export default function BankReconcilePage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
       
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
       const res = await fetch(`${apiUrl}/api/bank-reconcile/history/${activeClientId}`, {
         headers: { 'Authorization': `Bearer ${session.access_token}` }
       });
@@ -182,7 +182,7 @@ export default function BankReconcilePage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
       const res = await fetch(`${apiUrl}/api/bank-reconcile/run`, {
         method: 'POST',
         headers: { 
@@ -209,7 +209,7 @@ export default function BankReconcilePage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
       const res = await fetch(`${apiUrl}/api/bank-reconcile/${action}`, {
         method: 'POST',
         headers: { 

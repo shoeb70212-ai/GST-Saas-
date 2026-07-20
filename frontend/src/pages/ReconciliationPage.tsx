@@ -78,7 +78,7 @@ export default function ReconciliationPage() {
     setIsUploading(true);
     toast.loading("Reconciling with GSTR-2B...", { id: 'recon' });
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Authentication required.");
 
@@ -194,7 +194,7 @@ export default function ReconciliationPage() {
       formData.append('period', period);
       formData.append('tolerance', tolerance.toString());
       
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Authentication required.");
 

@@ -418,7 +418,7 @@ export default function ScanPage() {
     formData.append('client_id', activeClientId);
     
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Authentication required.");
       
@@ -503,7 +503,7 @@ export default function ScanPage() {
         formData.append('password', pdfPassword);
       }
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Authentication required.");
 

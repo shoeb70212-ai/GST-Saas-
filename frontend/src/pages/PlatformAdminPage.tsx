@@ -23,7 +23,7 @@ const PlatformAdminPage: React.FC = () => {
 
   const fetchMetrics = async (token: string) => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
       const [metricsRes, tenantsRes] = await Promise.all([
         fetch(`${apiUrl}/api/admin/metrics`, { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch(`${apiUrl}/api/admin/tenants`, { headers: { 'Authorization': `Bearer ${token}` } })
@@ -43,7 +43,7 @@ const PlatformAdminPage: React.FC = () => {
     }
   };
   const handleAction = async (action: string, t: any) => {
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
     if (action === 'quota') {
       const newQuota = prompt(`Enter new quota for ${t.company_name}:`, t.credits);
       if (newQuota && !isNaN(Number(newQuota))) {
