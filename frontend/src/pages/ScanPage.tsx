@@ -539,6 +539,11 @@ export default function ScanPage() {
   };
 
   const onDrop = useCallback((acceptedFiles: File[], fileRejections: any[]) => {
+    if (!activeClientId) {
+      toast.error("Please select a client first.");
+      return;
+    }
+
     const allDropped = [...acceptedFiles, ...fileRejections.map(r => r.file)];
     const zipFiles = allDropped.filter(f => f && f.name && f.name.toLowerCase().endsWith('.zip'));
     
