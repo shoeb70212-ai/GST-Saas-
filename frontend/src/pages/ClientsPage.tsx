@@ -38,7 +38,23 @@ export default function ClientsPage() {
 
   React.useEffect(() => {
     const fetchRoleAndTeam = async () => {
-      const { data: orgData } = await supabase.rpc('get_user_orgs');
+      let { data: orgData } = await supabase.rpc('get_user_orgs');
+
+      // Safety net: If the user has no organization (legacy user or trigger didn't run),
+      // auto-create a personal org via the ensure_user_org RPC.
+      if (!orgData || orgData.length === 0) {
+        const { data: newOrgId, error } = await supabase.rpc('ensure_user_org');
+        if (error) {
+          console.error('ensure_user_org failed:', error.message);
+          toast.error('No organization found. Please contact support.');
+          return;
+        }
+        if (newOrgId) {
+          const { data: refetched } = await supabase.rpc('get_user_orgs');
+          orgData = refetched;
+        }
+      }
+
       if (orgData && orgData.length > 0) {
         setUserRole(orgData[0].role);
         setCurrentOrgId(orgData[0].org_id);
@@ -90,15 +106,25 @@ export default function ClientsPage() {
         if (error) throw error;
         toast.success(`${entityName} updated successfully`);
       } else {
-        // Fix for backend trigger: Ensure the user's profile has active_org_id set
-        // before inserting the client, otherwise the trigger will overwrite org_id with NULL.
-        if (currentOrgId) {
-          await supabase.from('profiles').update({ active_org_id: currentOrgId }).eq('id', session.user.id);
+        // Guard: Ensure the user has an organization before inserting.
+        // If currentOrgId is null, call ensure_user_org to auto-create one.
+        let orgIdForInsert = currentOrgId;
+        if (!orgIdForInsert) {
+          const { data: fallbackOrgId, error: orgError } = await supabase.rpc('ensure_user_org');
+          if (orgError || !fallbackOrgId) {
+            throw new Error('No organization found. Please refresh the page or contact support.');
+          }
+          orgIdForInsert = fallbackOrgId;
+          setCurrentOrgId(fallbackOrgId);
         }
+
+        // Ensure the user's profile has active_org_id set,
+        // otherwise the trigger will overwrite org_id with NULL.
+        await supabase.from('profiles').update({ active_org_id: orgIdForInsert }).eq('id', session.user.id);
 
         const { error, data } = await supabase
           .from('clients')
-          .insert({ ...formData, user_id: session.user.id, org_id: currentOrgId })
+          .insert({ ...formData, user_id: session.user.id, org_id: orgIdForInsert })
           .select()
           .single();
         if (error) throw error;
@@ -179,7 +205,7 @@ export default function ClientsPage() {
           <p className="text-text-secondary">Manage your {entityNamePlural.toLowerCase()} to keep their invoices strictly separated.</p>
         </div>
         
-        {!isAdding && !editingId && (userRole === 'owner' || userRole === 'admin') && (
+        {!isAdding && !editingId && (userRole === 'owner' || userRole === 'admin' || userRole === 'accountant') && (
           <button onClick={() => setIsAdding(true)} className="btn-primary">
             <Plus className="w-4 h-4" /> Add {entityName}
           </button>
@@ -227,7 +253,7 @@ export default function ClientsPage() {
           <p className="text-text-secondary max-w-md mb-6">
             Add your first {entityName.toLowerCase()} to start organizing invoices and managing their data securely.
           </p>
-          {(userRole === 'owner' || userRole === 'admin') && (
+          {(userRole === 'owner' || userRole === 'admin' || userRole === 'accountant') && (
             <button onClick={() => setIsAdding(true)} className="btn-primary">
               <Plus className="w-4 h-4" /> Add Your First {entityName}
             </button>
@@ -301,7 +327,7 @@ export default function ClientsPage() {
         <div className="space-y-3 pr-2 mb-6">
               {teamMembers.length === 0 ? (
                 <div className="p-4 bg-bg-sunken rounded-lg text-center text-sm text-text-secondary">
-                  No accountants found in your firm. Add them via Settings &gt; Team Management.
+                  {'No accountants found in your firm. Add them via Settings > Team Management.'}
                 </div>
               ) : (
                 teamMembers.map(member => (

@@ -146,7 +146,6 @@ export default function SavedInvoicesPage() {
       let query = supabase
         .from('invoices')
         .select('*', { count: 'exact' })
-        .eq('user_id', session.user.id)
         .eq('client_id', activeClientId);
 
       if (debouncedSearchTerm) {
