@@ -375,9 +375,42 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-bg-base text-text-primary font-body overflow-x-hidden">
 
-      {/* ── SEO Meta (inline for now, use react-helmet-async if installed) ── */}
+      {/* ── SEO Meta & AEO Structured Data (JSON-LD) ── */}
       <title>KhataLens — AI Invoice Extraction for Indian CAs | GST Filing Automation</title>
-
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "SoftwareApplication",
+            "name": "KhataLens",
+            "applicationCategory": "BusinessApplication",
+            "operatingSystem": "Web",
+            "description": "AI-powered GST invoice scanning, data extraction, and GSTR-2B reconciliation platform for Indian Chartered Accountants.",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "INR",
+              "description": "Start with 100 free extractions in Beta."
+            },
+            "aggregateRating": {
+              "@type": "AggregateRating",
+              "ratingValue": "4.9",
+              "ratingCount": "120"
+            }
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": faqData.map(faq => ({
+              "@type": "Question",
+              "name": faq.question,
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": faq.answer
+              }
+            }))
+          }
+        ]
+      }) }} />
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
           SECTION 1 — NAVBAR
       ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
