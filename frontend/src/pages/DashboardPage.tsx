@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { Link } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { useClient } from '../lib/ClientContext';
+import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Skeleton } from '../components/ui/Skeleton';
 import AnalyticsCharts, { type AnalyticsData, AnalyticsSkeleton } from '../components/AnalyticsCharts';
