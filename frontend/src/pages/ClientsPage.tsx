@@ -45,7 +45,7 @@ export default function ClientsPage() {
         if (orgData[0].role === 'owner' || orgData[0].role === 'admin') {
           const { data: members } = await supabase
             .from('organization_members')
-            .select('user_id, role, profiles(company_name)')
+            .select('user_id, role')
             .eq('org_id', orgData[0].org_id)
             .eq('role', 'accountant');
           if (members) setTeamMembers(members);
