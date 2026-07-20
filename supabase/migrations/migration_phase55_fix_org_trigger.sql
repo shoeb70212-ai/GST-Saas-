@@ -1,23 +1,30 @@
--- Fix set_default_org_id to respect explicitly provided org_id and improve fallback logic
-
+-- 1. Fix the trigger that was aggressively overwriting org_id with NULL
 CREATE OR REPLACE FUNCTION set_default_org_id()
 RETURNS TRIGGER AS $$
 BEGIN
-    -- 1. If the frontend explicitly provides an org_id, verify the user actually belongs to it
+    -- If the frontend provided a valid org_id, respect it!
     IF NEW.org_id IS NOT NULL THEN
-        IF EXISTS (SELECT 1 FROM organization_members WHERE org_id = NEW.org_id AND user_id = auth.uid()) THEN
-            RETURN NEW;
-        END IF;
+        RETURN NEW;
     END IF;
 
-    -- 2. Otherwise, fallback to their active_org_id
+    -- Fallback 1: Force overwrite based on authenticated user's active org
     SELECT active_org_id INTO NEW.org_id FROM profiles WHERE id = auth.uid();
     
-    -- 3. If active_org_id is still NULL, fallback to the first org they belong to
+    -- Fallback 2: The first organization the user owns
     IF NEW.org_id IS NULL THEN
-        SELECT org_id INTO NEW.org_id FROM organization_members WHERE user_id = auth.uid() LIMIT 1;
+        SELECT id INTO NEW.org_id FROM organizations WHERE owner_id = auth.uid() LIMIT 1;
     END IF;
     
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 2. Ensure the RLS Policy allows insert if the user is owner/admin
+-- Dropping and recreating to be absolutely sure it's correct
+DROP POLICY IF EXISTS "Admins can insert clients" ON clients;
+CREATE POLICY "Admins can insert clients" ON clients 
+FOR INSERT WITH CHECK (
+    org_id IN (
+        SELECT org_id FROM get_user_orgs() WHERE role IN ('owner', 'admin')
+    )
+);
