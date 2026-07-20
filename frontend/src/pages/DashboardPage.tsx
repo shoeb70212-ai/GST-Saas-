@@ -217,14 +217,16 @@ export default function DashboardPage() {
                     const { data, error } = await supabase.from('clients').insert({
                       user_id: session.user.id,
                       org_id: currentOrgId,
-                      client_name: "My Company",
-                      is_active: true
+                      client_name: "My Company"
                     }).select().single();
-                   if (!error && data) {
-                     setActiveClientId(data.id);
-                     localStorage.setItem('accountType', 'business');
-                   }
-                 }
+                    if (error) {
+                      toast.error(`Failed to create workspace: ${error.message}`);
+                      console.error("Workspace creation error:", error);
+                    } else if (data) {
+                      setActiveClientId(data.id);
+                      localStorage.setItem('accountType', 'business');
+                    }
+                  }
                }}
                className="card p-8 flex flex-col items-start text-left border-border/50 hover:border-accent/50 opacity-90 hover:opacity-100 transition-all group"
              >
