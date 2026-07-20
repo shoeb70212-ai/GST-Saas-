@@ -43,6 +43,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Previously only owner/admin could insert. Now accountants can create clients too.
 -- RLS SELECT policy already restricts visibility via has_client_access().
 DROP POLICY IF EXISTS "Admins can insert clients" ON clients;
+DROP POLICY IF EXISTS "Org members can insert clients" ON clients;
 CREATE POLICY "Org members can insert clients" ON clients
 FOR INSERT WITH CHECK (
     org_id IN (
