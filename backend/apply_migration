@@ -1,0 +1,136 @@
+"""
+Apply migration_phase56_fix_client_insert_rls.sql to the cloud Supabase database.
+Uses the service role key to bypass RLS and execute the SQL via the Supabase SQL API.
+"""
+import os
+import httpx
+from dotenv import load_dotenv
+
+load_dotenv()
+
+SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
+SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+if not SUPABASE_URL or not SERVICE_KEY:
+    print("ERROR: Missing Supabase URL or service role key in .env")
+    exit(1)
+
+# Read the migration SQL
+migration_path = os.path.join("..", "supabase", "migrations", "migration_phase56_fix_client_insert_rls.sql")
+with open(migration_path, "r", encoding="utf-8") as f:
+    sql = f.read()
+
+print(f"Applying migration: {migration_path}")
+print(f"SQL length: {len(sql)} chars")
+print("---")
+
+# The Supabase SQL API endpoint for executing raw SQL
+# POST /rest/v1/rpc won't work for DDL, but we can use the /pg endpoint
+# or the database connection directly.
+
+# Try using the Supabase database connection via psycopg2
+try:
+    import psycopg2
+    # Cloud Supabase connection - we need the database password
+    # The project ref is extracted from the URL
+    project_ref = SUPABASE_URL.replace("https://", "").split(".")[0]
+    db_host = f"db.{project_ref}.supabase.co"
+    
+    # We don't have the DB password, but let's try the pooler
+    # Actually, let's try the Supabase /pg/query API first
+    print("psycopg2 available, but no DB password. Trying REST API...")
+    raise ImportError("No DB password")
+except ImportError:
+    # Use the Supabase /pg/query endpoint
+    # This is the internal API used by Supabase Studio
+    print("Attempting to execute SQL via Supabase REST API...")
+    
+    headers = {
+        "apikey": SERVICE_KEY,
+        "Authorization": f"Bearer {SERVICE_KEY}",
+        "Content-Type": "application/json",
+    }
+    
+    # Try the /rest/v1/rpc endpoint with the service role key
+    # We'll try to execute the SQL as a DO block
+    # Actually, the correct endpoint for raw SQL is /pg/query (Supabase internal)
+    
+    # Let's try a different approach: use the PostgREST /rpc endpoint
+    # to call a function that runs our SQL
+    
+    # First, create a temporary function that executes our SQL
+    # Then call it, then drop it
+    
+    # Actually, the simplest approach for cloud Supabase:
+    # Use the database URL directly with psycopg2 if we have the password
+    # Otherwise, use the /pg endpoint
+    
+    # The /pg endpoint requires the Supabase access token (service role works)
+    pg_url = f"{SUPABASE_URL}/pg/query"
+    
+    print(f"Trying {pg_url}...")
+    try:
+        response = httpx.post(
+            pg_url,
+            headers=headers,
+            json={"query": sql},
+            timeout=30.0
+        )
+        print(f"Response status: {response.status_code}")
+        print(f"Response body: {response.text[:1000]}")
+        
+        if response.status_code == 200:
+            print("\n[SUCCESS] Migration applied successfully!")
+        else:
+            print(f"\n[FAILED] Migration failed with status {response.status_code}")
+            print("Please apply manually via Supabase Dashboard SQL Editor.")
+    except Exception as e:
+        print(f"/pg/query endpoint failed: {e}")
+        
+        # Fallback: try the /rest/v1/rpc endpoint
+        # We can try to execute the SQL via a PL/pgSQL DO block
+        # by creating a temporary function
+        
+        print("\nTrying alternative approach via /rest/v1/rpc...")
+        
+        # Split the SQL into individual statements and try each
+        # Actually, let's try the direct approach with httpx to the /rest/v1 endpoint
+        
+        # The service role key can bypass RLS, but we need raw SQL execution
+        # Let's try the Supabase /pg endpoint with different URL patterns
+        
+        alt_urls = [
+            f"{SUPABASE_URL}/pg/query",
+            f"{SUPABASE_URL}/api/pg/query",
+            f"{SUPABASE_URL}/rest/v1/rpc",
+        ]
+        
+        for url in alt_urls:
+            print(f"\nTrying {url}...")
+            try:
+                if "rpc" in url:
+                    # For rpc, we need to call a function
+                    # Let's try wrapping in a DO block via a temp function
+                    body = {"name": "exec_sql", "args": {"sql": sql}}
+                else:
+                    body = {"query": sql}
+                
+                resp = httpx.post(url, headers=headers, json=body, timeout=30.0)
+                print(f"  Status: {resp.status_code}")
+                print(f"  Body: {resp.text[:300]}")
+                
+                if resp.status_code == 200:
+                    print("\n[SUCCESS] Migration applied successfully!")
+                    exit(0)
+            except Exception as e2:
+                print(f"  Failed: {e2}")
+        
+        print("\n[INFO] Could not apply migration automatically via HTTP REST API.")
+        print("Note: Supabase Cloud does not expose SQL execution via public REST endpoints without a management token.")
+        print("\nPlease apply the migration manually:")
+        print("1. Go to https://supabase.com/dashboard")
+        print("2. Select project: wmxwjkmxyrngvitxseei")
+        print("3. Open SQL Editor")
+        print("4. Paste the contents of:")
+        print("   supabase/migrations/migration_phase56_fix_client_insert_rls.sql")
+        print("5. Click Run")

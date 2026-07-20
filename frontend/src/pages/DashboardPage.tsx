@@ -45,7 +45,6 @@ export default function DashboardPage() {
       const { data: recent, error: recentError } = await supabase
         .from('invoices')
         .select('id, file_name, supplier_name, taxable_amount, cgst_amount, sgst_amount, igst_amount, total_amount, received_amount, recon_status, processing_status, invoice_date, created_at, confidence_score')
-        .eq('user_id', session.user.id)
         .eq('client_id', activeClientId)
         .order('created_at', { ascending: false })
         .limit(5);
