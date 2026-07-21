@@ -19,7 +19,9 @@ import {
 
 /**
  * Option 5 — Product polish design plan (research only).
- * Truth sources: pricing.ts, credits.py, App.tsx routes, Layout.tsx,
+ * Locked brand: Fog & Copper Seal (supersedes deep-teal Cool ledger).
+ * Companion: docs/option5_brand_direction.md
+ * Truth sources: pricing.ts, credits.py, App.tsx, Layout.tsx,
  * LandingPage.tsx, index.css, CREDITS_DOCUMENTATION.md.
  */
 
@@ -33,25 +35,38 @@ const CURRENT_TOKENS = [
   { token: "font-body", hex: "Inter", note: "Generic SaaS default" },
 ];
 
-const PROPOSED_TOKENS = [
-  { token: "--bg-base", hex: "#F4F6F8", note: "Cool paper, not cream" },
-  { token: "--bg-surface", hex: "#FFFFFF", note: "Solid white cards" },
-  { token: "--bg-sunken", hex: "#E8EDF2", note: "Cool gray inset" },
-  { token: "--text-primary", hex: "#0F172A", note: "Ink / slate-900" },
-  { token: "--text-secondary", hex: "#475569", note: "Slate-600" },
-  { token: "--border", hex: "#CBD5E1", note: "Slate-300" },
-  { token: "--accent", hex: "#0B5F6B", note: "Deep teal — CA/fintech trust" },
-  { token: "--accent-hover", hex: "#084852", note: "Darker teal" },
-  { token: "--accent-subtle", hex: "rgba(11,95,107,0.10)", note: "Tint fill" },
-  { token: "--success", hex: "#15803D", note: "Ledger green (ITC match)" },
-  { token: "--warning", hex: "#B45309", note: "Amber caution" },
-  { token: "--error", hex: "#B91C1C", note: "Mismatch / debit" },
-  { token: "--gst-cgst", hex: "#0369A1", note: "Sky — CGST" },
-  { token: "--gst-sgst", hex: "#0B5F6B", note: "Teal — SGST" },
-  { token: "--gst-igst", hex: "#4338CA", note: "Indigo — IGST (sparingly)" },
-  { token: "font-display", hex: "Source Serif 4", note: "Editorial, not Playfair" },
-  { token: "font-body", hex: "IBM Plex Sans", note: "Finance-native UI" },
+const LOCKED_TOKENS = [
+  { token: "--bg-base", hex: "#F3F4F2", note: "Fog paper — not cream" },
+  { token: "--bg-surface", hex: "#FFFFFF", note: "Solid white — no glass" },
+  { token: "--bg-sunken", hex: "#E6E8E4", note: "Mineral inset" },
+  { token: "--text-primary", hex: "#141614", note: "Graphite ink" },
+  { token: "--text-secondary", hex: "#5A615C", note: "Sage-gray" },
+  { token: "--border", hex: "#CDD2CD", note: "Soft mineral" },
+  { token: "--accent", hex: "#B56A3A", note: "Copper seal — CTAs/KPIs only" },
+  { token: "--accent-hover", hex: "#964F2A", note: "Deeper copper" },
+  { token: "--accent-subtle", hex: "rgba(181,106,58,0.10)", note: "Tint fill" },
+  { token: "--success", hex: "#1B6B45", note: "ITC / matched" },
+  { token: "--warning", hex: "#A65D12", note: "Amber caution" },
+  { token: "--error", hex: "#B42318", note: "Mismatch / debit" },
+  { token: "--gst-cgst", hex: "#2F6F8F", note: "CGST chip" },
+  { token: "--gst-sgst", hex: "#3D6B55", note: "SGST chip" },
+  { token: "--gst-igst", hex: "#5C5A8A", note: "IGST chip (muted)" },
+  { token: "font-display", hex: "Newsreader", note: "Editorial ledger — not Playfair" },
+  { token: "font-body", hex: "Public Sans", note: "Dense CA tables — not Inter" },
   { token: "font-mono", hex: "IBM Plex Mono", note: "GSTIN / amounts" },
+];
+
+const AI_SLOP_AVOID = [
+  { tell: "Purple / indigo mesh gradients", why: "Default AI SaaS 2023–26" },
+  { tell: "Cream + terracotta + Playfair", why: "Current look; user-rule forbid" },
+  { tell: "Deep teal primary (prior plan)", why: "Stripe / Linear fintech clone" },
+  { tell: "Inter / Roboto / system brand faces", why: "Statistical AI default" },
+  { tell: "Glassmorphism + neon glow", why: "Template Midjourney admin" },
+  { tell: "Hero + 3 equal icon cards", why: "Identical AI landing layout" },
+  { tell: "rounded-full pill spam", why: "Startup kit residue" },
+  { tell: "Fake stars / user counts / awards", why: "Truth debt; kills CA trust" },
+  { tell: "Dark-mode-first marketing", why: "Wrong for CA desks; AI-product signal" },
+  { tell: "Per-block fade-up everywhere", why: "Motion noise, not presence" },
 ];
 
 const TRUTH_FEATURES = [
@@ -81,7 +96,7 @@ const FALSE_OR_RISKY = [
     action: "Delete / rewrite FAQ",
   },
   {
-    claim: 'JSON-LD aggregateRating 4.9 / 120 reviews',
+    claim: "JSON-LD aggregateRating 4.9 / 120 reviews",
     reality: "No verified review corpus in repo",
     action: "Remove schema or use real data only",
   },
@@ -116,12 +131,12 @@ const DASHBOARD_SECTIONS = [
   {
     priority: "P0",
     section: "Today strip (4 KPIs)",
-    contents: "Wallet credits · invoices this period · 2B unmatched · bank unmatched",
+    contents: "Wallet · invoices · 2B unmatched · bank unmatched — copper only if action needed",
   },
   {
     priority: "P0",
     section: "Continue work",
-    contents: "Scan · Open invoices · Run GSTR-2B · Upload bank — one primary CTA each",
+    contents: "Scan · Open invoices · Run GSTR-2B · Upload bank — text+button rows, not icon cards",
   },
   {
     priority: "P1",
@@ -136,7 +151,7 @@ const DASHBOARD_SECTIONS = [
   {
     priority: "P2",
     section: "Analytics charts",
-    contents: "Keep below fold; optional widgets (current Dashboard pattern)",
+    contents: "Below fold only — not Midjourney bento glass mosaic",
   },
 ];
 
@@ -149,10 +164,10 @@ const NAV_GROUPS = [
 
 const LANDING_SECTIONS = [
   {
-    section: "1. Hero",
+    section: "1. Hero (full-bleed)",
     copy: "KhataLens — Invoice to GSTR-2B, without the spreadsheet grind.",
     support:
-      "Scan GST invoices, match GSTR-2B, parse bank statements. Pay only for AI work with prepaid credits.",
+      "Brand-first. One headline, one sentence, one CTA group, one real product visual. No cards, badges, or fake stats in the first viewport.",
   },
   {
     section: "2. Workflow strip",
@@ -163,7 +178,7 @@ const LANDING_SECTIONS = [
     section: "3. Product proof",
     copy: "What the product actually does",
     support:
-      "AI extraction · multi-client isolation · GSTR-2B deep match · bank parse · client upload portal · WhatsApp intake.",
+      "AI extraction · multi-client isolation · GSTR-2B deep match · bank parse · client upload portal · WhatsApp intake (if configured).",
   },
   {
     section: "4. Honest pricing",
@@ -184,55 +199,57 @@ const LANDING_SECTIONS = [
   },
 ];
 
+const MOTION_BUDGET = [
+  { n: "1", moment: "Hero product reveal", detail: "Single fade/slide of real UI — once on load" },
+  { n: "2", moment: "Workflow strip", detail: "Light stagger on scroll into view" },
+  { n: "3", moment: "Primary CTA", detail: "Copper hover / press only — no bounce arrows" },
+];
+
 const PHASES = [
   {
     phase: "A — Trust & tokens",
     effort: "2–4 days",
     risk: "Low",
-    work: "Fix landing false claims; align pricing to prepaid packs; swap cream/Playfair tokens to proposed palette; sync BRAND_ACCENT_HEX / Razorpay.",
+    work: "Fix false claims; prepaid copy; Fog & Copper tokens; Newsreader + Public Sans + Plex Mono; sync BRAND_ACCENT_HEX #B56A3A.",
   },
   {
     phase: "B — Dashboard IA",
     effort: "1–2 weeks",
     risk: "Medium",
-    work: "Group sidebar; Today KPI strip; Continue-work CTAs; empty states; optional Cmd+K; keep grid memoization rules.",
+    work: "Group sidebar; Today strip; Continue-work rows; empty states; optional Cmd+K; copper only on action KPIs/CTAs.",
   },
   {
     phase: "C — Landing redesign",
     effort: "1–2 weeks",
     risk: "Medium",
-    work: "New hero composition; honest sections; remove fake social proof; product screenshots over abstract demos; motion polish.",
+    work: "Full-bleed brand-first hero; honest sections; real screenshots; 2–3 motions; remove fake social proof.",
   },
 ];
 
 const OPEN_QUESTIONS = [
   {
+    q: "Lock Fog & Copper?",
+    detail: "Accent #B56A3A — or cooler copper / lacquer oxblood variant?",
+  },
+  {
+    q: "Lock type stack?",
+    detail: "Newsreader + Public Sans + IBM Plex Mono — or Literata for display?",
+  },
+  {
     q: "Logo lockup",
-    detail: "Keep current mark, redraw for teal, or wordmark-only?",
+    detail: "Keep mark retinted to copper, redraw clasp, or wordmark-only?",
   },
   {
-    q: "Domain tone",
-    detail: "Peer-to-peer CA voice vs. product-led SaaS (recommended: precise, calm, peer)?",
-  },
-  {
-    q: "Signup credits",
-    detail: "Confirm live org seed still 100 — docs say yes; verify before landing CTA.",
+    q: "Signup credits + WhatsApp",
+    detail: "Confirm live seed + production number before CTA / feature claims.",
   },
   {
     q: "Accuracy claim",
-    detail: "Run eval set before any % claim, or use qualitative confidence-flag copy only.",
-  },
-  {
-    q: "WhatsApp public number",
-    detail: "Market as live only if production number + onboarding docs exist.",
+    detail: "Run eval before any % — or qualitative confidence-flag copy only.",
   },
   {
     q: "Enterprise tier",
-    detail: "Keep Contact Sales card without white-label/API/on-prem until true.",
-  },
-  {
-    q: "Dark mode default",
-    detail: "Recommend light-first for CA desks; dark as optional toggle only.",
+    detail: "Contact Sales only — no white-label/API/on-prem until true.",
   },
 ];
 
@@ -244,14 +261,16 @@ export default function Option5ProductPolishDesignPlan() {
       <Stack gap={8}>
         <Row gap={8} style={{ alignItems: "center" }}>
           <Pill tone="info">Option 5</Pill>
-          <Pill tone="neutral">Research + plan only</Pill>
-          <Pill tone="warning">No UI implementation</Pill>
+          <Pill tone="success">Fog & Copper Seal</Pill>
+          <Pill tone="neutral">Plan only</Pill>
+          <Pill tone="warning">No React redesign yet</Pill>
         </Row>
-        <H1>KhataLens product polish — design plan</H1>
+        <H1>KhataLens — locked brand & polish plan</H1>
         <Text tone="secondary">
-          Dashboard IA, truthful landing, and a non-cliché brand system for busy
-          Indian CAs. Verified against routes, credits catalog, and current
-          theme tokens (2026-07-21).
+          One primary system (not five vague options): mineral fog surfaces,
+          copper seal accent for CTAs/KPIs only, Newsreader + Public Sans.
+          Truthful CA GST product — anti generic-AI aesthetic. Companion doc:
+          docs/option5_brand_direction.md
         </Text>
       </Stack>
 
@@ -263,63 +282,64 @@ export default function Option5ProductPolishDesignPlan() {
       </Callout>
 
       <Grid columns={4} gap={12}>
-        <Stat value="₹2,499" label="Starter Pass · 1,000 credits" />
-        <Stat value="₹7,999" label="Pro Pass · 5,000 credits" />
-        <Stat value="1 / 2 / 5" label="Scan · Bank base · Deep Match" />
-        <Stat value="Credits-only" label="No ProGate feature locks" />
+        <Stat value="#B56A3A" label="Locked accent · copper seal" />
+        <Stat value="Newsreader" label="Display · not Playfair" />
+        <Stat value="Public Sans" label="UI / tables · not Inter" />
+        <Stat value="Light-first" label="No dark-by-default landing" />
       </Grid>
 
       <Divider />
 
-      <H2>1. Brand direction</H2>
+      <H2>1. Locked brand — Fog & Copper Seal</H2>
       <Grid columns={2} gap={16}>
         <Card>
-          <CardHeader>Voice & positioning</CardHeader>
+          <CardHeader>Colour story</CardHeader>
           <CardBody>
             <Stack gap={8}>
               <Text>
-                <Text weight="semibold">Name voice:</Text> Khata (ledger) + Lens
-                (scrutiny). Sound like a senior articled assistant: precise,
-                calm, India-native — not Silicon Valley hype.
+                Evokes archival fog paper and a copper sealing clasp on a physical
+                khata — not Stripe teal, not purple AI mesh, not cream boutique.
               </Text>
               <Text tone="secondary">
-                Avoid: “AI-powered revolution”, fake social proof, purple glow,
-                cream + terracotta serif, broadsheet density, dark-by-default.
+                Surfaces stay minimal and near-white. Copper (#B56A3A) appears
+                only on primary CTAs, focus rings, and KPIs that need action.
+                Semantic greens/reds stay for ledger match/mismatch — never fight
+                the accent.
               </Text>
+              <H3>Why not deep teal</H3>
               <Text tone="secondary">
-                Prefer: workflow clarity, GST vocabulary (2B, ITC, GSTIN),
-                prepaid honesty, desk-ready light UI.
-              </Text>
-              <H3>Visual concept — “Cool ledger”</H3>
-              <Text tone="secondary">
-                Cool paper surfaces, deep teal accent (trust + India fintech),
-                IBM Plex for UI, Source Serif 4 for marketing headlines only.
-                Semantic GST colours separate from brand accent so mismatch red
-                never fights the CTA.
+                Prior Cool ledger (#0B5F6B) was safer but still fintech-default.
+                Copper is rarer in B2B SaaS and still professional for CA desks.
               </Text>
             </Stack>
           </CardBody>
         </Card>
         <Card>
-          <CardHeader>Why leave current theme</CardHeader>
+          <CardHeader>Typography + voice</CardHeader>
           <CardBody>
             <Stack gap={8}>
               <Text>
-                Current <Text weight="semibold">#F5F1EA + #990000 + Playfair</Text>{" "}
-                is the exact cream/terracotta/serif cluster flagged as AI-slop.
-                Maroon can remain a heritage secondary (Razorpay theme) but
-                should not drive the whole product surface.
+                <Text weight="semibold">Display:</Text> Newsreader (optical size)
+                for marketing H1–H2 only.
+              </Text>
+              <Text>
+                <Text weight="semibold">UI / body:</Text> Public Sans for dense
+                recon tables and app chrome.
+              </Text>
+              <Text>
+                <Text weight="semibold">Mono:</Text> IBM Plex Mono for GSTIN /
+                amounts.
               </Text>
               <Text tone="secondary">
-                Indian CA / fintech peers lean navy–teal–white for trust; keep
-                green/red for ledger semantics only.
+                Voice: senior articled assistant — precise, calm, India-native
+                GST vocabulary. No “AI-powered revolution” copy.
               </Text>
             </Stack>
           </CardBody>
         </Card>
       </Grid>
 
-      <H3>Colour tokens — current vs proposed</H3>
+      <H3>Tokens — current vs locked</H3>
       <Grid columns={2} gap={16}>
         <Card>
           <CardHeader trailing={<Pill tone="neutral">Current</Pill>}>
@@ -333,30 +353,61 @@ export default function Option5ProductPolishDesignPlan() {
           </CardBody>
         </Card>
         <Card>
-          <CardHeader trailing={<Pill tone="success">Proposed</Pill>}>
-            Cool ledger system
+          <CardHeader trailing={<Pill tone="success">Locked</Pill>}>
+            Fog & Copper Seal
           </CardHeader>
           <CardBody>
             <Table
               headers={["CSS var", "Hex / face", "Role"]}
-              rows={PROPOSED_TOKENS.map((r) => [r.token, r.hex, r.note])}
+              rows={LOCKED_TOKENS.map((r) => [r.token, r.hex, r.note])}
             />
           </CardBody>
         </Card>
       </Grid>
       <Text tone="tertiary" size="small">
-        Implementation note: update :root in frontend/src/index.css and
-        BRAND_ACCENT_HEX in pricing.ts together (#0B5F6B) so Razorpay chrome
-        matches buttons.
+        Phase A: update :root in frontend/src/index.css and BRAND_ACCENT_HEX in
+        pricing.ts together (#B56A3A) so Razorpay chrome matches buttons.
       </Text>
 
       <Divider />
 
-      <H2>2. Dashboard IA (CA workflow)</H2>
+      <H2>2. AI-slop tells to avoid</H2>
+      <Text tone="secondary">
+        Cross-checked against user design rules, avoid-ai-design pattern lists,
+        and 2025–26 critiques of vibe-coded landings. Current KhataLens hits
+        cream/Playfair/Inter; prior Option 5 teal risked fintech clone.
+      </Text>
+      <Table
+        headers={["Tell", "Why it reads as AI / generic"]}
+        rows={AI_SLOP_AVOID.map((r) => [r.tell, r.why])}
+      />
+
+      <Divider />
+
+      <H2>3. Landing composition (Awwwards-restraint)</H2>
+      <Callout tone="info" title="Hero budget (non-negotiable)">
+        Full-bleed plane. Brand KhataLens at hero signal strength. First
+        viewport: brand + one headline + one short sentence + one CTA group +
+        one dominant real product visual. No cards, floating badges, or fake
+        metrics overlays on the hero.
+      </Callout>
+      <Table
+        headers={["Section", "Headline draft", "Support"]}
+        rows={LANDING_SECTIONS.map((s) => [s.section, s.copy, s.support])}
+      />
+      <H3>Motion budget (exactly 2–3)</H3>
+      <Table
+        headers={["#", "Moment", "Detail"]}
+        rows={MOTION_BUDGET.map((m) => [m.n, m.moment, m.detail])}
+      />
+
+      <Divider />
+
+      <H2>4. Dashboard IA (today’s work, not Midjourney admin)</H2>
       <Callout tone="info" title="Principle">
-        Task-grouped side nav + 3–5 actionable KPIs + empty states with one CTA.
-        Command palette for power users (Cmd/Ctrl+K). Adapted from 2024–2026 B2B
-        SaaS patterns (Linear/Notion-style palette; F-pattern KPI strip).
+        Solid fog/white surfaces. Task-grouped side nav. 4 actionable KPIs max.
+        Continue-work as text+button rows — never pastel icon-card grids. Copper
+        only when a KPI needs action.
       </Callout>
 
       <H3>Sidebar groups (from live routes)</H3>
@@ -391,17 +442,17 @@ export default function Option5ProductPolishDesignPlan() {
 │ KhataLens│  [Client ▾]     credits: 842    [⌘K]  Avatar │
 │──────────│──────────────────────────────────────────────│
 │ Daily    │  TODAY                                       │
-│ • Dash   │  [Credits] [Invoices] [2B gaps] [Bank gaps]  │
-│ • Scan   │──────────────────────────────────────────────│
-│ • Invoices│ CONTINUE                                    │
-│──────────│  [Scan invoice] [Review queue] [Run 2B]      │
-│ Reconcile│──────────────────────────────────────────────│
-│ • GSTR-2B│  NEEDS ATTENTION          RECENT INVOICES    │
-│ • Bank   │  · low confidence         · list…            │
-│ • Match  │  · unmatched 2B rows                         │
-│──────────│──────────────────────────────────────────────│
-│ Clients  │  Analytics (below fold / optional widgets)   │
-│ Firm…    │                                              │
+│ • Dash   │  [Credits] [Invoices] [2B gaps*] [Bank gaps] │
+│ • Scan   │  * copper number only if unmatched > 0       │
+│ • Invoices│──────────────────────────────────────────────│
+│──────────│  CONTINUE                                    │
+│ Reconcile│  [Scan invoice] [Review queue] [Run 2B]      │
+│ • GSTR-2B│──────────────────────────────────────────────│
+│ • Bank   │  NEEDS ATTENTION          RECENT INVOICES    │
+│ • Match  │  · low confidence         · list…            │
+│──────────│  · unmatched 2B rows                         │
+│ Clients  │──────────────────────────────────────────────│
+│ Firm…    │  Analytics (below fold only)                 │
 └──────────┴──────────────────────────────────────────────┘
 `}</Text>
         </CardBody>
@@ -413,7 +464,7 @@ export default function Option5ProductPolishDesignPlan() {
           <CardBody>
             <Text tone="secondary">
               No client → Create client. No invoices → Scan first bill. No 2B
-              upload → Upload GSTR-2B. One sentence + one button.
+              upload → Upload GSTR-2B. One sentence + one copper CTA.
             </Text>
           </CardBody>
         </Card>
@@ -439,13 +490,7 @@ export default function Option5ProductPolishDesignPlan() {
 
       <Divider />
 
-      <H2>3. Landing structure + honest copy</H2>
-      <Table
-        headers={["Section", "Headline draft", "Support"]}
-        rows={LANDING_SECTIONS.map((s) => [s.section, s.copy, s.support])}
-      />
-
-      <H3>Claim ledger</H3>
+      <H2>5. Claim ledger (truthful product)</H2>
       <Grid columns={2} gap={16}>
         <Card>
           <CardHeader trailing={<Pill tone="success">OK to claim</Pill>}>
@@ -481,61 +526,29 @@ export default function Option5ProductPolishDesignPlan() {
 
       <Divider />
 
-      <H2>4. Competitive / UX principles (CA SaaS)</H2>
-      <Grid columns={2} gap={12}>
-        <Card>
-          <CardHeader>Do</CardHeader>
-          <CardBody>
-            <Stack gap={6}>
-              <Text>• Optimize for month-end crunch: fewer clicks to Scan / 2B</Text>
-              <Text>• Show credit cost before AI actions (402 prevention UX)</Text>
-              <Text>• Client context always visible — never lose the active GSTIN</Text>
-              <Text>• Prefer tables + filters over decorative charts above the fold</Text>
-              <Text>• Empty states that teach the CA workflow once</Text>
-            </Stack>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardHeader>Don&apos;t</CardHeader>
-          <CardBody>
-            <Stack gap={6}>
-              <Text>• Fake ratings, user counts, or SOC2-of-ourselves</Text>
-              <Text>• Sell monthly subscription when product is prepaid packs</Text>
-              <Text>• Lock core tools behind Pro (credits-only is policy)</Text>
-              <Text>• Dashboard paralysis (20 equal-weight metrics)</Text>
-              <Text>• Icon-only sidebar for primary nav</Text>
-            </Stack>
-          </CardBody>
-        </Card>
-      </Grid>
-
-      <Divider />
-
-      <H2>5. Phased rollout</H2>
+      <H2>6. Phased rollout (revised)</H2>
       <Table
         headers={["Phase", "Effort", "Risk", "Scope"]}
         rows={PHASES.map((p) => [p.phase, p.effort, p.risk, p.work])}
       />
-      <Callout tone="success" title="Recommended proceed sequence">
-        Start with Phase A (truth + tokens) — highest trust ROI, lowest risk.
-        Then Phase B dashboard IA for daily CA retention. Phase C landing
-        redesign last, once pricing/FAQ/schema are honest and the palette is
-        locked.
+      <Callout tone="success" title="Recommended sequence">
+        Phase A (truth + Fog & Copper tokens) first. Phase B dashboard IA for
+        daily retention. Phase C landing last — once pricing/FAQ/schema are
+        honest and the palette/fonts are locked by you.
       </Callout>
 
       <Divider />
 
-      <H2>6. Open questions (need your decisions)</H2>
+      <H2>7. Decisions needing your OK</H2>
       <Table
         headers={["Decision", "Detail"]}
         rows={OPEN_QUESTIONS.map((o) => [o.q, o.detail])}
       />
 
       <Text tone="tertiary" size="small">
-        Sources: frontend/src/lib/pricing.ts · backend/credits.py ·
-        frontend/src/App.tsx · Layout.tsx · LandingPage.tsx · index.css ·
-        CREDITS_DOCUMENTATION.md · docs/13_Monetization_Architecture.md · B2B
-        SaaS IA research (side nav, Cmd+K, KPI strip, empty states, 2024–2026).
+        Sources: index.css · LandingPage.tsx · pricing.ts · credits.py ·
+        docs/option5_brand_direction.md · B2B/Awwwards restraint research
+        2025–26 · AI-slop pattern lists · user anti-generic design rules.
       </Text>
     </Stack>
   );
