@@ -21,15 +21,22 @@ export default function WalletPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<number | null>(null);
 
-  const { isLoading, isError: isProfileError, refetch: refetchProfile } = useQuery({
+  // Soft profile fetch — never blocks wallet UI. Org credits come from useClient().
+  // Only select columns that exist on public.profiles (no tier / do not require credits).
+  const { isError: isProfileError, refetch: refetchProfile } = useQuery({
     queryKey: ['profile'],
     queryFn: async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("No session");
-      const { data, error } = await supabase.from('profiles').select('id, tier, active_org_id').eq('id', session.user.id).single();
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, active_org_id')
+        .eq('id', session.user.id)
+        .single();
       if (error) throw error;
       return data;
-    }
+    },
+    retry: 1,
   });
   
   const { data: transactions, isError: isTxError, refetch: refetchTx } = useQuery({
@@ -43,7 +50,8 @@ export default function WalletPage() {
         .eq('user_id', session.user.id)
         .order('created_at', { ascending: false })
         .limit(50);
-      if (error && error.code !== '42P01') throw error; // Ignore relation doesn't exist yet
+      // Ignore missing relation (42P01) and PostgREST schema-cache miss (PGRST205)
+      if (error && error.code !== '42P01' && error.code !== 'PGRST205') throw error;
       return data || [];
     }
   });
@@ -168,20 +176,6 @@ export default function WalletPage() {
     }
   };
 
-  if (isLoading) {
-    return <div className="p-8 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>;
-  }
-
-  if (isProfileError) {
-    return (
-      <ErrorState
-        title="Could not load wallet"
-        message="We couldn't load your profile. Check your connection and try again."
-        onRetry={() => { void refetchProfile(); }}
-      />
-    );
-  }
-
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-8 pb-20">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
@@ -190,6 +184,14 @@ export default function WalletPage() {
           <p className="text-text-secondary">Manage your AI credits and view transaction history.</p>
         </div>
       </div>
+
+      {isProfileError && (
+        <ErrorState
+          title="Profile details unavailable"
+          message="Your wallet still works with organization credits. Profile details could not be refreshed."
+          onRetry={() => { void refetchProfile(); }}
+        />
+      )}
 
       {(isTxError || isUsageError) && (
         <ErrorState
