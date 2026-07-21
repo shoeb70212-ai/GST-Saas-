@@ -200,9 +200,9 @@ const LANDING_SECTIONS = [
 ];
 
 const MOTION_BUDGET = [
-  { n: "1", moment: "Hero product reveal", detail: "Single fade/slide of real UI — once on load" },
-  { n: "2", moment: "Workflow strip", detail: "Light stagger on scroll into view" },
-  { n: "3", moment: "Primary CTA", detail: "Copper hover / press only — no bounce arrows" },
+  { n: "1", moment: "Seal stamp impress", detail: "Copper wax seal settles once on load (LandingHero)" },
+  { n: "2", moment: "Type + ledger margin", detail: "Brand/copy cascade + margin line draw — once" },
+  { n: "3", moment: "Workflow strip", detail: "Light stagger on scroll into view; CTA copper hover only" },
 ];
 
 const PHASES = [
@@ -219,10 +219,10 @@ const PHASES = [
     work: "Live unmatched 2B/bank KPIs (get_today_strip_counts); Cmd+K; chart empty CTAs.",
   },
   {
-    phase: "C — Landing polish",
-    effort: "Optional",
+    phase: "C — Landing polish ✅",
+    effort: "Shipped 2026-07-22",
     risk: "Low",
-    work: "More product shots / motion refinement if needed (core layout in A).",
+    work: "Sealed-ledger full-bleed hero (LandingHero); scan demo below fold; motion budget refined.",
   },
 ];
 
@@ -264,7 +264,7 @@ export default function Option5ProductPolishDesignPlan() {
           <Pill tone="success">Fog & Copper Seal</Pill>
           <Pill tone="success">Phase A shipped</Pill>
           <Pill tone="success">Phase B shipped</Pill>
-          <Pill tone="neutral">Phase C optional</Pill>
+          <Pill tone="success">Phase C shipped</Pill>
         </Row>
         <H1>KhataLens — locked brand & polish plan</H1>
         <Text tone="secondary">
@@ -275,11 +275,11 @@ export default function Option5ProductPolishDesignPlan() {
         </Text>
       </Stack>
 
-      <Callout tone="success" title="Phase A shipped (2026-07-21)">
+      <Callout tone="success" title="Option 5 complete (A–C)">
         Landing truth fixed (prepaid packs, no fake ratings/JSON-LD stars).
-        Fog & Copper tokens + fonts live. Brand-first hero, Today strip, and
-        grouped sidebar landed. Phase B also shipped: live unmatched 2B/bank
-        KPIs, Cmd+K, richer empty states. Phase C optional.
+        Fog & Copper tokens + fonts live. Phase B: live unmatched 2B/bank KPIs,
+        Cmd+K, richer empty states. Phase C: sealed-ledger full-bleed hero +
+        below-fold scan demo polish.
       </Callout>
 
       <Grid columns={4} gap={12}>
@@ -533,8 +533,8 @@ export default function Option5ProductPolishDesignPlan() {
         rows={PHASES.map((p) => [p.phase, p.effort, p.risk, p.work])}
       />
       <Callout tone="success" title="Recommended sequence">
-        Phase A + B shipped. Phase C landing polish optional — pricing/FAQ
-        and Fog & Copper are already locked.
+        Phase A + B + C shipped. Option 5 Fog & Copper Seal brand system is
+        complete — sealed-ledger hero, truthful pricing/FAQ, dashboard IA.
       </Callout>
 
       <Divider />

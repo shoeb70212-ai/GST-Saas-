@@ -6,6 +6,7 @@ import {
   FileCheck, Layers, Upload, FileSpreadsheet, Lock, Menu, X,
   Plus, Minus, Building2, Smartphone
 } from 'lucide-react';
+import LandingHero from '../components/LandingHero';
 import HeroAnimation from '../components/HeroAnimation';
 import { BankStatementDemo, ReconciliationDemo } from '../components/LandingFeatures';
 import KhataLensIcon from '../components/KhataLensIcon';
@@ -237,6 +238,7 @@ export default function LandingPage() {
                 <a href="#features" onClick={() => setMobileMenuOpen(false)} className="text-text-primary font-medium py-2 border-b border-border">Features</a>
                 <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="text-text-primary font-medium py-2 border-b border-border">Pricing</a>
                 <a href="#faq" onClick={() => setMobileMenuOpen(false)} className="text-text-primary font-medium py-2 border-b border-border">FAQ</a>
+                <Link to="/auth" onClick={() => setMobileMenuOpen(false)} className="text-text-primary font-medium py-2 border-b border-border">Sign In</Link>
                 <Link to="/auth" onClick={() => setMobileMenuOpen(false)} className="mt-2 btn-primary w-full">Start free</Link>
               </div>
             </motion.div>
@@ -244,57 +246,10 @@ export default function LandingPage() {
         </AnimatePresence>
       </header>
 
-      {/* Hero — brand-first, one composition */}
-      <section className="relative pt-28 pb-16 md:pt-36 md:pb-24 px-6 overflow-hidden" aria-labelledby="hero-heading">
-        <div className="max-w-content mx-auto">
-          <div className="grid lg:grid-cols-[1fr_1.15fr] gap-12 lg:gap-16 items-center">
-            <div>
-              <p className="font-display text-4xl sm:text-5xl lg:text-6xl font-semibold text-text-primary tracking-tight mb-5 leading-[1.05]">
-                KhataLens
-              </p>
-              <h1 id="hero-heading" className="text-2xl sm:text-3xl lg:text-4xl font-display font-medium text-text-primary tracking-tight mb-5 leading-snug max-w-md">
-                Invoice scan to GST reconciliation — for Indian CA desks.
-              </h1>
-              <p className="text-base sm:text-lg text-text-secondary mb-8 max-w-md leading-relaxed">
-                Extract bill data, match GSTR-2B and bank lines, export to Tally. Pay with prepaid credits — only when you run AI work.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3 mb-6">
-                <Link
-                  to="/auth"
-                  id="hero-cta-primary"
-                  className="btn-primary !h-12 !px-7 !text-base !rounded-lg"
-                >
-                  Start free <ArrowRight className="w-4 h-4" aria-hidden="true" />
-                </Link>
-                <a
-                  href="#workflow"
-                  className="btn-secondary !h-12 !px-7 !text-base !rounded-lg"
-                >
-                  See the workflow
-                </a>
-              </div>
-              <p className="text-sm text-text-secondary">
-                Starter credits on signup · No credit card · Credits never expire
-              </p>
-            </div>
+      {/* Hero — full-bleed sealed ledger (LandingHero owns motions 1–2) */}
+      <LandingHero />
 
-            {/* Motion 1: hero product reveal */}
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, ease, delay: 0.08 }}
-              className="relative"
-              aria-hidden="true"
-            >
-              <div className="rounded-xl bg-bg-surface border border-border shadow-lg overflow-hidden">
-                <HeroAnimation />
-              </div>
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* Trust strip — facts only, no fake ratings */}
+      {/* Trust strip — below fold; facts only, no fake ratings */}
       <section className="py-8 px-6 border-y border-border bg-bg-surface" aria-label="Product facts">
         <div className="max-w-content mx-auto flex flex-wrap items-center justify-center gap-x-10 gap-y-4 text-sm text-text-secondary font-medium">
           <span className="inline-flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-accent" aria-hidden="true" /> Supabase RLS isolation</span>
@@ -367,18 +322,29 @@ export default function LandingPage() {
             ))}
           </div>
 
-          {/* Product demos — real UI, not badge overlays */}
-          <div className="grid lg:grid-cols-2 gap-8">
+          {/* Product demos — below fold; scan animation + match samples */}
+          <div className="space-y-12">
             <div>
-              <h3 className="font-display text-xl font-semibold mb-4 text-text-primary">Bank statement extract</h3>
-              <div className="rounded-xl border border-border bg-bg-base p-4 overflow-hidden">
-                <BankStatementDemo />
+              <h3 className="font-display text-xl font-semibold mb-2 text-text-primary">Scan desk</h3>
+              <p className="text-sm text-text-secondary mb-4 max-w-lg">
+                Bills in, structured fields out — flagged when extraction is unsure.
+              </p>
+              <div className="border border-border bg-bg-base overflow-hidden max-w-3xl">
+                <HeroAnimation />
               </div>
             </div>
-            <div>
-              <h3 className="font-display text-xl font-semibold mb-4 text-text-primary">Invoice ↔ bank match</h3>
-              <div className="rounded-xl border border-border bg-bg-base p-4 overflow-hidden">
-                <ReconciliationDemo />
+            <div className="grid lg:grid-cols-2 gap-10">
+              <div>
+                <h3 className="font-display text-xl font-semibold mb-4 text-text-primary">Bank statement extract</h3>
+                <div className="border border-border bg-bg-base p-4 overflow-hidden">
+                  <BankStatementDemo />
+                </div>
+              </div>
+              <div>
+                <h3 className="font-display text-xl font-semibold mb-4 text-text-primary">Invoice ↔ bank match</h3>
+                <div className="border border-border bg-bg-base p-4 overflow-hidden">
+                  <ReconciliationDemo />
+                </div>
               </div>
             </div>
           </div>

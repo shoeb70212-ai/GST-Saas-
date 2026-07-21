@@ -1,6 +1,6 @@
 # Option 5 — Locked brand direction (KhataLens)
 
-**Status:** Phase B shipped (2026-07-21) — Cmd+K palette, live unmatched 2B/bank Today KPIs (`get_today_strip_counts`), purposeful chart empty states (no gray fake pies), fog wash de-warmed. Phase A tokens/fonts/landing remain. Phase C leftover: landing product photography / motion polish if needed.  
+**Status:** Phase C shipped (2026-07-22) — full-bleed sealed-ledger landing hero (CSS/SVG copper wax seal + ruled fog plane); below-fold scan demo + polish; page motions locked. Phase B: Cmd+K palette, live unmatched 2B/bank Today KPIs (`get_today_strip_counts`), purposeful chart empty states, fog wash de-warmed. Phase A: tokens/fonts/truth.  
 **Locked system:** **Fog & Copper Seal**  
 **Supersedes:** prior “Cool ledger” deep-teal proposal (`#0B5F6B` + Source Serif 4 + IBM Plex Sans).  
 **Canvas:** [`docs/canvases/option5-product-polish-design-plan.canvas.tsx`](./canvases/option5-product-polish-design-plan.canvas.tsx) (also mirrored under Cursor canvases).
@@ -17,7 +17,7 @@
 - [x] Landing brand-first hero + honest sections (layout, not tokens-only)
 - [x] Dashboard Today strip + Continue work; Layout sidebar IA groups
 - [x] Phase B: Cmd+K; unmatched 2B/bank counts via `get_today_strip_counts`; richer empty states
-- [ ] Phase C polish: more product photography / motion refinement if needed
+- [x] Phase C: outstanding sealed-ledger hero + landing motion polish
 
 ---
 
@@ -30,6 +30,15 @@
 - [x] Migration `migration_phase66_today_strip_counts.sql` + remote apply
 - [x] Analytics empty: Scan / Upload 2B / Upload bank panels — removed gray chart shells & indigo stroke
 - [x] Fog base explicit `#F3F4F2` body wash (removed warm copper tint that read as cream)
+
+## Phase C ship checklist (done)
+
+- [x] Redefined hero: full-bleed **sealed ledger** composition (`LandingHero.tsx`) — ruled fog plane + oversized copper wax seal SVG (not inset product card / not Midjourney collage)
+- [x] Hero budget only: KhataLens brand + one headline + one sentence + CTA group + dominant visual plane
+- [x] Motions: (1) seal stamp impress, (2) type cascade + margin draw, (3) workflow stagger on scroll; CTA copper hover via existing `btn-primary`
+- [x] Scan desk animation moved below fold; demos de-carded / truthful match label
+- [x] Mobile first viewport: seal bleeds edge, copy remains readable over fog vignette
+- [x] Auth CTAs + `/pricing` links preserved; `/auth` → `/app/dashboard` for logged-in users unchanged in `App.tsx`
 
 ## Why this direction (one system)
 
@@ -130,7 +139,7 @@ Aligned with user design prefs + 2025–26 high-craft B2B patterns (purposeful m
 |-------|--------|
 | **A — Trust & tokens + layout** | ✅ Shipped 2026-07-21: false claims fixed; Fog & Copper + Newsreader/Public Sans/Plex Mono; Razorpay accent; landing brand-first hero; dashboard Today strip; grouped sidebar. |
 | **B — Dashboard IA (remaining)** | ✅ Shipped 2026-07-21: live unmatched 2B/bank KPIs (`get_today_strip_counts`); Cmd+K palette; chart empty states with Scan/2B/Bank CTAs. |
-| **C — Landing polish** | More product shots / motion refinement if needed (core layout already in A). |
+| **C — Landing polish** | ✅ Shipped 2026-07-22: sealed-ledger full-bleed hero (`LandingHero.tsx`); below-fold scan demo; motion budget refined. |
 
 ---
 

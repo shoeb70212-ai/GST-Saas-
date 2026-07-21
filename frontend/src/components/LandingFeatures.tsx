@@ -3,11 +3,11 @@ import { FileText, CheckCircle2, Smartphone, Network } from 'lucide-react';
 
 export function BankStatementDemo() {
   return (
-    <div className="bg-bg-surface rounded-2xl p-6 border border-border shadow-xl space-y-4">
-      <div className="flex items-center justify-between mb-4 pb-3 border-b border-border">
+    <div className="bg-bg-surface p-5 border border-border space-y-4">
+      <div className="flex items-center justify-between mb-2 pb-3 border-b border-border">
         <span className="font-display font-semibold text-text-primary">HDFC Bank Statement.pdf</span>
-        <span className="px-3 py-1 bg-success/10 text-success text-xs font-bold rounded-full border border-success/20 flex items-center gap-1">
-          <CheckCircle2 className="w-3 h-3" /> Extracted
+        <span className="px-2 py-0.5 bg-success-subtle text-success text-xs font-medium border border-success/20 inline-flex items-center gap-1">
+          <CheckCircle2 className="w-3 h-3" aria-hidden="true" /> Extracted
         </span>
       </div>
       <div className="space-y-3">
@@ -71,9 +71,9 @@ export function ReconciliationDemo() {
   return (
     <div className="space-y-4">
       {/* Invoice */}
-      <div className="bg-bg-surface p-4 rounded-xl border border-border shadow-sm flex items-center justify-between">
+      <div className="bg-bg-surface p-4 border border-border flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <FileText className="w-6 h-6 text-text-secondary" />
+          <FileText className="w-6 h-6 text-text-secondary" aria-hidden="true" />
           <div>
             <div className="text-sm font-semibold text-text-primary">Steel Corp Invoice</div>
             <div className="text-xs text-text-disabled">INV-2026-041</div>
@@ -82,19 +82,19 @@ export function ReconciliationDemo() {
         <div className="text-sm font-mono font-bold text-text-primary">₹29,500</div>
       </div>
 
-      {/* Match Lines */}
-      <div className="flex justify-center -my-2 relative z-10">
-        <div className="flex items-center gap-2 px-3 py-1 bg-accent-subtle rounded-full border border-accent/20">
-          <Network className="w-4 h-4 text-accent" />
-          <span className="text-xs font-bold text-accent tracking-wider uppercase">100% Exact Match</span>
+      {/* Match link */}
+      <div className="flex justify-center -my-1 relative z-10">
+        <div className="flex items-center gap-2 px-2.5 py-1 bg-accent-subtle border border-accent/20">
+          <Network className="w-3.5 h-3.5 text-accent" aria-hidden="true" />
+          <span className="text-xs font-medium text-accent tracking-wide uppercase">Matched</span>
         </div>
       </div>
 
       {/* Bank Txn */}
-      <div className="bg-bg-surface p-4 rounded-xl border border-accent/40 shadow-md shadow-accent/5 flex items-center justify-between transform translate-x-2">
+      <div className="bg-bg-surface p-4 border border-accent/35 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-6 h-6 rounded-full bg-warning-subtle flex items-center justify-center">
-            <span className="text-[10px] font-bold text-warning">Tx</span>
+          <div className="w-6 h-6 bg-warning-subtle flex items-center justify-center border border-warning/20">
+            <span className="text-[10px] font-mono font-medium text-warning">Tx</span>
           </div>
           <div>
             <div className="text-sm font-semibold text-text-primary">NEFT-RTGS-SteelCorp</div>
