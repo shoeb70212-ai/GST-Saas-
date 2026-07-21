@@ -102,16 +102,20 @@ class TestBatchAuth:
 
 class TestBatchZipValidation:
     def test_non_zip_file_returns_400(self):
+        mock_sc = build_supabase_mock(rpc_results={"has_client_access": True})
+        _override_auth(supabase_client=mock_sc)
         response = client.post(
             "/api/upload-batch",
             files={"file": ("notzip.txt", io.BytesIO(b"NOT A ZIP"), "text/plain")},
             data={"client_id": "client-abc"},
             headers={"Authorization": "Bearer fake.token"},
         )
-        assert response.status_code in (400, 401)
+        assert response.status_code == 400
 
     def test_zip_with_no_valid_files_returns_400(self):
         """A ZIP containing only .txt files → 400."""
+        mock_sc = build_supabase_mock(rpc_results={"has_client_access": True})
+        _override_auth(supabase_client=mock_sc)
         bad_zip = _make_zip({"readme.txt": b"no invoices here"})
         response = client.post(
             "/api/upload-batch",
@@ -119,10 +123,15 @@ class TestBatchZipValidation:
             data={"client_id": "client-abc"},
             headers={"Authorization": "Bearer fake.token"},
         )
-        assert response.status_code in (400, 401)
+        assert response.status_code == 400
 
     def test_macosx_files_ignored(self):
         """__MACOSX metadata files in ZIPs must be filtered out."""
+        mock_sc = build_supabase_mock(
+            table_data={"profiles": [{"tally_ledgers": None}]},
+            rpc_results={"has_client_access": True, "decrement_credits": 48},
+        )
+        _override_auth(supabase_client=mock_sc)
         mac_zip = _make_zip({
             "__MACOSX/._invoice.jpg": b"mac junk",
             "invoice.jpg": MINIMAL_JPEG,
@@ -135,7 +144,7 @@ class TestBatchZipValidation:
             data={"client_id": "client-abc"},
             headers={"Authorization": "Bearer fake.token"},
         )
-        assert response.status_code in (200, 401, 402, 403)
+        assert response.status_code in (200, 402, 403)
 
     def test_zip_bomb_protection_returns_413(self):
         """
@@ -144,6 +153,8 @@ class TestBatchZipValidation:
         logic via the ZipInfo file_size attribute by creating a mock ZIP.
         This integration test verifies the 50MB cap error message is surfaced.
         """
+        mock_sc = build_supabase_mock(rpc_results={"has_client_access": True})
+        _override_auth(supabase_client=mock_sc)
         # Build a ZIP with many small files just to verify the endpoint handles it
         many_files = {f"inv{i}.jpg": MINIMAL_JPEG for i in range(5)}
         zip_bytes = _make_zip(many_files)

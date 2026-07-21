@@ -19,7 +19,7 @@ The highest remaining risks are **wallet integrity and monetization trust bounda
 4. Batch ZIP charged **before** zip-bomb validation.
 5. Signup trigger still inserted dropped `profiles.credits` (phase 54).
 
-**This audit sprint implemented fixes for those P0/P1 items** (see §8). Remaining deferred P2 is primarily the `/app/*` shell restructure. ProGate/monetization docs + code-review-graph rebuild progressed in a follow-up pass; recon virtualization and clients aggregates already shipped earlier (`200cb63`).
+**This audit sprint implemented fixes for those P0/P1 items** (see §8). P2 follow-ups through Sprint 3 (2026-07-21+) have landed: CORS/credits modularization, `/app/*` shell, pricing tokens, and multi-org wallet resolution + admin Depends/pagination. Remaining optional work: graph embeddings, frontend org-switcher UX when `active_org_id` is unset.
 
 Knowledge graph was empty at audit start (`build_or_update_graph` hit a DB lock); rebuilt later on `main` @ `c7cbaa4` (full build + postprocess; embeddings skipped — local `sentence-transformers` not installed). Graph DB stays gitignored under `.code-review-graph/`.
 
@@ -128,9 +128,9 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 |----|-----|---------|----------|----------------|
 | A1 | — | Same-origin `/api` via nginx is correct | `frontend/nginx.conf`, `docker-compose.yml`, `lib/api.ts` | Keep; document in onboarding |
 | A2 | P2 | CORS allowlist hard-coded; Coolify host may differ | `backend/main.py` | **Done:** `CORS_ORIGINS` env (comma-separated); defaults preserved; rejects `*` |
-| A3 | P2 | Auth duplicated per route; `utils.get_current_user` underused | routers vs `utils.py` | **Progress:** Depends on scan/payment/public + batch/bank/reconcile/sales/usage/bank_reconcile |
+| A3 | P2 | Auth duplicated per route; `utils.get_current_user` underused | routers vs `utils.py` | **Done:** Depends on scan/payment/public + batch/bank/reconcile/sales/usage/bank_reconcile; admin `verify_super_admin` composes on `get_current_user` |
 | A4 | P2 | Scan still in `main.py` (~600 lines) | `main.py` | **Done:** extracted `scan_routes.py` |
-| A5 | P2 | Nested `/` public + protected routes | `App.tsx` | Prefer `/app/*` shell (deferred) |
+| A5 | P2 | Nested `/` public + protected routes | `App.tsx` | **Done:** `/app/*` shell + legacy redirects (`269e623`) |
 
 ### 4.2 Credit / wallet
 
@@ -153,7 +153,7 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 | Area | Health | Notes |
 |------|--------|-------|
 | Scan / save | Good post-incident | Do not regress clientId binding / `save_invoice_atomic` |
-| Clients | Good | Phase 58 `create_client_secure`; multi-org `LIMIT 1` still P2 |
+| Clients | Good | Phase 58 `create_client_secure`; multi-org resolution fixed (phase65 + `resolve_active_org_id`) |
 | GSTR-2B recon | Good | Strong memoization; large grids virtualized (`200cb63`) |
 | Bank | Good | Ownership aligned with `has_client_access` (firm-wide) |
 | Tax liability | OK | Uses ErrorState |
@@ -190,7 +190,7 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 | ID | Sev | Finding | Recommendation |
 |----|-----|---------|----------------|
 | P1 | P1 | Recon 1k+ rows: no virtualization | **Done** (`200cb63`) |
-| P2 | P2 | Admin tenants full-table profiles | Paginate |
+| P2 | P2 | Admin tenants full-table profiles | **Done:** paginated `limit`/`offset` + org wallet credits on page |
 | P3 | — | Batch semaphore(5), scan chunk 5, bank chunks | Keep |
 | P4 | P2 | N+1 risk in admin / heavy gathers | Bound parallelism |
 
@@ -221,7 +221,7 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 3. ~~Centralize remaining costs in `backend/credits.py`.~~ **Done** — bank/deep-match/batch helpers + `Depends(get_current_user)` on batch/bank/reconcile/sales/usage-logs/bank_reconcile (`1d45283`).
 4. ~~Update stale monetization / ProGate docs.~~ **Done** — aligned with credits-only gating (`da96538`) + current packs/costs.
 5. ~~Rebuild code-review-graph DB.~~ **Done** — full rebuild + postprocess on workspace (DB gitignored; embeddings optional / not installed locally).
-6. Prefer `/app/*` shell for nested public/protected routes — **deferred (next pass)**.
+6. Prefer `/app/*` shell for nested public/protected routes — **Done** (`269e623`).
 
 ---
 
@@ -249,7 +249,8 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 | 5 | Recon virtualization + Clients aggregates | **Done** (`200cb63`) |
 | 6–7 | `upgrade_user_tier` ledger + admin UI org credits display | **Done** ledger (`ae53718`); soft-gates (`e91a525`) |
 | Buffer | Docs sync; graph rebuild; extract `credits.py` | **Done** (docs + graph this pass; `credits.py` in `1d45283`) |
-| Next | `/app/*` shell for public vs protected routes | Nested route clarity (A5) |
+| Next | `/app/*` shell for public vs protected routes | **Done** (`269e623`) |
+| Sprint 3 | Multi-org wallet + admin Depends/pagination | See §10 |
 
 ---
 
@@ -278,11 +279,37 @@ Follow-up doc/graph pass committed separately from the original audit code fixes
 ## 9. Verification checklist
 
 - [ ] Apply phase60 on Supabase (staging then prod)
+- [ ] Apply phase65 multi-org wallet resolution on Supabase
 - [ ] `cd frontend && npm run build`
-- [ ] `cd backend && pytest tests/test_payment_routes.py tests/test_batch_routes.py tests/test_admin_routes.py -q`
+- [ ] `cd backend && pytest tests/test_payment_routes.py tests/test_batch_routes.py tests/test_admin_routes.py tests/test_org_resolution.py -q`
 - [ ] Manual: failed bank job restores credits; oversized ZIP returns 413 **without** debit
 - [ ] Manual: create-order with forged `credits: 999999` still grants catalog amount only
 - [ ] Manual: PostgREST `refund_credits` for another user_id returns 42501 / error
+- [ ] Manual: user with multiple org memberships and null `active_org_id` debits the owner-role (or earliest) membership wallet — not a random owned org
+
+---
+
+## 10. Sprint 3 (2026-07-21+) — Multi-org wallet + admin hardening
+
+**Goal:** Remove ambiguous `owner_id LIMIT 1` wallet targeting and finish admin auth/pagination debt.
+
+### Shipped
+
+| Change | Path / notes |
+|--------|----------------|
+| `resolve_active_org_id` + `get_org_credits` membership fallback | `backend/utils.py` |
+| Scan / usage-logs / WhatsApp / admin quota use resolver | `scan_routes.py`, `payment_routes.py`, `whatsapp_service.py`, `admin_routes.py` |
+| SQL `resolve_user_org_id` + rewire decrement/refund/upgrade | `supabase/migrations/migration_phase65_multi_org_wallet_resolution.sql` |
+| Admin `verify_super_admin` → `Depends(get_current_user)` | `backend/admin_routes.py` |
+| Admin tenants `limit`/`offset` + org wallet credits (not dead `profiles.credits`) | `admin_routes.py`, `PlatformAdminPage.tsx` |
+| Unit + admin route tests | `tests/test_org_resolution.py`, `tests/test_admin_routes.py` |
+
+### Next after Sprint 3
+
+1. Apply phase65 on staging/prod; smoke multi-org deduct/refund/pack fulfill.
+2. Frontend org switcher: always set `profiles.active_org_id` when user picks a firm (heal nulls).
+3. Optional: code-review-graph embeddings (`sentence-transformers` / OpenAI provider).
+4. Optional: tighten WhatsApp/public edge-case tests; drop one-off e2e path rewriter (already applied under `/app/*`).
 
 ---
 

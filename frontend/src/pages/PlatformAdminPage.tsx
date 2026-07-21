@@ -27,7 +27,7 @@ const PlatformAdminPage: React.FC = () => {
       const apiUrl = getApiUrl();
       const [metricsRes, tenantsRes] = await Promise.all([
         fetch(`${apiUrl}/api/admin/metrics`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${apiUrl}/api/admin/tenants`, { headers: { 'Authorization': `Bearer ${token}` } })
+        fetch(`${apiUrl}/api/admin/tenants?limit=50&offset=0`, { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
       
       if (!metricsRes.ok || !tenantsRes.ok) throw new Error('Failed to fetch admin data. You may not be authorized.');

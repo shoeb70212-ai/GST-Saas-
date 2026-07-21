@@ -77,6 +77,8 @@ def build_supabase_mock(
             return self
         def update(self, *a, **kw): return self
         def delete(self, *a, **kw): return self
+        def maybe_single(self): return self
+        def range(self, *a, **kw): return self
         def single(self): return self
 
         async def execute(self):
