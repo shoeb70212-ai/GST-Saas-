@@ -120,17 +120,67 @@ def compute_file_hash(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
-async def get_org_credits(sc, user_id: str) -> int:
-    """Return the active organization's credit balance for a user."""
+_ROLE_RANK = {"owner": 0, "admin": 1, "accountant": 2}
+
+
+async def resolve_active_org_id(sc, user_id: str) -> str | None:
+    """
+    Resolve the organization wallet for a user (multi-org safe).
+
+    Order:
+      1. profiles.active_org_id when set
+      2. organization_members for the user (owner > admin > accountant, then created_at)
+      3. earliest organizations row owned by the user (last resort)
+
+    Avoids arbitrary owner_id LIMIT 1 when memberships exist.
+    """
     try:
         profile_resp = await sc.table("profiles").select("active_org_id").eq("id", user_id).execute()
         active_org_id = profile_resp.data[0].get("active_org_id") if profile_resp.data else None
-
         if active_org_id:
-            org_resp = await sc.table("organizations").select("credits").eq("id", active_org_id).execute()
-        else:
-            org_resp = await sc.table("organizations").select("credits").eq("owner_id", user_id).limit(1).execute()
+            return active_org_id
 
+        members_resp = (
+            await sc.table("organization_members")
+            .select("org_id, role, created_at")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        rows = members_resp.data or []
+        if rows:
+            rows_sorted = sorted(
+                rows,
+                key=lambda r: (
+                    _ROLE_RANK.get((r.get("role") or "").lower(), 9),
+                    r.get("created_at") or "",
+                ),
+            )
+            org_id = rows_sorted[0].get("org_id")
+            if org_id:
+                return org_id
+
+        owned_resp = (
+            await sc.table("organizations")
+            .select("id, created_at")
+            .eq("owner_id", user_id)
+            .order("created_at")
+            .limit(1)
+            .execute()
+        )
+        if owned_resp.data:
+            return owned_resp.data[0].get("id")
+    except Exception as e:
+        logger.warning(f"Could not resolve active org for {user_id}: {e}")
+    return None
+
+
+async def get_org_credits(sc, user_id: str) -> int:
+    """Return the active organization's credit balance for a user."""
+    try:
+        org_id = await resolve_active_org_id(sc, user_id)
+        if not org_id:
+            return 0
+        org_resp = await sc.table("organizations").select("credits").eq("id", org_id).execute()
         if org_resp.data:
             return int(org_resp.data[0].get("credits") or 0)
     except Exception as e:

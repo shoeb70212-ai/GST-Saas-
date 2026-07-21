@@ -3,7 +3,8 @@ Tests for POST /api/scan-invoice.
 
 Strategy:
   - Auth uses Depends(get_current_user); tests override the dependency.
-  - Profile / org credits / credit deduction still use get_shared_client (httpx).
+  - Org credits resolve via auth supabase_client (get_org_credits).
+  - Credit deduction / refund still use get_shared_client (httpx).
   - We patch scan_routes.run_ai_extraction to avoid real LLM calls.
   - We patch gstin_service.verify_gstin to avoid external GSTIN API.
 """
@@ -19,6 +20,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from main import app
 from utils import get_current_user
+from tests.helpers import build_supabase_mock
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -106,13 +108,27 @@ class _FakeHTTPClient:
     async def __aexit__(self, *a): pass
 
 
-def _auth_override(user_id: str = "user-abc-123", token: str = "valid.token"):
+def _auth_override(
+    user_id: str = "user-abc-123",
+    token: str = "valid.token",
+    credits: int = 50,
+):
+    sc = build_supabase_mock(
+        user_id=user_id,
+        table_data={
+            "profiles": [{"id": user_id, "active_org_id": "org-xyz", "tally_ledgers": None}],
+            "organizations": [{"id": "org-xyz", "credits": credits}],
+            "organization_members": [],
+        },
+    )
+
     async def _fake():
         return {
             "user_id": user_id,
-            "supabase_client": AsyncMock(),
+            "supabase_client": sc,
             "token": token,
         }
+
     return _fake
 
 
@@ -120,6 +136,7 @@ def _make_patched_scan(
     overrides: dict | None = None,
     ai_result=None,
     gstin_status: str = "Active",
+    credits: int = 50,
 ):
     """
     Returns a context manager that patches all external dependencies
@@ -139,7 +156,7 @@ def _make_patched_scan(
 
     class _Ctx:
         def __enter__(self_inner):
-            app.dependency_overrides[get_current_user] = _auth_override()
+            app.dependency_overrides[get_current_user] = _auth_override(credits=credits)
             self_inner._p1 = patch.object(hc_mod, "get_shared_client", fake_shared)
             self_inner._p2 = patch.object(scan_mod, "get_shared_client", fake_shared)
             self_inner._p3 = patch.object(scan_mod, "run_ai_extraction", new_callable=AsyncMock)
@@ -249,8 +266,7 @@ class TestScanInvoiceFileValidation:
 
 class TestScanInvoiceCredits:
     def test_zero_credits_returns_402(self, test_client):
-        zero_org = _make_resp(200, [{"credits": 0}])
-        with _make_patched_scan(overrides={"organizations?": zero_org}) as ctx:
+        with _make_patched_scan(credits=0) as ctx:
             r = test_client.post(
                 "/api/scan-invoice",
                 files={"file": ("inv.jpg", io.BytesIO(MINIMAL_JPEG), "image/jpeg")},
@@ -261,8 +277,7 @@ class TestScanInvoiceCredits:
             ctx.mock_ai.assert_not_called()
 
     def test_negative_credits_returns_402(self, test_client):
-        neg_org = _make_resp(200, [{"credits": -3}])
-        with _make_patched_scan(overrides={"organizations?": neg_org}):
+        with _make_patched_scan(credits=-3):
             r = test_client.post(
                 "/api/scan-invoice",
                 files={"file": ("inv.jpg", io.BytesIO(MINIMAL_JPEG), "image/jpeg")},

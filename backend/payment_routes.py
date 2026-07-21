@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 import razorpay
 from supabase import create_async_client
-from utils import get_current_user
+from utils import get_current_user, resolve_active_org_id
 from credits import CREDIT_PACKS
 
 logger = logging.getLogger(__name__)
@@ -280,17 +280,7 @@ async def get_usage_logs(auth: dict = Depends(get_current_user)):
     user_id = auth["user_id"]
     sc = auth["supabase_client"]
 
-    # Get active org
-    profile_resp = await sc.table("profiles").select("active_org_id").eq("id", user_id).execute()
-    active_org_id = None
-    if profile_resp.data:
-        active_org_id = profile_resp.data[0].get("active_org_id")
-
-    if not active_org_id:
-        org_resp = await sc.table("organizations").select("id").eq("owner_id", user_id).execute()
-        if org_resp.data:
-            active_org_id = org_resp.data[0].get("id")
-
+    active_org_id = await resolve_active_org_id(sc, user_id)
     if not active_org_id:
         return {"status": "success", "data": []}
 

@@ -18,7 +18,7 @@ from openai import AsyncOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from http_client import get_shared_client
-from utils import validate_file_content, get_current_user
+from utils import validate_file_content, get_current_user, get_org_credits
 import credits as credit_costs
 
 load_dotenv()
@@ -268,44 +268,24 @@ async def scan_invoice(
 
     user_id = auth["user_id"]
     token = auth["token"]
+    sc = auth["supabase_client"]
     scan_cost = credit_costs.INVOICE_SCAN
 
-    # 1. Get Profile and Active Org credits
-    async with get_shared_client() as http_client:
-        profile_resp = await http_client.get(
-            f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=active_org_id,tally_ledgers",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"},
-        )
+    # 1. Profile ledgers + multi-org-safe credit pre-check
+    tally_ledgers = None
+    try:
+        profile_resp = await sc.table("profiles").select("tally_ledgers").eq("id", user_id).execute()
+        if profile_resp.data:
+            tally_ledgers = profile_resp.data[0].get("tally_ledgers")
+    except Exception:
         tally_ledgers = None
-        credits = 0
-        if profile_resp.status_code == 200 and profile_resp.json():
-            p_data = profile_resp.json()[0]
-            tally_ledgers = p_data.get("tally_ledgers")
-            active_org_id = p_data.get("active_org_id")
 
-            if active_org_id:
-                org_resp = await http_client.get(
-                    f"{SUPABASE_URL}/rest/v1/organizations?id=eq.{active_org_id}&select=credits",
-                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"},
-                )
-                if org_resp.status_code == 200 and org_resp.json():
-                    credits = org_resp.json()[0].get("credits", 0)
-            else:
-                org_resp = await http_client.get(
-                    f"{SUPABASE_URL}/rest/v1/organizations?owner_id=eq.{user_id}&select=credits",
-                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"},
-                )
-                if org_resp.status_code == 200 and org_resp.json():
-                    credits = org_resp.json()[0].get("credits", 0)
-        else:
-            credits = 0
-
-        # Credit pre-check (lightweight guard — prevents AI cost exploitation by 0-credit users)
-        # The atomic RPC deduction at the end still handles race conditions for concurrent requests
-        if credits <= 0:
-            raise HTTPException(
-                status_code=402, detail="Insufficient credits. Please recharge your wallet."
-            )
+    credits = await get_org_credits(sc, user_id)
+    # Lightweight guard — atomic RPC deduction still handles races
+    if credits <= 0:
+        raise HTTPException(
+            status_code=402, detail="Insufficient credits. Please recharge your wallet."
+        )
 
     content = await file.read()
 

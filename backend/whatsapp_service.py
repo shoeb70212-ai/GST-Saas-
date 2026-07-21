@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from typing import Optional
 from supabase import create_async_client
 from PIL import Image, ImageOps, UnidentifiedImageError
+from utils import remove_pdf_password_if_present, get_org_credits
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +104,7 @@ async def process_whatsapp_message_bg(message_data: dict):
             SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_ANON_KEY)
             sc = await create_async_client(SUPABASE_URL, SERVICE_ROLE)
             
-            profile_resp = await sc.table("profiles").select("id, active_whatsapp_client_id, tally_ledgers, active_org_id").eq("whatsapp_number", from_number).execute()
+            profile_resp = await sc.table("profiles").select("id, active_whatsapp_client_id, tally_ledgers").eq("whatsapp_number", from_number).execute()
             if not profile_resp.data or len(profile_resp.data) == 0:
                 await send_whatsapp_message(from_number, "⚠️ This phone number is not linked to any KhataLens account. Please add your number in Settings.")
                 return
@@ -112,23 +113,13 @@ async def process_whatsapp_message_bg(message_data: dict):
             user_id = user_profile.get("id")
             client_id = user_profile.get("active_whatsapp_client_id")
             tally_ledgers = user_profile.get("tally_ledgers")
-            active_org_id = user_profile.get("active_org_id")
             
             if not client_id:
                 await send_whatsapp_message(from_number, "⚠️ You don't have an active client selected for WhatsApp ingestion. Please set one in Settings.")
                 return
             
-            # 1. Wallet Abuse Check — fetch credits from organization (consistent with decrement_credits RPC)
-            credits = 0
-            if active_org_id:
-                org_resp = await sc.table("organizations").select("credits").eq("id", active_org_id).execute()
-                if org_resp.data:
-                    credits = org_resp.data[0].get("credits", 0)
-            else:
-                # Fallback: find org where user is owner
-                org_resp = await sc.table("organizations").select("credits").eq("owner_id", user_id).execute()
-                if org_resp.data:
-                    credits = org_resp.data[0].get("credits", 0)
+            # 1. Wallet Abuse Check — multi-org-safe active wallet
+            credits = await get_org_credits(sc, user_id)
             
             if credits <= 0:
                 await send_whatsapp_message(from_number, "💳 You have insufficient credits. Please recharge your wallet to process invoices via WhatsApp.")
@@ -166,7 +157,6 @@ async def process_whatsapp_message_bg(message_data: dict):
                     content_bytes = await download_whatsapp_media(media_id)
                     doc = fitz.open(stream=content_bytes, filetype="pdf")
                     if doc.authenticate(text_body):
-                        from utils import remove_pdf_password_if_present
                         content_bytes = remove_pdf_password_if_present(content_bytes, text_body)
                         await sc.table("whatsapp_pending_files").delete().eq("id", pending_id).execute()
                     else:
