@@ -11,6 +11,7 @@ declare global {
   }
 }
 
+import { getApiUrl } from '../lib/api';
 import { useClient } from '../lib/ClientContext';
 
 export default function WalletPage() {
@@ -41,19 +42,24 @@ export default function WalletPage() {
     }
   });
 
-  const { data: usageLogs } = useQuery({
+  const { data: usageLogs = [] } = useQuery({
     queryKey: ['usageLogs'],
     queryFn: async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("No session");
-      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/audit/usage-logs`, {
         headers: { 'Authorization': `Bearer ${session.access_token}` }
       });
       if (!res.ok) throw new Error('Failed to fetch usage logs');
-      return res.json();
+      const body = await res.json();
+      if (Array.isArray(body)) return body;
+      if (Array.isArray(body?.data)) return body.data;
+      return [];
     }
   });
+
+  const totalTokens = usageLogs.reduce((acc: number, log: { tokens_used?: number }) => acc + (log.tokens_used || 0), 0);
 
   useEffect(() => {
     // Load Razorpay Script
@@ -77,7 +83,7 @@ export default function WalletPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Please sign in to purchase.");
 
-      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const apiUrl = getApiUrl();
       
       // 1. Create Order on Backend
       const orderRes = await fetch(`${apiUrl}/api/create-order`, {
@@ -182,7 +188,7 @@ export default function WalletPage() {
             <h2 className="text-text-secondary font-medium mb-2">Available Credits</h2>
             <div className="text-5xl font-bold text-text-primary mb-2">{credits !== null ? credits : (profile?.credits || 0)}</div>
             <div className="text-sm font-bold text-accent uppercase tracking-wider mb-4 border border-accent/30 bg-accent/10 px-3 py-1 rounded-full">
-              {profile?.tier || 'Free'} Tier
+              Pay-as-you-go
             </div>
             <Link to="/pricing" className="text-sm text-accent hover:underline mt-2">View Credit Costs</Link>
           </div>
@@ -264,7 +270,7 @@ export default function WalletPage() {
         <div className="p-6 border-b border-border flex justify-between items-center">
           <h2 className="text-lg font-bold text-text-primary flex items-center gap-2"><Zap className="w-5 h-5 text-accent" /> AI Usage & Token Audit Log</h2>
           <div className="badge bg-accent/10 text-accent border border-accent/20 px-4 py-1.5 font-mono">
-            Total Tokens Processed: {usageLogs?.reduce((acc: number, log: any) => acc + (log.tokens_used || 0), 0).toLocaleString() || 0}
+            Total Tokens Processed: {totalTokens.toLocaleString()}
           </div>
         </div>
         <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
@@ -280,12 +286,12 @@ export default function WalletPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {usageLogs?.length === 0 || !usageLogs ? (
+              {usageLogs.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-8 text-center text-text-secondary">No AI usage logs found.</td>
                 </tr>
               ) : (
-                usageLogs?.map((log: any) => (
+                usageLogs.map((log: any) => (
                   <tr key={log.id} className="hover:bg-bg-subtle transition-colors">
                     <td className="p-4 font-mono text-text-secondary whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
                     <td className="p-4 font-medium text-text-primary capitalize">{log.task_type.replace(/_/g, ' ')}</td>

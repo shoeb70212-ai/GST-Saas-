@@ -86,6 +86,11 @@ export default function PricingPage() {
             </motion.div>
 
           </div>
+
+          <p className="text-center text-sm text-text-secondary mt-8 max-w-2xl mx-auto">
+            Virtual CFO, Tax Liability, GSTR-2B reconciliation, and client management are <strong className="text-text-primary">always available</strong> — no feature locks.
+            You only spend credits when you run AI-powered tasks (scan, bank parse, deep match, etc.).
+          </p>
         </motion.div>
 
         {/* Wallet Passes */}
