@@ -28,6 +28,7 @@ const SnapPage = lazy(() => import('./pages/SnapPage'));
 const PlatformAdminPage = lazy(() => import('./pages/PlatformAdminPage'));
 const WalletPage = lazy(() => import('./pages/WalletPage'));
 import PlatformAdminLayout from './components/PlatformAdminLayout';
+import { SuperAdminGate, OrgAdminGate } from './components/RouteAccessGate';
 import { ScanProvider } from './lib/ScanContext';
 import { ClientProvider } from './lib/ClientContext';
 import { Toaster } from 'react-hot-toast';
@@ -107,14 +108,14 @@ export default function App() {
             
             {/* Protected Routes */}
 
-            <Route path="/admin" element={<ProtectedRoute session={session}><PlatformAdminLayout /></ProtectedRoute>}>
+            <Route path="/admin" element={<ProtectedRoute session={session}><SuperAdminGate><PlatformAdminLayout /></SuperAdminGate></ProtectedRoute>}>
               <Route index element={<PlatformAdminPage />} />
             </Route>
 
             <Route path="/" element={<ProtectedRoute session={session}><Layout /></ProtectedRoute>}>
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="scan" element={<ScanPage />} />
-              <Route path="cfo" element={<VirtualCfoPage />} />
+              <Route path="cfo" element={<OrgAdminGate><VirtualCfoPage /></OrgAdminGate>} />
               <Route path="tax-liability" element={<TaxLiabilityPage />} />
               <Route path="invoices" element={<SavedInvoicesPage />} />
               <Route path="bank-statements" element={<BankStatementsPage />} />
