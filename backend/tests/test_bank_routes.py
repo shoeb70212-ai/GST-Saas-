@@ -95,7 +95,7 @@ class TestBankStatementUpload:
     @patch("bank_routes.get_user_from_token")
     @patch("bank_routes.get_user_supabase_client")
     def test_unknown_extension_processed_as_pdf(self, mock_sc_fn, mock_user_fn, _mock_bg):
-        """Unknown extensions default to PDF processing (no magic-byte gate on bank uploads)."""
+        """Unknown extensions are treated as PDF; invalid PDF bytes return 400."""
         async def _fake_user(_token):
             return "user-123"
         mock_user_fn.side_effect = _fake_user
@@ -108,7 +108,9 @@ class TestBankStatementUpload:
             data={"client_id": "client-abc"},
             headers={"Authorization": "Bearer fake.token"},
         )
-        assert response.status_code == 200
+        # Non-PDF binary cannot be opened as PDF after extension fallback
+        assert response.status_code == 400
+        assert "PDF" in (response.json().get("detail") or "")
 
     @patch("bank_routes.get_user_from_token", new_callable=AsyncMock)
     @patch("bank_routes.get_user_supabase_client")

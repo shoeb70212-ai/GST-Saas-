@@ -316,20 +316,35 @@ export default function WalletPage() {
                   <td colSpan={6} className="p-8 text-center text-text-secondary">No AI usage logs found.</td>
                 </tr>
               ) : (
-                usageLogs.map((log: any) => (
+                usageLogs.map((log: any) => {
+                  const deducted = Number(log.credits_deducted) || 0;
+                  const creditLabel =
+                    deducted > 0
+                      ? `-${deducted}`
+                      : deducted < 0
+                        ? `+${Math.abs(deducted)}`
+                        : 'Prepaid';
+                  const creditClass =
+                    deducted > 0
+                      ? 'text-accent'
+                      : deducted < 0
+                        ? 'text-success'
+                        : 'text-text-secondary';
+                  return (
                   <tr key={log.id} className="hover:bg-bg-subtle transition-colors">
                     <td className="p-4 font-mono text-text-secondary whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
                     <td className="p-4 font-medium text-text-primary capitalize">{log.task_type.replace(/_/g, ' ')}</td>
                     <td className="p-4 text-text-secondary max-w-[200px] truncate" title={log.file_name}>{log.file_name || '-'}</td>
                     <td className="p-4 font-mono font-medium text-text-primary">{log.tokens_used?.toLocaleString() || 0}</td>
-                    <td className="p-4 font-bold text-accent">-{log.credits_deducted}</td>
+                    <td className={`p-4 font-bold ${creditClass}`}>{creditLabel}</td>
                     <td className="p-4">
-                      <span className={`badge ${log.status === 'success' ? 'bg-success-subtle text-success border-success/20' : 'bg-error-subtle text-error border-error/20'} border flex items-center gap-1 w-max`}>
+                      <span className={`badge ${log.status === 'success' || log.status === 'prepaid' ? 'bg-success-subtle text-success border-success/20' : log.status === 'refunded' ? 'bg-warning-subtle text-warning border-warning/20' : 'bg-error-subtle text-error border-error/20'} border flex items-center gap-1 w-max`}>
                         {log.status === 'success' ? <ShieldCheck className="w-3 h-3" /> : null} {log.status}
                       </span>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>

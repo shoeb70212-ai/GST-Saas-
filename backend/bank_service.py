@@ -198,8 +198,11 @@ async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes
         else:
             logger.info(f"Opening PDF stream for statement {statement_id}")
             doc = fitz.open(stream=file_path_or_bytes, filetype="pdf")
-            if doc.needs_pass and pdf_password:
-                doc.authenticate(pdf_password)
+            if doc.needs_pass:
+                if not pdf_password or not doc.authenticate(str(pdf_password).strip()):
+                    raise RuntimeError(
+                        "PDF is password-protected. Enter the correct PDF password and retry."
+                    )
             statement_period_context = "Unknown. Look at the text for context."
             
             total_pages = len(doc)
@@ -295,15 +298,28 @@ async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes
             "error_message": None,
         }).eq("id", statement_id).execute()
         
-        # Log Token Usage (credits were already deducted upfront in the router)
+        # Attach token usage to the prepaid charge row (upload/retry) — do NOT log amount=0
+        # which looks like "0 credits deducted" for a successful scan.
         try:
-            await sc.rpc("decrement_credits", {
-                "user_id_param": user_id, 
-                "amount": 0,
-                "task_type_param": "bank_statement_processing",
-                "file_name_param": f"statement_{statement_id}",
-                "tokens_used_param": total_statement_tokens
-            }).execute()
+            recent = await sc.table("credit_usage_logs").select("id").eq(
+                "user_id", user_id
+            ).in_("task_type", ["bank_statement_upload", "bank_statement_retry"]).order(
+                "created_at", desc=True
+            ).limit(1).execute()
+            if recent.data:
+                await sc.table("credit_usage_logs").update({
+                    "tokens_used": total_statement_tokens,
+                    "file_name": f"statement_{statement_id}",
+                }).eq("id", recent.data[0]["id"]).execute()
+            elif total_statement_tokens:
+                await sc.rpc("decrement_credits", {
+                    "user_id_param": user_id,
+                    "amount": 0,
+                    "task_type_param": "bank_statement_tokens",
+                    "file_name_param": f"statement_{statement_id}",
+                    "tokens_used_param": total_statement_tokens,
+                    "status_param": "prepaid",
+                }).execute()
         except Exception as log_e:
             logger.warning(f"Token usage log failed for {statement_id}: {log_e}")
         

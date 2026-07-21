@@ -61,20 +61,27 @@ async def _prepare_statement_content(
         try:
             doc = fitz.open(stream=content, filetype="pdf")
             if doc.needs_pass:
-                auth_result = doc.authenticate(pdf_password) if pdf_password else 0
-                if not pdf_password or not auth_result:
-                    raise ValueError("This PDF is password-protected. Please provide the correct password.")
-                from utils import remove_pdf_password_if_present
-                c_bytes = remove_pdf_password_if_present(content, pdf_password)
-                doc = fitz.open(stream=c_bytes, filetype="pdf")
+                if not (pdf_password and str(pdf_password).strip()):
+                    raise ValueError(
+                        "This PDF is password-protected. Enter the PDF password above and try again."
+                    )
+                auth_ok = doc.authenticate(str(pdf_password).strip())
+                if not auth_ok:
+                    raise ValueError("Incorrect PDF password. Please check the password and try again.")
+                # Persist an unlocked copy so background processing does not need the password again
+                content = doc.tobytes(garbage=3, deflate=True)
+                doc.close()
+                doc = fitz.open(stream=content, filetype="pdf")
                 if doc.needs_pass:
-                    doc.authenticate(pdf_password)
-                content = doc.tobytes()
-            cost = max(2, math.ceil(len(doc) / 5) * 2)
+                    raise ValueError("Could not unlock PDF even after password authentication.")
+            cost = max(2, math.ceil(max(len(doc), 1) / 5) * 2)
         except ValueError as ve:
             raise HTTPException(status_code=400, detail=str(ve))
+        except HTTPException:
+            raise
         except Exception as e:
-            logger.error(f"Failed to calculate PDF cost: {e}")
+            logger.error(f"Failed to open/calculate PDF cost: {e}")
+            raise HTTPException(status_code=400, detail=f"Could not read PDF statement: {e}")
     elif ext in ['.xlsx', '.xls', '.csv']:
         try:
             if ext == '.csv':

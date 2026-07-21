@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { getApiUrl } from '../lib/api';
 
 export default function BankStatementsPage() {
-  const { activeClientId } = useClient();
+  const { activeClientId, refreshCredits } = useClient();
   const [statements, setStatements] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -51,10 +51,11 @@ export default function BankStatementsPage() {
     if (hasProcessing) {
       const timer = setInterval(() => {
         fetchStatements();
+        refreshCredits();
       }, 5000);
       return () => clearInterval(timer);
     }
-  }, [statements, fetchStatements]);
+  }, [statements, fetchStatements, refreshCredits]);
 
   const onDrop = useCallback(async (acceptedFiles: File[], fileRejections: any[]) => {
     if (fileRejections.length > 0) {
@@ -102,14 +103,19 @@ export default function BankStatementsPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.detail || 'Upload failed');
       
-      toast.success(json.message || 'Statement uploaded successfully');
+      toast.success(
+        json.cost
+          ? `Statement queued — ${json.cost} credits charged`
+          : (json.message || 'Statement uploaded successfully')
+      );
+      await refreshCredits();
       fetchStatements();
     } catch (e: any) {
       toast.error(e.message || 'An error occurred during upload.');
     } finally {
       setUploading(false);
     }
-  }, [activeClientId, fetchStatements, pdfPassword]);
+  }, [activeClientId, fetchStatements, pdfPassword, refreshCredits]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -196,7 +202,12 @@ export default function BankStatementsPage() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.detail || 'Retry failed');
 
-      toast.success(json.message || 'Retry started');
+      toast.success(
+        json.cost
+          ? `Retry started — ${json.cost} credits charged`
+          : (json.message || 'Retry started')
+      );
+      await refreshCredits();
       fetchStatements();
     } catch (err: any) {
       toast.error(err.message || 'Could not retry statement');
@@ -250,7 +261,9 @@ export default function BankStatementsPage() {
           className="w-full bg-bg-surface border border-border rounded-lg px-4 py-2 text-text-primary focus:outline-none focus:border-accent"
           disabled={uploading}
         />
-        <p className="text-xs text-text-disabled mt-1 text-center">We automatically remove the password for future viewing.</p>
+        <p className="text-xs text-text-disabled mt-1 text-center">
+          Required for locked bank PDFs — we unlock the file for extraction after you enter the password.
+        </p>
       </div>
 
       <div 
