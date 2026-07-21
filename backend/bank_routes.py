@@ -17,6 +17,83 @@ router = APIRouter()
 
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+
+async def _admin_storage_client():
+    """Service-role client for storage uploads (bypasses bucket RLS gaps)."""
+    key = SUPABASE_SERVICE_KEY or SUPABASE_ANON_KEY
+    return await create_async_client(SUPABASE_URL, key)
+
+
+async def _store_statement_file(client_id: str, statement_id: str, ext: str, content: bytes, content_type: str) -> str | None:
+    """Upload to invoices bucket. Returns storage path or None if upload failed."""
+    file_path = f"{client_id}/bank_{statement_id}{ext}"
+    try:
+        admin = await _admin_storage_client()
+        await admin.storage.from_("invoices").upload(
+            file_path,
+            content,
+            {"content-type": content_type or "application/octet-stream", "upsert": "true"},
+        )
+        return file_path
+    except Exception as e:
+        logger.error(f"Storage upload failed for {statement_id}: {e}")
+        return None
+
+
+async def _prepare_statement_content(
+    content: bytes,
+    filename: str | None,
+    pdf_password: str | None,
+) -> tuple[bytes, str, int]:
+    """Validate file, return (content, extension, credit_cost)."""
+    import math
+    import fitz
+
+    _, ext = os.path.splitext(filename or "")
+    ext = ext.lower()
+    if ext not in ['.pdf', '.xlsx', '.xls', '.csv']:
+        ext = '.pdf'
+
+    cost = 2
+    if ext == '.pdf':
+        try:
+            doc = fitz.open(stream=content, filetype="pdf")
+            if doc.needs_pass:
+                auth_result = doc.authenticate(pdf_password) if pdf_password else 0
+                if not pdf_password or not auth_result:
+                    raise ValueError("This PDF is password-protected. Please provide the correct password.")
+                from utils import remove_pdf_password_if_present
+                c_bytes = remove_pdf_password_if_present(content, pdf_password)
+                doc = fitz.open(stream=c_bytes, filetype="pdf")
+                if doc.needs_pass:
+                    doc.authenticate(pdf_password)
+                content = doc.tobytes()
+            cost = max(2, math.ceil(len(doc) / 5) * 2)
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
+        except Exception as e:
+            logger.error(f"Failed to calculate PDF cost: {e}")
+    elif ext in ['.xlsx', '.xls', '.csv']:
+        try:
+            if ext == '.csv':
+                df = pd.read_csv(io.BytesIO(content))
+                total_rows = len(df)
+            else:
+                dfs = _read_excel_workbook(content, ext)
+                total_rows = sum(len(df) for df in dfs.values())
+            cost = max(2, math.ceil(total_rows / 50) * 2)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to calculate Excel cost: {e}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not read spreadsheet ({ext}). Ensure the file is a valid Excel/CSV export. Details: {e}",
+            )
+
+    return content, ext, cost
 
 
 async def get_user_from_token(token: str):
@@ -100,83 +177,31 @@ async def upload_bank_statement(
         raise HTTPException(status_code=400, detail="File too large. Max 25MB.")
 
     sc = await get_user_supabase_client(authorization)
-
-    # Ownership check: verify client belongs to user
     await _verify_client_ownership(sc, client_id, user_id)
 
-    import math
-    import fitz
-
-    # Extract file extension
-    _, ext = os.path.splitext(file.filename or "")
-    ext = ext.lower()
-    if ext not in ['.pdf', '.xlsx', '.xls', '.csv']:
-        ext = '.pdf'
-
-    # Calculate Volume-Based Cost
-    cost = 2
-    if ext == '.pdf':
-        try:
-            doc = fitz.open(stream=content, filetype="pdf")
-            if doc.needs_pass:
-                auth_result = doc.authenticate(pdf_password) if pdf_password else 0
-                if not pdf_password or not auth_result:
-                    raise ValueError("This PDF is password-protected. Please provide the correct password.")
-                from utils import remove_pdf_password_if_present
-                c_bytes = remove_pdf_password_if_present(content, pdf_password)
-                doc = fitz.open(stream=c_bytes, filetype="pdf")
-                if doc.needs_pass:
-                    doc.authenticate(pdf_password)
-                content = doc.tobytes()
-            cost = max(2, math.ceil(len(doc) / 5) * 2)
-        except ValueError as ve:
-            raise HTTPException(status_code=400, detail=str(ve))
-        except Exception as e:
-            logger.error(f"Failed to calculate PDF cost: {e}")
-    elif ext in ['.xlsx', '.xls', '.csv']:
-        try:
-            if ext == '.csv':
-                df = pd.read_csv(io.BytesIO(content))
-                total_rows = len(df)
-            else:
-                dfs = _read_excel_workbook(content, ext)
-                total_rows = sum(len(df) for df in dfs.values())
-            cost = max(2, math.ceil(total_rows / 50) * 2)
-        except Exception as e:
-            logger.error(f"Failed to calculate Excel cost: {e}")
-            raise HTTPException(
-                status_code=400,
-                detail=f"Could not read spreadsheet ({ext}). Ensure the file is a valid Excel/CSV export. Details: {e}",
-            )
-
-    # NOTE: Removed non-atomic pre-check — rely solely on atomic RPC return value (fixes race condition H2)
+    content, ext, cost = await _prepare_statement_content(content, file.filename, pdf_password)
 
     statement_id = str(uuid.uuid4())
-
-    # Create DB record
     await sc.table("bank_statements").insert({
         "id": statement_id,
         "user_id": user_id,
         "client_id": client_id,
-        "status": "processing"
+        "status": "processing",
+        "error_message": None,
     }).execute()
 
-    # Upload original to Supabase Storage — store PATH (not expiring signed URL) (fixes #23)
-    file_path = f"{client_id}/bank_{statement_id}{ext}"
-    content_type = file.content_type or "application/pdf"
-    try:
-        await sc.storage.from_("invoices").upload(file_path, content, {"content-type": content_type})
-        # Store the storage path — signed URLs are generated on-demand in the status endpoint
-        await sc.table("bank_statements").update({"file_url": file_path}).eq("id", statement_id).execute()
-    except Exception as e:
-        logger.error(f"Storage upload failed: {e}")
-        await sc.table("bank_statements").update({
-            "status": "failed",
-            "error_message": f"File storage failed: {e}",
-        }).eq("id", statement_id).execute()
-        raise HTTPException(status_code=500, detail="Failed to store bank statement file. Please try again.")
+    file_path = await _store_statement_file(
+        client_id, statement_id, ext, content, file.content_type or "application/octet-stream"
+    )
+    update_payload = {}
+    if file_path:
+        update_payload["file_url"] = file_path
+    else:
+        # Still process in-memory; storage is best-effort for later viewing
+        update_payload["error_message"] = "File stored in memory only — storage upload failed (will still process)."
+    if update_payload:
+        await sc.table("bank_statements").update(update_payload).eq("id", statement_id).execute()
 
-    # Deduct credit via atomic RPC (removes race condition — H2 fix)
     rpc_resp = await sc.rpc("decrement_credits", {
         "user_id_param": user_id,
         "amount": cost,
@@ -186,17 +211,81 @@ async def upload_bank_statement(
     }).execute()
 
     if rpc_resp.data == -1:
-        # Revert processing status
         await sc.table("bank_statements").update({
             "status": "failed",
             "error_message": f"Insufficient credits (need {cost}).",
         }).eq("id", statement_id).execute()
-        raise HTTPException(status_code=402, detail=f"Insufficient credits. This {cost * 5}-page/row statement requires {cost} credits. Please recharge your wallet.")
+        raise HTTPException(status_code=402, detail=f"Insufficient credits. This statement requires {cost} credits. Please recharge your wallet.")
 
-    # Start background task
     background_tasks.add_task(process_bank_statement_bg, statement_id, content, user_id, client_id, ext, pdf_password, cost)
 
     return {"status": "success", "statement_id": statement_id, "message": "Bank statement is processing in the background.", "cost": cost}
+
+
+@router.post("/{statement_id}/retry")
+async def retry_bank_statement(
+    statement_id: str,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    pdf_password: str = Form(None),
+    authorization: str = Header(None),
+):
+    """Re-upload a file for a failed/cancelled statement and restart processing."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    token = authorization.split(" ")[1]
+    user_id = await get_user_from_token(token)
+
+    sc = await get_user_supabase_client(authorization)
+    await _verify_statement_ownership(sc, statement_id)
+
+    existing = await sc.table("bank_statements").select("id, client_id, status").eq("id", statement_id).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Statement not found.")
+
+    row = existing.data[0]
+    if row.get("status") not in ("failed", "cancelled"):
+        raise HTTPException(status_code=400, detail="Only failed or cancelled statements can be retried.")
+
+    client_id = row["client_id"]
+    await _verify_client_ownership(sc, client_id, user_id)
+
+    content = await file.read()
+    content, ext, cost = await _prepare_statement_content(content, file.filename, pdf_password)
+
+    # Clear prior transactions before retry
+    await sc.table("bank_transactions").delete().eq("statement_id", statement_id).execute()
+
+    file_path = await _store_statement_file(
+        client_id, statement_id, ext, content, file.content_type or "application/octet-stream"
+    )
+
+    await sc.table("bank_statements").update({
+        "status": "processing",
+        "bank_name": None,
+        "account_number": None,
+        "file_url": file_path,
+        "error_message": None if file_path else "File stored in memory only — storage upload failed (will still process).",
+    }).eq("id", statement_id).execute()
+
+    rpc_resp = await sc.rpc("decrement_credits", {
+        "user_id_param": user_id,
+        "amount": cost,
+        "task_type_param": "bank_statement_retry",
+        "file_name_param": file.filename,
+        "tokens_used_param": 0
+    }).execute()
+
+    if rpc_resp.data == -1:
+        await sc.table("bank_statements").update({
+            "status": "failed",
+            "error_message": f"Insufficient credits (need {cost}).",
+        }).eq("id", statement_id).execute()
+        raise HTTPException(status_code=402, detail=f"Insufficient credits. This statement requires {cost} credits.")
+
+    background_tasks.add_task(process_bank_statement_bg, statement_id, content, user_id, client_id, ext, pdf_password, cost)
+
+    return {"status": "success", "statement_id": statement_id, "message": "Retry started.", "cost": cost}
 
 
 @router.get("/{statement_id}/status")
@@ -219,9 +308,12 @@ async def get_statement_status(statement_id: str, authorization: str = Header(No
     stored_path = statement_data.get("file_url")
     if stored_path and not stored_path.startswith("http"):
         try:
-            signed_url_resp = await sc.storage.from_("invoices").create_signed_url(stored_path, 3600)
-            if signed_url_resp.data:
-                statement_data["file_url"] = signed_url_resp.data.get("signedURL")
+            admin = await _admin_storage_client()
+            signed_url_resp = await admin.storage.from_("invoices").create_signed_url(stored_path, 3600)
+            if signed_url_resp and getattr(signed_url_resp, "get", None):
+                statement_data["file_url"] = signed_url_resp.get("signedURL") or signed_url_resp.get("signedUrl")
+            elif getattr(signed_url_resp, "data", None):
+                statement_data["file_url"] = signed_url_resp.data.get("signedURL") or signed_url_resp.data.get("signedUrl")
         except Exception as e:
             logger.warning(f"Failed to generate signed URL for statement {statement_id}: {e}")
 

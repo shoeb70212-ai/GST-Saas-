@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback  } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useDropzone } from 'react-dropzone';
 import { useClient } from '../lib/ClientContext';
 import { supabase } from '../lib/supabase';
@@ -13,10 +13,13 @@ export default function BankStatementsPage() {
   const [statements, setStatements] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const [pdfPassword, setPdfPassword] = useState('');
   const [selectedStatementId, setSelectedStatementId] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [txnsLoading, setTxnsLoading] = useState(false);
+  const retryInputRef = useRef<HTMLInputElement>(null);
+  const retryTargetIdRef = useRef<string | null>(null);
 
   const fetchStatements = useCallback(async () => {
     if (!activeClientId) return;
@@ -164,6 +167,45 @@ export default function BankStatementsPage() {
     }
   };
 
+  const startRetry = (stmtId: string) => {
+    retryTargetIdRef.current = stmtId;
+    retryInputRef.current?.click();
+  };
+
+  const onRetryFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const stmtId = retryTargetIdRef.current;
+    e.target.value = '';
+    if (!file || !stmtId) return;
+
+    try {
+      setRetryingId(stmtId);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const formData = new FormData();
+      formData.append('file', file);
+      if (pdfPassword) formData.append('pdf_password', pdfPassword);
+
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/bank-statements/${stmtId}/retry`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+        body: formData,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.detail || 'Retry failed');
+
+      toast.success(json.message || 'Retry started');
+      fetchStatements();
+    } catch (err: any) {
+      toast.error(err.message || 'Could not retry statement');
+    } finally {
+      setRetryingId(null);
+      retryTargetIdRef.current = null;
+    }
+  };
+
   if (!activeClientId) {
     return (
       <div className="p-4 md:p-8 flex items-center justify-center h-full">
@@ -187,6 +229,15 @@ export default function BankStatementsPage() {
           <RefreshCw className="w-4 h-4" /> Refresh
         </button>
       </div>
+
+      {/* Hidden input for retry file picker */}
+      <input
+        ref={retryInputRef}
+        type="file"
+        className="hidden"
+        accept=".pdf,.xlsx,.xls,.csv,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+        onChange={onRetryFileSelected}
+      />
 
       {/* Upload Zone */}
       <div className="mb-6 max-w-sm mx-auto">
@@ -265,18 +316,8 @@ export default function BankStatementsPage() {
                         </button>
                       </div>
                     )}
-                    {stmt.status === 'cancelled' && (
-                      <div className="flex items-center gap-2 text-text-secondary text-sm font-medium bg-bg-sunken px-3 py-1.5 rounded-full border border-border">
-                        <XCircle className="w-3.5 h-3.5" /> Cancelled
-                      </div>
-                    )}
-                    {stmt.status === 'completed' && (
-                      <div className="flex items-center gap-2 text-success text-sm font-medium bg-success-subtle px-3 py-1.5 rounded-full border border-success/20">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Extracted
-                      </div>
-                    )}
                     {stmt.status === 'failed' && (
-                      <div className="flex flex-col items-end gap-1 max-w-xs">
+                      <div className="flex flex-col items-end gap-2 max-w-xs">
                         <div className="flex items-center gap-2 text-error text-sm font-medium bg-error-subtle px-3 py-1.5 rounded-full border border-error/20">
                           <AlertTriangle className="w-3.5 h-3.5" /> Failed
                         </div>
@@ -285,6 +326,44 @@ export default function BankStatementsPage() {
                             {stmt.error_message}
                           </p>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => startRetry(stmt.id)}
+                          disabled={retryingId === stmt.id}
+                          className="btn-secondary h-8 px-3 text-xs"
+                        >
+                          {retryingId === stmt.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <RefreshCw className="w-3.5 h-3.5" />
+                          )}
+                          Retry
+                        </button>
+                      </div>
+                    )}
+                    {stmt.status === 'cancelled' && (
+                      <div className="flex flex-col items-end gap-2">
+                        <div className="flex items-center gap-2 text-text-secondary text-sm font-medium bg-bg-sunken px-3 py-1.5 rounded-full border border-border">
+                          <XCircle className="w-3.5 h-3.5" /> Cancelled
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => startRetry(stmt.id)}
+                          disabled={retryingId === stmt.id}
+                          className="btn-secondary h-8 px-3 text-xs"
+                        >
+                          {retryingId === stmt.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <RefreshCw className="w-3.5 h-3.5" />
+                          )}
+                          Retry
+                        </button>
+                      </div>
+                    )}
+                    {stmt.status === 'completed' && (
+                      <div className="flex items-center gap-2 text-success text-sm font-medium bg-success-subtle px-3 py-1.5 rounded-full border border-success/20">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Extracted
                       </div>
                     )}
                     
