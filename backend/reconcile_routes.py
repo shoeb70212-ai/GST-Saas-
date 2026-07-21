@@ -361,75 +361,117 @@ async def deep_match_reconcile(
         if rpc_result == -1:
             raise HTTPException(status_code=402, detail="Insufficient credits for AI Deep Match.")
 
-    # Prepare Gemini Payloads
-    pr_subset = [{"id": inv["id"], "supplier": inv.get("supplier_name"), "gstin": inv.get("supplier_gstin"), "inv_num": inv.get("invoice_number"), "amount": inv.get("taxable_amount")} for inv in missing_in_2b]
-    b2b_subset = [{"id": rec["id"], "gstin": rec.get("supplier_gstin"), "inv_num": rec.get("invoice_number"), "amount": rec.get("taxable_value")} for rec in unmatched_2b]
+    async def _refund_deep_match_credits():
+        """Full refund of the lump-sum deep-match charge via refund_credits (never negative decrement)."""
+        async with get_shared_client() as refund_client:
+            await refund_client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/refund_credits",
+                headers={
+                    "apikey": SUPABASE_ANON_KEY,
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                json={"user_id_param": user_id, "amount": cost},
+            )
 
-    gemini_client = AsyncOpenAI(api_key=GEMINI_API_KEY, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
-    # AI Token Limit Protection: Chunk PR Invoices into batches of 50
-    pr_chunks = [pr_subset[i:i + 50] for i in range(0, len(pr_subset), 50)]
-    all_matches = []
-    
-    async def process_chunk(chunk):
-        prompt = f"""
-        You are an expert AI data reconciliation engine for Indian GST.
-        I have a list of 'Purchase Register' invoices and a list of 'GSTR-2B' government records.
-        They failed exact matching due to severe typos, OCR errors, or missing prefixes.
-        Your task is to logically match PR invoices to GSTR-2B records using fuzzy entity resolution.
-        
-        The user has set an absolute tax discrepancy tolerance of ₹{tol_val}. You MAY match them if amounts are within this tolerance.
-        
-        Purchase Register (PR) Invoices:
-        {json.dumps(chunk)}
-        
-        GSTR-2B Records:
-        {json.dumps(b2b_subset)}
-        
-        Return ONLY a valid JSON array of objects. Each object should have:
-        - "pr_invoice_id": The ID from the Purchase Register
-        - "b2b_record_id": The ID from the GSTR-2B Records that it matches
-        - "confidence_score": 0.0 to 1.0 indicating your confidence in the match
-        - "reason": A brief 1-sentence reason why they match despite the typos
-        
-        Do NOT include markdown formatting like ```json.
-        """
+    # Policy: full refund on total AI failure; keep charge if any chunk succeeded
+    # (empty match list from a successful AI call is billable — no matches found).
+    try:
+        # Prepare Gemini Payloads
+        pr_subset = [{"id": inv["id"], "supplier": inv.get("supplier_name"), "gstin": inv.get("supplier_gstin"), "inv_num": inv.get("invoice_number"), "amount": inv.get("taxable_amount")} for inv in missing_in_2b]
+        b2b_subset = [{"id": rec["id"], "gstin": rec.get("supplier_gstin"), "inv_num": rec.get("invoice_number"), "amount": rec.get("taxable_value")} for rec in unmatched_2b]
+
+        gemini_client = AsyncOpenAI(api_key=GEMINI_API_KEY, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
+        # AI Token Limit Protection: Chunk PR Invoices into batches of 50
+        pr_chunks = [pr_subset[i:i + 50] for i in range(0, len(pr_subset), 50)]
+        all_matches = []
+
+        async def process_chunk(chunk):
+            prompt = f"""
+            You are an expert AI data reconciliation engine for Indian GST.
+            I have a list of 'Purchase Register' invoices and a list of 'GSTR-2B' government records.
+            They failed exact matching due to severe typos, OCR errors, or missing prefixes.
+            Your task is to logically match PR invoices to GSTR-2B records using fuzzy entity resolution.
+            
+            The user has set an absolute tax discrepancy tolerance of ₹{tol_val}. You MAY match them if amounts are within this tolerance.
+            
+            Purchase Register (PR) Invoices:
+            {json.dumps(chunk)}
+            
+            GSTR-2B Records:
+            {json.dumps(b2b_subset)}
+            
+            Return ONLY a valid JSON array of objects. Each object should have:
+            - "pr_invoice_id": The ID from the Purchase Register
+            - "b2b_record_id": The ID from the GSTR-2B Records that it matches
+            - "confidence_score": 0.0 to 1.0 indicating your confidence in the match
+            - "reason": A brief 1-sentence reason why they match despite the typos
+            
+            Do NOT include markdown formatting like ```json.
+            """
+            try:
+                response = await gemini_client.chat.completions.create(
+                    model="gemini-2.5-flash",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0
+                )
+
+                result_text = response.choices[0].message.content.strip()
+                if result_text.startswith("```json"): result_text = result_text[7:]
+                if result_text.endswith("```"): result_text = result_text[:-3]
+
+                return json.loads(result_text)
+            except Exception as e:
+                logger.warning(f"Chunk failed: {e}")
+                return None  # None = AI failure; [] = success with no matches
+
+        # Process all chunks in parallel using asyncio.gather
+        chunk_results = await asyncio.gather(*(process_chunk(chunk) for chunk in pr_chunks))
+        any_chunk_ok = False
+        for res in chunk_results:
+            if res is None:
+                continue
+            any_chunk_ok = True
+            all_matches.extend(res)
+
+        if not any_chunk_ok:
+            try:
+                await _refund_deep_match_credits()
+            except Exception as refund_e:
+                logger.error(f"Failed to refund deep-match credits after total AI failure: {refund_e}")
+            raise HTTPException(
+                status_code=500,
+                detail="Deep Match AI failed. Credits have been refunded.",
+            )
+
+        updates = []
+        for match in all_matches:
+            if match.get("confidence_score", 0) > 0.8:
+                updates.append({
+                    "id": match["pr_invoice_id"],
+                    "recon_status": "matched",
+                    "recon_period": period,
+                    "error_message": None
+                })
+
+        if updates:
+            async with get_shared_client() as http_client:
+                await http_client.post(
+                    f"{SUPABASE_URL}/rest/v1/rpc/bulk_update_invoices_recon",
+                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json={"updates": updates}
+                )
+
+        return {"status": "success", "message": f"AI Deep Match found {len(updates)} matches across {len(pr_chunks)} parallel processing chunks.", "matches": all_matches}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Deep Match failed after credit deduction: {e}")
         try:
-            response = await gemini_client.chat.completions.create(
-                model="gemini-2.5-flash",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.0
-            )
-            
-            result_text = response.choices[0].message.content.strip()
-            if result_text.startswith("```json"): result_text = result_text[7:]
-            if result_text.endswith("```"): result_text = result_text[:-3]
-            
-            return json.loads(result_text)
-        except Exception as e:
-            logger.warning(f"Chunk failed: {e}")
-            return []
-
-    # Process all chunks in parallel using asyncio.gather
-    chunk_results = await asyncio.gather(*(process_chunk(chunk) for chunk in pr_chunks))
-    for res in chunk_results:
-        all_matches.extend(res)
-        
-    updates = []
-    for match in all_matches:
-        if match.get("confidence_score", 0) > 0.8:
-            updates.append({
-                "id": match["pr_invoice_id"],
-                "recon_status": "matched",
-                "recon_period": period,
-                "error_message": None
-            })
-            
-    if updates:
-        async with get_shared_client() as http_client:
-            await http_client.post(
-                f"{SUPABASE_URL}/rest/v1/rpc/bulk_update_invoices_recon",
-                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json={"updates": updates}
-            )
-            
-    return {"status": "success", "message": f"AI Deep Match found {len(updates)} matches across {len(pr_chunks)} parallel processing chunks.", "matches": all_matches}
+            await _refund_deep_match_credits()
+        except Exception as refund_e:
+            logger.error(f"Failed to refund deep-match credits: {refund_e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Deep Match failed. Credits have been refunded.",
+        )

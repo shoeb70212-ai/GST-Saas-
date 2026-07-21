@@ -38,33 +38,32 @@ router = APIRouter()
 async def process_batch_worker(invoice_id: str, content: bytes, mime_type: str, user_id: str, token: str, tally_ledgers: list = None):
     """
     Background task for processing invoices submitted via a ZIP batch.
-    
-    To prevent HTTP 429 Rate Limiting from OpenAI/OpenRouter when parsing 
-    dozens of invoices at once, we use a global asyncio.Semaphore to limit
-    concurrent AI extractions to 5 at a time.
-    
-    After extraction, this worker updates the database, deducts credits,
-    and runs the GSTIN KYC verification on the vendor.
+
+    Credits: 1 credit is deducted upfront per queued file in upload_batch.
+    Policy: refund that 1 credit via refund_credits if this worker fails
+    (AI or DB). Successful siblings keep their charge (partial-batch fair).
+
+    Concurrent AI calls are capped at 5 via asyncio.Semaphore.
     """
     try:
-        from main import run_ai_extraction, SUPABASE_URL, SUPABASE_ANON_KEY
+        from main import run_ai_extraction
         # Rate limit concurrent AI calls to prevent 429s (OpenRouter/Gemini)
         sem = await get_semaphore()
         async with sem:
             data_dict, tokens = await run_ai_extraction(content, mime_type, tally_ledgers)
-        
+
         supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
         supabase_client.postgrest.auth(token)
-        
+
         # Log Token Usage without deducting additional credits (since they were deducted upfront)
         await supabase_client.rpc("decrement_credits", {
-            "user_id_param": user_id, 
-            "amount": 0, 
+            "user_id_param": user_id,
+            "amount": 0,
             "task_type_param": "batch_invoice_processing",
             "file_name_param": f"batch_item_{invoice_id}",
             "tokens_used_param": tokens
         }).execute()
-            
+
         # Verify GSTIN
         from gstin_service import verify_gstin
         gstin = data_dict.get("Supplier_GSTIN")
@@ -73,19 +72,19 @@ async def process_batch_worker(invoice_id: str, content: bytes, mime_type: str, 
 
         # Prepare update payload
         db_update = {k.lower(): v for k, v in data_dict.items() if k != "Line_Items"}
-        
+
         # Format Dates safely
         if "invoice_date" in db_update:
             db_update["invoice_date"] = format_date_to_iso(db_update["invoice_date"])
         if "due_date" in db_update:
             db_update["due_date"] = format_date_to_iso(db_update["due_date"])
-            
+
         db_update["processing_status"] = "completed"
         db_update["error_message"] = None
-        
+
         # Update Invoice Record
         await supabase_client.table("invoices").update(db_update).eq("id", invoice_id).execute()
-        
+
         # Insert Line Items
         line_items = data_dict.get("Line_Items", [])
         if line_items:
@@ -103,12 +102,33 @@ async def process_batch_worker(invoice_id: str, content: bytes, mime_type: str, 
             resp = await supabase_client.table("invoice_line_items").insert(items_payload).execute()
             if not resp.data:
                 raise Exception("Database error: Failed to insert line items")
-                
+
     except Exception as e:
-        # Mark as failed
-        supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-        supabase_client.postgrest.auth(token)
-        await supabase_client.table("invoices").update({"processing_status": "failed", "error_message": str(e)}).eq("id", invoice_id).execute()
+        # Mark failed + refund the 1 credit charged upfront for this item
+        try:
+            supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+            supabase_client.postgrest.auth(token)
+            try:
+                await supabase_client.rpc("refund_credits", {
+                    "user_id_param": user_id,
+                    "amount": 1,
+                }).execute()
+            except Exception as refund_e:
+                logger.error(
+                    "Failed to refund batch credit for invoice %s: %s",
+                    invoice_id,
+                    refund_e,
+                )
+            await supabase_client.table("invoices").update({
+                "processing_status": "failed",
+                "error_message": str(e),
+            }).eq("id", invoice_id).execute()
+        except Exception as cleanup_e:
+            logger.error(
+                "Batch worker cleanup failed for invoice %s: %s",
+                invoice_id,
+                cleanup_e,
+            )
 
 @router.post("/upload-batch")
 async def upload_batch(
