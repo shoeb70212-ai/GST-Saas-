@@ -12,6 +12,16 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 
+@pytest.fixture(autouse=True)
+def disable_public_rate_limit():
+    """Prevent slowapi from flaking unit tests."""
+    from public_routes import limiter
+    previous = limiter.enabled
+    limiter.enabled = False
+    yield
+    limiter.enabled = previous
+
+
 @pytest.fixture
 def mock_supabase_execute_response():
     def _create_response(data=None):

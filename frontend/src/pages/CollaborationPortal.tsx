@@ -1,27 +1,40 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
-import { supabase } from '../lib/supabase';
 import { getApiUrl } from '../lib/api';
 import { UploadCloud, CheckCircle2, Loader2, X, Building2, FileText, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function CollaborationPortal() {
   const { clientId } = useParams();
+  const [searchParams] = useSearchParams();
+  const uploadToken = searchParams.get('token') ?? '';
   const [files, setFiles] = useState<{id: string, file: File, preview: string|null}[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [clientName, setClientName] = useState<string>('Your CA');
+  const [linkError, setLinkError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (clientId) {
-      // Try to fetch client name to personalize the portal
-      supabase.from('clients').select('client_name').eq('id', clientId).single()
-        .then(({data}) => {
-          if (data) setClientName(data.client_name);
-        });
+    if (!clientId || !uploadToken) {
+      setLinkError('Invalid or expired portal link. Please ask your accountant for a new upload link.');
+      return;
     }
-  }, [clientId]);
+
+    const apiUrl = getApiUrl();
+    fetch(`${apiUrl}/api/public/client/${clientId}?token=${encodeURIComponent(uploadToken)}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          setLinkError('Invalid or expired portal link. Please ask your accountant for a new upload link.');
+          return;
+        }
+        const data = await res.json();
+        if (data.client_name) setClientName(data.client_name);
+      })
+      .catch(() => {
+        setLinkError('Could not verify portal link. Please try again later.');
+      });
+  }, [clientId, uploadToken]);
 
   const onDrop = useCallback((acceptedFiles: File[], fileRejections: any[]) => {
     let totalSize = files.reduce((acc, f) => acc + f.file.size, 0);
@@ -67,7 +80,7 @@ export default function CollaborationPortal() {
   };
 
   const handleUpload = async () => {
-    if (!clientId) {
+    if (!clientId || !uploadToken) {
       toast.error("Invalid portal link.");
       return;
     }
@@ -80,6 +93,7 @@ export default function CollaborationPortal() {
     try {
       const formData = new FormData();
       formData.append('client_id', clientId);
+      formData.append('upload_token', uploadToken);
       files.forEach(f => {
         formData.append('files', f.file);
       });
@@ -109,6 +123,17 @@ export default function CollaborationPortal() {
       setIsUploading(false);
     }
   };
+
+  if (linkError) {
+    return (
+      <div className="min-h-screen bg-bg-base flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full bg-bg-surface border border-border rounded-2xl p-8 text-center shadow-xl">
+          <h2 className="text-xl font-bold text-text-primary mb-2">Link Unavailable</h2>
+          <p className="text-text-secondary">{linkError}</p>
+        </div>
+      </div>
+    );
+  }
 
   if (isSuccess) {
     return (

@@ -67,21 +67,30 @@ def build_supabase_mock(
         def order(self, *a, **kw): return self
         def limit(self, *a, **kw): return self
         def gte(self, *a, **kw): return self
-        def insert(self, *a, **kw): return self
+        def insert(self, data=None, *a, **kw):
+            sc.insert_called_with.append((self._name, data))
+            return self
         def update(self, *a, **kw): return self
         def delete(self, *a, **kw): return self
         def single(self): return self
 
         async def execute(self):
             result = MagicMock()
-            data = table_data.get(self._name, [])
-            result.data = data
+            recent_inserts = [
+                item for tbl, item in sc.insert_called_with if tbl == self._name
+            ]
+            if recent_inserts:
+                result.data = [{"id": "mock_inserted_id"}]
+            else:
+                data = table_data.get(self._name, [])
+                result.data = data
             if self._name in table_counts:
                 result.count = table_counts[self._name]
             else:
-                result.count = len(data) if isinstance(data, list) else 0
+                result.count = len(result.data) if isinstance(result.data, list) else 0
             return result
 
+    sc.insert_called_with = []
     sc.table = lambda name: _ChainResult(name)
 
     # rpc mock

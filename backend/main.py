@@ -8,6 +8,8 @@ from http_client import get_shared_client
 from fastapi import FastAPI, File, UploadFile, HTTPException, Header, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
@@ -580,11 +582,14 @@ from admin_routes import router as admin_router
 from batch_routes import router as batch_router
 from reconcile_routes import router as reconcile_router
 from payment_routes import router as payment_router
-from public_routes import router as public_router
+from public_routes import router as public_router, limiter as public_limiter
 from whatsapp_routes import router as whatsapp_router
 from bank_routes import router as bank_router
 from bank_reconcile_routes import router as bank_reconcile_router
 from sales_routes import router as sales_router
+
+app.state.limiter = public_limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(admin_router, prefix="/api/admin", tags=["admin"])

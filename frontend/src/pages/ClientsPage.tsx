@@ -2,9 +2,10 @@ import React from 'react';
 import { useState  } from "react";
 import { supabase } from '../lib/supabase';
 import { useClient, type Client } from '../lib/ClientContext';
-import { Plus, Building2, Trash2, Edit2, Loader2, Save, X, Shield } from 'lucide-react';
+import { Plus, Building2, Trash2, Edit2, Loader2, Save, X, Shield, Link2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Modal } from '../components/ui/Modal';
+import { getApiUrl } from '../lib/api';
 
 export default function ClientsPage() {
   const { clients, loading, refreshClients, activeClientId, setActiveClientId } = useClient();
@@ -182,6 +183,34 @@ export default function ClientsPage() {
     }
   };
 
+  const handleCopyPortalLink = async (clientId: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/public/issue-token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ client_id: clientId }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.detail || 'Failed to generate portal link');
+      }
+
+      const fullUrl = `${window.location.origin}${result.portal_url}`;
+      await navigator.clipboard.writeText(fullUrl);
+      toast.success('Client upload link copied to clipboard');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to copy portal link');
+    }
+  };
+
   if (loading) {
     return <div className="min-h-[80vh] flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   }
@@ -257,8 +286,12 @@ export default function ClientsPage() {
                 <div className="w-10 h-10 rounded-lg bg-bg-sunken flex items-center justify-center">
                   <Building2 className={`w-5 h-5 ${activeClientId === client.id ? 'text-accent' : 'text-text-secondary'}`} />
                 </div>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => handleCopyPortalLink(client.id)} className="p-1.5 text-text-secondary hover:text-accent hover:bg-accent-subtle rounded" title="Copy Client Upload Link">
+                      <Link2 className="w-3.5 h-3.5" />
+                    </button>
                 {(userRole === 'owner' || userRole === 'admin') && (
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <>
                     <button onClick={() => handleOpenManageAccess(client.id)} className="p-1.5 text-text-secondary hover:text-accent hover:bg-accent-subtle rounded" title="Manage Team Access">
                       <Shield className="w-3.5 h-3.5" />
                     </button>
@@ -268,8 +301,9 @@ export default function ClientsPage() {
                     <button onClick={() => handleDelete(client.id, client.client_name)} className="p-1.5 text-text-secondary hover:text-error hover:bg-error-subtle rounded" title="Delete">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
-                  </div>
+                  </>
                 )}
+                </div>
               </div>
               
               <h3 className="font-semibold text-text-primary text-lg truncate mb-1">{client.client_name}</h3>

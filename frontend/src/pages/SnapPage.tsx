@@ -1,10 +1,12 @@
 import { useState, useRef  } from "react";
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { Upload, CheckCircle, AlertCircle, Loader2, Camera } from 'lucide-react';
 import { getApiUrl } from '../lib/api';
 
 const SnapPage: React.FC = () => {
   const { clientId } = useParams<{ clientId: string }>();
+  const [searchParams] = useSearchParams();
+  const uploadToken = searchParams.get('token') ?? '';
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
@@ -27,12 +29,17 @@ const SnapPage: React.FC = () => {
   };
 
   const handleUpload = async () => {
-    if (!file || !clientId) return;
+    if (!file || !clientId || !uploadToken) {
+      setStatus('error');
+      setErrorMessage('Invalid or expired upload link. Please ask your accountant for a new link.');
+      return;
+    }
 
     setStatus('uploading');
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('files', file);
     formData.append('client_id', clientId);
+    formData.append('upload_token', uploadToken);
 
     try {
       const apiUrl = getApiUrl();
