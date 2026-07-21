@@ -1,0 +1,25 @@
+{
+  "Supplier_GSTIN": "27AADCB2230M1Z2",
+  "Invoice_Number": "BOS-77",
+  "Invoice_Date": "02-05-2024",
+  "Invoice_Type": "Bill of Supply",
+  "Taxable_Amount": 500.0,
+  "Total_Amount": 500.0,
+  "Line_Items": [
+    {
+      "Description": "Exempt goods",
+      "Amount": 500,
+      "Tax_Rate": 0
+    }
+  ],
+  "must_match_math": true,
+  "must_null": [
+    "IRN"
+  ],
+  "must_not_auto_accept": false,
+  "critical_fields": [
+    "Invoice_Type",
+    "Invoice_Number",
+    "Total_Amount"
+  ]
+}

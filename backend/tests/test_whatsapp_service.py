@@ -90,7 +90,7 @@ async def test_decrement_credits_minus1_notifies_and_skips_ai():
         patch("whatsapp_service.send_whatsapp_message", new_callable=AsyncMock, side_effect=lambda to, text: sent.append(text)),
         patch("whatsapp_service.download_whatsapp_media", new_callable=AsyncMock, return_value=MINIMAL_JPEG),
         patch("whatsapp_service.compress_image", new_callable=AsyncMock, return_value=MINIMAL_JPEG),
-        patch("main.run_ai_extraction", new_callable=AsyncMock) as mock_ai,
+        patch("whatsapp_service.run_ai_extraction", new_callable=AsyncMock) as mock_ai,
     ):
         from whatsapp_service import process_whatsapp_message_bg
 
@@ -116,7 +116,11 @@ async def test_ai_failure_refunds_credit():
         patch("whatsapp_service.send_whatsapp_message", new_callable=AsyncMock, side_effect=lambda to, text: sent.append(text)),
         patch("whatsapp_service.download_whatsapp_media", new_callable=AsyncMock, return_value=MINIMAL_JPEG),
         patch("whatsapp_service.compress_image", new_callable=AsyncMock, return_value=MINIMAL_JPEG),
-        patch("main.run_ai_extraction", new_callable=AsyncMock, side_effect=RuntimeError("AI boom")),
+        patch("whatsapp_service.run_ai_extraction", new_callable=AsyncMock, side_effect=RuntimeError("AI boom")),
+        patch(
+            "whatsapp_service.preprocess_invoice_file",
+            return_value=(MINIMAL_JPEG, "image/jpeg"),
+        ),
     ):
         from whatsapp_service import process_whatsapp_message_bg
 

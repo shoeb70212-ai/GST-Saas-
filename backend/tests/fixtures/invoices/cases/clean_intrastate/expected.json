@@ -1,0 +1,36 @@
+{
+  "Supplier_GSTIN": "27AADCB2230M1Z2",
+  "Buyer_GSTIN": "27AADCB1234M1Z1",
+  "Invoice_Number": "INV-INTRA-001",
+  "Invoice_Date": "15-01-2024",
+  "Invoice_Type": "Tax Invoice",
+  "Taxable_Amount": 1000.0,
+  "Total_Amount": 1180.0,
+  "CGST_Amount": 90.0,
+  "SGST_Amount": 90.0,
+  "IGST_Amount": 0.0,
+  "Line_Items": [
+    {
+      "Description": "Widgets",
+      "HSN_SAC": "8471",
+      "Quantity": 2,
+      "Unit_Price": 500,
+      "Amount": 1000,
+      "Tax_Rate": 18
+    }
+  ],
+  "must_match_math": true,
+  "must_null": [
+    "IRN",
+    "Cess_Amount",
+    "Original_Invoice_Number"
+  ],
+  "must_not_auto_accept": false,
+  "critical_fields": [
+    "Supplier_GSTIN",
+    "Invoice_Number",
+    "Invoice_Date",
+    "Taxable_Amount",
+    "Total_Amount"
+  ]
+}

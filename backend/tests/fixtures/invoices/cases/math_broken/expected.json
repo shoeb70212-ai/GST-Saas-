@@ -1,0 +1,39 @@
+{
+  "Supplier_GSTIN": "27AADCB2230M1Z2",
+  "Supplier_Name": "Broken Math Co",
+  "Invoice_Number": "INV-BAD-MATH",
+  "Invoice_Date": "04-05-2024",
+  "Taxable_Amount": 1000.0,
+  "Total_Amount": 9999.0,
+  "Line_Items": [
+    {
+      "Description": "Item",
+      "Amount": 1000,
+      "Tax_Rate": 18
+    }
+  ],
+  "must_match_math": false,
+  "must_null": [],
+  "must_not_auto_accept": true,
+  "critical_fields": [
+    "Invoice_Number",
+    "Total_Amount"
+  ],
+  "ground_truth_extract": {
+    "Supplier_GSTIN": "27AADCB2230M1Z2",
+    "Supplier_Name": "Broken Math Co",
+    "Invoice_Number": "INV-BAD-MATH",
+    "Invoice_Date": "04-05-2024",
+    "Taxable_Amount": 1000.0,
+    "Total_Amount": 9999.0,
+    "Line_Items": [
+      {
+        "Description": "Item",
+        "Amount": 1000,
+        "Tax_Rate": 18
+      }
+    ],
+    "Cess_Amount": null,
+    "Round_Off": null
+  }
+}

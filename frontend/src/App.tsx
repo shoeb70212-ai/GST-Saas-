@@ -26,6 +26,7 @@ const TaxLiabilityPage = lazy(() => import('./pages/TaxLiabilityPage'));
 const CollaborationPortal = lazy(() => import('./pages/CollaborationPortal'));
 const SnapPage = lazy(() => import('./pages/SnapPage'));
 const PlatformAdminPage = lazy(() => import('./pages/PlatformAdminPage'));
+const SupportEnterPage = lazy(() => import('./pages/SupportEnterPage'));
 const WalletPage = lazy(() => import('./pages/WalletPage'));
 import PlatformAdminLayout from './components/PlatformAdminLayout';
 import { SuperAdminGate, OrgAdminGate } from './components/RouteAccessGate';
@@ -122,6 +123,7 @@ export default function App() {
             <Route path="/register" element={<AuthPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/snap/:clientId" element={<SnapPage />} />
+            <Route path="/app/support-enter" element={<SupportEnterPage />} />
 
             {/* Legacy deep-link redirects */}
             {LEGACY_APP_REDIRECTS.map(({ from, to }) => (

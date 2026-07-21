@@ -1,0 +1,30 @@
+{
+  "Supplier_GSTIN": "27AADCB2230M1Z2",
+  "Invoice_Number": "INV-SPARSE-1",
+  "Invoice_Date": "01-05-2024",
+  "Taxable_Amount": 1000.0,
+  "Total_Amount": 1180.0,
+  "Line_Items": [
+    {
+      "Description": "Item",
+      "Amount": 1000,
+      "Tax_Rate": 18
+    }
+  ],
+  "must_match_math": true,
+  "must_null": [
+    "PO_Number",
+    "IRN",
+    "E_Way_Bill_Number",
+    "Vehicle_Number",
+    "Account_Number",
+    "IFSC_Code",
+    "Cess_Amount"
+  ],
+  "must_not_auto_accept": false,
+  "critical_fields": [
+    "Supplier_GSTIN",
+    "Invoice_Number",
+    "Total_Amount"
+  ]
+}

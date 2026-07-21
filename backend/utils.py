@@ -120,6 +120,20 @@ def compute_file_hash(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
+def format_date_to_iso(date_str):
+    """Normalize common Indian date prints to YYYY-MM-DD for Postgres."""
+    if not date_str:
+        return None
+    s = str(date_str).strip()
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
+        return s
+    match = re.search(r"(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})", s)
+    if match:
+        d, m, y = match.groups()
+        return f"{y}-{int(m):02d}-{int(d):02d}"
+    return None
+
+
 _ROLE_RANK = {"owner": 0, "admin": 1, "accountant": 2}
 
 
@@ -186,6 +200,35 @@ async def get_org_credits(sc, user_id: str) -> int:
     except Exception as e:
         logger.warning(f"Could not fetch org credits for {user_id}: {e}")
     return 0
+
+
+async def ensure_org_not_suspended(sc, user_id: str) -> str | None:
+    """
+    Raise 403 if the user's active organization is suspended.
+    Returns org_id when known (may be None if unresolved).
+    """
+    org_id = await resolve_active_org_id(sc, user_id)
+    if not org_id:
+        return None
+    try:
+        org_resp = (
+            await sc.table("organizations")
+            .select("id, suspended_at, suspend_reason")
+            .eq("id", org_id)
+            .limit(1)
+            .execute()
+        )
+        if org_resp.data and org_resp.data[0].get("suspended_at"):
+            reason = org_resp.data[0].get("suspend_reason") or "other"
+            raise HTTPException(
+                status_code=403,
+                detail=f"Firm suspended ({reason}). Contact support if you believe this is an error.",
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"Could not check suspend status for org {org_id}: {e}")
+    return org_id
 
 
 async def ensure_sufficient_credits(sc, user_id: str, cost: int) -> None:

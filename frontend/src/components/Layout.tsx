@@ -137,6 +137,22 @@ export default function Layout() {
 
   return (
     <div className="flex h-[100dvh] bg-bg-base overflow-hidden flex-col md:flex-row pb-safe md:pb-0">
+      {typeof window !== 'undefined' && localStorage.getItem('khatalens_support_mode') === '1' && (
+        <div className="w-full bg-warning-subtle text-warning text-center text-xs sm:text-sm py-2 px-3 border-b border-warning/30 z-[60] shrink-0">
+          Read-only support session — mutations may be blocked. Close this tab when finished.
+          <button
+            type="button"
+            className="ml-3 underline font-medium"
+            onClick={() => {
+              localStorage.removeItem('khatalens_support_mode');
+              localStorage.removeItem('khatalens_support_mode_at');
+              window.location.reload();
+            }}
+          >
+            Exit support mode
+          </button>
+        </div>
+      )}
 
       {/* Mobile Top Header */}
       <div className="md:hidden glass-header flex items-center justify-between p-3 z-50 pt-safe">

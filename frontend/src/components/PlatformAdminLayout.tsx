@@ -1,8 +1,10 @@
 import { Outlet, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { LogOut, ShieldAlert, Activity, Menu, X } from 'lucide-react';
+import { LogOut, ShieldAlert, Activity, Menu, X, AlertTriangle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import type { Session } from '@supabase/supabase-js';
+import { useQuery } from '@tanstack/react-query';
+import { getApiUrl } from '../lib/api';
 
 export default function PlatformAdminLayout() {
   const navigate = useNavigate();
@@ -15,45 +17,90 @@ export default function PlatformAdminLayout() {
     });
   }, []);
 
+  const alertsQuery = useQuery({
+    queryKey: ['admin', 'alerts-status'],
+    queryFn: async () => {
+      const { data: { session: s } } = await supabase.auth.getSession();
+      if (!s?.access_token) throw new Error('Not signed in');
+      const res = await fetch(`${getApiUrl()}/api/admin/alerts/status`, {
+        headers: { Authorization: `Bearer ${s.access_token}` },
+      });
+      if (!res.ok) throw new Error('Failed to load alert status');
+      return res.json() as Promise<{
+        healthy: boolean;
+        error_count_15m: number;
+        threshold: number;
+      }>;
+    },
+    retry: 1,
+    refetchInterval: 60_000,
+  });
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate('/auth');
   };
 
+  const healthy = alertsQuery.data?.healthy !== false;
+  const errCount = alertsQuery.data?.error_count_15m ?? 0;
+
+  const statusBlock = (
+    <div className={`flex items-center gap-2 ${healthy ? 'text-success' : 'text-error'}`}>
+      <span className="relative flex h-2 w-2">
+        {healthy ? (
+          <>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-40" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-success" />
+          </>
+        ) : (
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-error" />
+        )}
+      </span>
+      {healthy ? <Activity className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+      <span className="text-sm font-medium text-text-secondary">
+        {alertsQuery.isError
+          ? 'Status: Unknown'
+          : healthy
+            ? 'Status: All Systems Normal'
+            : `Status: Error spike (${errCount} in 15m)`}
+      </span>
+    </div>
+  );
+
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Top Navbar */}
-      <nav className="bg-indigo-900 border-b border-indigo-800 text-white sticky top-0 z-50 shadow-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 items-center">
-            
+    <div className="min-h-screen bg-bg-base flex flex-col">
+      <nav className="glass-header sticky top-0 z-50 bg-bg-surface/95 backdrop-blur-sm">
+        <div className="max-w-content mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-14 items-center">
             <div className="flex items-center gap-3">
-              <ShieldAlert className="w-8 h-8 text-indigo-400" />
-              <span className="font-bold text-xl tracking-tight hidden sm:block">KhataLens Admin</span>
-            </div>
-            
-            {/* Desktop Navigation */}
-            <div className="hidden sm:flex items-center gap-6">
-              <div className="flex items-center gap-2 text-indigo-200">
-                <Activity className="w-4 h-4" />
-                <span className="text-sm font-medium">Status: All Systems Normal</span>
+              <div className="bg-accent p-1.5 rounded-md">
+                <ShieldAlert className="w-5 h-5 text-text-inverse" />
               </div>
-              <div className="w-px h-6 bg-indigo-800"></div>
-              <div className="text-sm font-medium">{session?.user?.email}</div>
+              <span className="font-display font-bold text-lg tracking-tight text-text-primary hidden sm:block">
+                KhataLens Admin
+              </span>
+            </div>
+
+            <div className="hidden sm:flex items-center gap-5">
+              {statusBlock}
+              <div className="w-px h-5 bg-border" />
+              <div className="text-sm font-medium text-text-primary">{session?.user?.email}</div>
               <button
+                type="button"
                 onClick={handleLogout}
-                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-indigo-100 hover:text-white hover:bg-indigo-800 rounded-md transition-colors"
+                className="btn-ghost h-9 text-sm"
               >
                 <LogOut className="w-4 h-4" />
                 Sign Out
               </button>
             </div>
 
-            {/* Mobile menu button */}
             <div className="sm:hidden flex items-center">
               <button
+                type="button"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="text-indigo-200 hover:text-white"
+                className="text-text-secondary hover:text-text-primary p-2"
+                aria-label="Toggle menu"
               >
                 {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
               </button>
@@ -62,29 +109,28 @@ export default function PlatformAdminLayout() {
         </div>
       </nav>
 
-      {/* Mobile Navigation */}
       {mobileMenuOpen && (
-        <div className="sm:hidden bg-indigo-900 border-b border-indigo-800 text-white">
+        <div className="sm:hidden bg-bg-surface border-b border-border">
           <div className="px-4 pt-2 pb-4 space-y-1">
-             <div className="px-3 py-2 text-sm text-indigo-200">{session?.user?.email}</div>
-             <button
-                onClick={handleLogout}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-indigo-100 hover:text-white hover:bg-indigo-800 rounded-md"
-              >
-                <LogOut className="w-4 h-4" />
-                Sign Out
-              </button>
+            <div className="px-3 py-2">{statusBlock}</div>
+            <div className="px-3 py-2 text-sm text-text-secondary">{session?.user?.email}</div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="w-full btn-ghost justify-start"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign Out
+            </button>
           </div>
         </div>
       )}
 
-      {/* Main Content Area */}
       <main className="flex-1 overflow-auto">
-        <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div className="max-w-content mx-auto py-6 sm:px-6 lg:px-8">
           <Outlet />
         </div>
       </main>
-      
     </div>
   );
 }

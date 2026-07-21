@@ -1,6 +1,5 @@
 import os
 import uuid
-import asyncio
 import datetime
 import logging
 from typing import List
@@ -11,24 +10,21 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from supabase import create_async_client
 from http_client import get_shared_client
-from utils import validate_file_content, sanitize_filename, compute_file_hash, SUPABASE_URL, SUPABASE_SERVICE_KEY, get_current_user
+from utils import validate_file_content, sanitize_filename, compute_file_hash, SUPABASE_URL, SUPABASE_SERVICE_KEY, get_current_user, ensure_org_not_suspended
 from public_upload_tokens import create_public_upload_token, verify_public_upload_token
 import credits as credit_costs
+from extraction import (
+    preprocess_invoice_file,
+    run_ai_extraction,
+    persist_extracted_invoice,
+)
+from ops_log import build_ops_ctx, log_from_ctx
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 limiter = Limiter(key_func=get_remote_address)
-
-public_ai_semaphore = None
-
-
-async def get_public_semaphore():
-    global public_ai_semaphore
-    if public_ai_semaphore is None:
-        public_ai_semaphore = asyncio.Semaphore(5)
-    return public_ai_semaphore
 
 
 async def get_admin_client():
@@ -82,62 +78,75 @@ async def process_public_worker(
     user_id: str,
     tally_ledgers: list | None = None,
     credit_charged: bool = True,
+    supabase_client=None,
 ):
     """
     Background worker for processing public client uploads securely.
     Credits are deducted before this worker runs; refund on AI failure.
     """
-    supabase_client = await get_admin_client()
+    sc = supabase_client or await get_admin_client()
+    ops_ctx = build_ops_ctx(
+        "public",
+        user_id=user_id,
+        mime_type=mime_type,
+    )
     try:
-        sem = await get_public_semaphore()
-        async with sem:
-            from main import run_ai_extraction
-            try:
-                data_dict, tokens = await run_ai_extraction(content, mime_type, tally_ledgers)
-            except Exception as ai_e:
-                if credit_charged:
-                    await _rpc_refund_credit(user_id, 1)
-                raise ai_e
+        try:
+            content, mime_type = preprocess_invoice_file(content, mime_type)
+            ops_ctx["mime_type"] = mime_type
+        except ValueError as ve:
+            await log_from_ctx(
+                ops_ctx,
+                severity="warning",
+                event_type="preprocess_failure",
+                message=str(ve),
+                meta={
+                    "invoice_id": invoice_id,
+                    "credit_outcome": "refunded" if credit_charged else "no_charge",
+                    "refunded": bool(credit_charged),
+                },
+            )
+            if credit_charged:
+                await _rpc_refund_credit(user_id, 1)
+            raise Exception(str(ve)) from ve
+
+        try:
+            data_dict, _tokens = await run_ai_extraction(
+                content, mime_type, tally_ledgers, ops_ctx=ops_ctx
+            )
+        except Exception as ai_e:
+            if credit_charged:
+                await _rpc_refund_credit(user_id, 1)
+            # Re-raise; outer handler logs with refund meta
+            ops_ctx["_credit_outcome"] = "refunded" if credit_charged else "no_charge"
+            raise ai_e
 
         gstin = data_dict.get("Supplier_GSTIN")
         if gstin:
             from gstin_service import verify_gstin
-            data_dict["Supplier_GSTIN_Status"] = await verify_gstin(supabase_client, gstin)
+            data_dict["Supplier_GSTIN_Status"] = await verify_gstin(sc, gstin)
 
-        from batch_routes import format_date_to_iso
-        db_update = {k.lower(): v for k, v in data_dict.items() if k != "Line_Items"}
-
-        if "invoice_date" in db_update:
-            db_update["invoice_date"] = format_date_to_iso(db_update["invoice_date"])
-        if "due_date" in db_update:
-            db_update["due_date"] = format_date_to_iso(db_update["due_date"])
-
-        db_update["processing_status"] = "completed"
-        db_update["error_message"] = None
-
-        await supabase_client.table("invoices").update(db_update).eq("id", invoice_id).execute()
-
-        line_items = data_dict.get("Line_Items", [])
-        if line_items:
-            items_payload = []
-            for li in line_items:
-                items_payload.append({
-                    "invoice_id": invoice_id,
-                    "description": li.get("Description"),
-                    "hsn_sac": li.get("HSN_SAC"),
-                    "quantity": li.get("Quantity"),
-                    "unit_price": li.get("Unit_Price"),
-                    "tax_rate": li.get("Tax_Rate"),
-                    "amount": li.get("Amount"),
-                })
-            await supabase_client.table("invoice_line_items").insert(items_payload).execute()
+        await persist_extracted_invoice(sc, invoice_id, data_dict)
 
     except Exception as e:
-        await supabase_client.table("invoices").update({
+        outcome = ops_ctx.get("_credit_outcome")
+        if outcome is None:
+            outcome = "refunded" if credit_charged else "no_charge"
+        await log_from_ctx(
+            ops_ctx,
+            severity="error",
+            event_type="channel_exception",
+            message=str(e),
+            meta={
+                "invoice_id": invoice_id,
+                "credit_outcome": outcome,
+                "refunded": outcome == "refunded",
+            },
+        )
+        await sc.table("invoices").update({
             "processing_status": "failed",
             "error_message": str(e),
         }).eq("id", invoice_id).execute()
-
 
 class IssueTokenRequest(BaseModel):
     client_id: str
@@ -190,6 +199,7 @@ async def public_upload(
         raise HTTPException(status_code=404, detail="Client not found")
 
     user_id = resp.data[0]["user_id"]
+    await ensure_org_not_suspended(supabase_client, user_id)
 
     today_start = datetime.datetime.now(datetime.timezone.utc).replace(
         hour=0, minute=0, second=0, microsecond=0
@@ -273,6 +283,7 @@ async def public_upload(
                 user_id=user_id,
                 tally_ledgers=tally_ledgers,
                 credit_charged=True,
+                supabase_client=supabase_client,
             )
             uploaded_count += 1
 

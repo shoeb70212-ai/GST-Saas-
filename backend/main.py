@@ -56,16 +56,17 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
 )
 
-# Re-export scan helpers for backward-compatible imports
-# (batch_routes, public_routes, whatsapp_service, tests)
-from scan_routes import (  # noqa: E402
-    router as scan_router,
+# Thin re-exports for backward-compatible imports (tests + legacy callers).
+# Prefer `from extraction import …` for new code.
+from extraction import (  # noqa: E402
     compute_confidence,
     apply_tax_calculations,
     run_ai_extraction,
     InvoiceData,
     LineItem,
+    preprocess_invoice_file,
 )
+from scan_routes import router as scan_router  # noqa: E402
 
 @app.get("/")
 def read_root():

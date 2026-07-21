@@ -1,0 +1,27 @@
+{
+  "Supplier_GSTIN": "27AADCB2230M1Z2",
+  "Invoice_Number": "CN-100",
+  "Invoice_Date": "01-03-2024",
+  "Invoice_Type": "Credit Note",
+  "Original_Invoice_Number": "INV-INTRA-001",
+  "Original_Invoice_Date": "15-01-2024",
+  "Taxable_Amount": 500.0,
+  "Total_Amount": 590.0,
+  "Line_Items": [
+    {
+      "Description": "Widgets",
+      "Amount": 500,
+      "Tax_Rate": 18
+    }
+  ],
+  "must_match_math": true,
+  "must_null": [],
+  "must_not_auto_accept": false,
+  "critical_fields": [
+    "Supplier_GSTIN",
+    "Invoice_Number",
+    "Invoice_Type",
+    "Original_Invoice_Number",
+    "Total_Amount"
+  ]
+}

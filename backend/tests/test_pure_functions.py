@@ -3,10 +3,10 @@ Unit tests for every pure function in the backend.
 No network calls, no mocks needed — just input/output verification.
 
 Covers:
-  main.py          → compute_confidence, apply_tax_calculations
-  utils.py         → validate_file_content, sanitize_filename, compute_file_hash
+  main.py / extraction.py → compute_confidence, apply_tax_calculations
+  utils.py         → validate_file_content, sanitize_filename, compute_file_hash, format_date_to_iso
   reconcile_routes → clean_str, period_to_date_range
-  batch_routes     → format_date_to_iso
+  batch_routes     → format_date_to_iso (re-export)
 """
 import math
 import hashlib

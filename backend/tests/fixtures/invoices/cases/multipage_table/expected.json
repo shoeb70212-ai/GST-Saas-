@@ -1,0 +1,28 @@
+{
+  "Supplier_GSTIN": "27AADCB2230M1Z2",
+  "Invoice_Number": "INV-MP-012",
+  "Invoice_Date": "12-04-2024",
+  "Taxable_Amount": 1500.0,
+  "Total_Amount": 1770.0,
+  "Line_Items": [
+    {
+      "Description": "Line 1",
+      "Amount": 1000,
+      "Tax_Rate": 18
+    },
+    {
+      "Description": "Line 2",
+      "Amount": 500,
+      "Tax_Rate": 18
+    }
+  ],
+  "must_match_math": true,
+  "must_null": [],
+  "must_not_auto_accept": false,
+  "critical_fields": [
+    "Invoice_Number",
+    "Taxable_Amount",
+    "Total_Amount"
+  ],
+  "min_line_count": 2
+}

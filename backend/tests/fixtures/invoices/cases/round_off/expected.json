@@ -1,0 +1,23 @@
+{
+  "Supplier_GSTIN": "27AADCB2230M1Z2",
+  "Invoice_Number": "INV-RO-011",
+  "Invoice_Date": "11-04-2024",
+  "Taxable_Amount": 999.5,
+  "Round_Off": 0.08,
+  "Total_Amount": 1179.5,
+  "Line_Items": [
+    {
+      "Description": "Service",
+      "Amount": 999.5,
+      "Tax_Rate": 18
+    }
+  ],
+  "must_match_math": true,
+  "must_null": [],
+  "must_not_auto_accept": false,
+  "critical_fields": [
+    "Invoice_Number",
+    "Total_Amount",
+    "Round_Off"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "must_not_auto_accept": true,
+  "must_match_math": false,
+  "must_null": [],
+  "critical_fields": [],
+  "expect_state_in": [
+    "needs_retry",
+    "needs_review"
+  ],
+  "Supplier_GSTIN": "27AADCB2230M1Z2",
+  "Invoice_Number": "INV-BLUR-099",
+  "Total_Amount": null,
+  "Line_Items": [],
+  "notes": "Synthetic blur \u2014 live LLM may fail; hermetic tests use ground_truth_extract",
+  "ground_truth_extract": {
+    "Supplier_GSTIN": "27AADCB2230M1Z2",
+    "Supplier_Name": null,
+    "Invoice_Number": null,
+    "Invoice_Date": null,
+    "Total_Amount": null,
+    "Line_Items": []
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "Supplier_GSTIN": "27AADCB2230M1Z2",
+  "Invoice_Number": "INV-MIX-010",
+  "Invoice_Date": "10-04-2024",
+  "Taxable_Amount": 2000.0,
+  "Total_Amount": 2230.0,
+  "Line_Items": [
+    {
+      "Description": "Item A",
+      "HSN_SAC": "1001",
+      "Amount": 1000,
+      "Tax_Rate": 5
+    },
+    {
+      "Description": "Item B",
+      "HSN_SAC": "8471",
+      "Amount": 1000,
+      "Tax_Rate": 18
+    }
+  ],
+  "must_match_math": true,
+  "must_null": [
+    "IRN"
+  ],
+  "must_not_auto_accept": false,
+  "critical_fields": [
+    "Supplier_GSTIN",
+    "Invoice_Number",
+    "Taxable_Amount",
+    "Total_Amount"
+  ]
+}

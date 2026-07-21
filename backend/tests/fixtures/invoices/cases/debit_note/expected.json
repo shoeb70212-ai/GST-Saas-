@@ -1,0 +1,26 @@
+{
+  "Supplier_GSTIN": "27AADCB2230M1Z2",
+  "Invoice_Number": "DN-55",
+  "Invoice_Date": "05-03-2024",
+  "Invoice_Type": "Debit Note",
+  "Original_Invoice_Number": "INV-INTRA-001",
+  "Taxable_Amount": 200.0,
+  "Total_Amount": 236.0,
+  "Line_Items": [
+    {
+      "Description": "Additional charge",
+      "Amount": 200,
+      "Tax_Rate": 18
+    }
+  ],
+  "must_match_math": true,
+  "must_null": [],
+  "must_not_auto_accept": false,
+  "critical_fields": [
+    "Supplier_GSTIN",
+    "Invoice_Number",
+    "Invoice_Type",
+    "Original_Invoice_Number",
+    "Total_Amount"
+  ]
+}

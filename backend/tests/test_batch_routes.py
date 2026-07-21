@@ -266,7 +266,10 @@ class TestBatchWorkerRefund:
         async def _boom(*_a, **_kw):
             raise RuntimeError("AI extraction failed")
 
-        with patch("main.run_ai_extraction", new=_boom):
+        with patch("extraction.run_ai_extraction", new=_boom), patch(
+            "batch_routes.preprocess_invoice_file",
+            side_effect=lambda *a, **k: (b"x", "image/jpeg"),
+        ):
             asyncio.run(
                 batch_routes.process_batch_worker(
                     invoice_id="inv-fail-1",

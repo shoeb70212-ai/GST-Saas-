@@ -13,7 +13,14 @@ from pydantic import BaseModel
 from typing import Optional
 from supabase import create_async_client
 from PIL import Image, ImageOps, UnidentifiedImageError
-from utils import remove_pdf_password_if_present, get_org_credits
+from utils import remove_pdf_password_if_present, get_org_credits, ensure_org_not_suspended
+from extraction import (
+    preprocess_invoice_file,
+    run_ai_extraction,
+    line_items_db_payload,
+)
+from ops_log import build_ops_ctx, log_from_ctx
+import credits as credit_costs
 
 logger = logging.getLogger(__name__)
 
@@ -23,15 +30,14 @@ try:
 except ImportError:
     pass
 
-# We reuse the existing extraction function from main
-# to avoid circular imports, import run_ai_extraction where used
-
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
 
 META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
 META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID")
 
+# Use shared AI concurrency via extraction.get_ai_semaphore inside run_ai_extraction;
+# this semaphore only serializes WA message handling (download/storage).
 _wa_processing_semaphore = asyncio.Semaphore(4)
 
 async def send_whatsapp_message(to_number: str, text: str):
@@ -113,6 +119,18 @@ async def process_whatsapp_message_bg(message_data: dict):
             user_id = user_profile.get("id")
             client_id = user_profile.get("active_whatsapp_client_id")
             tally_ledgers = user_profile.get("tally_ledgers")
+
+            try:
+                await ensure_org_not_suspended(sc, user_id)
+            except Exception as sus_e:
+                detail = getattr(sus_e, "detail", None) or str(sus_e)
+                if "suspended" in str(detail).lower():
+                    await send_whatsapp_message(
+                        from_number,
+                        "🚫 Your firm account is suspended. Please contact support.",
+                    )
+                    return
+                raise
             
             if not client_id:
                 await send_whatsapp_message(from_number, "⚠️ You don't have an active client selected for WhatsApp ingestion. Please set one in Settings.")
@@ -240,35 +258,73 @@ async def process_whatsapp_message_bg(message_data: dict):
                 logger.error(f"Storage upload failed: {e}")
             
             # 4.5 Deduct Credit BEFORE AI Extraction
+            wa_cost = credit_costs.INVOICE_SCAN
             rpc_resp = await sc.rpc("decrement_credits", {
-                "user_id_param": user_id, 
-                "amount": 1,
+                "user_id_param": user_id,
+                "amount": wa_cost,
                 "task_type_param": "whatsapp_scan",
                 "file_name_param": f"WhatsApp_{media_id}",
                 "tokens_used_param": 0
             }).execute()
-            
+
             if rpc_resp.data == -1:
+                await log_from_ctx(
+                    build_ops_ctx("whatsapp", user_id=user_id, client_id=client_id),
+                    severity="error",
+                    event_type="credit_deduct_failed",
+                    message="decrement_credits returned -1",
+                    meta={"credit_outcome": "deduct_failed"},
+                )
                 await send_whatsapp_message(
                     from_number,
                     "⚠️ *Insufficient Credits*\nYour organization has run out of AI credits. Please recharge your wallet via the web dashboard to process this invoice."
                 )
                 return
 
-            # 5. AI Extraction
-            from main import run_ai_extraction
+            ops_ctx = build_ops_ctx(
+                "whatsapp",
+                user_id=user_id,
+                client_id=client_id,
+                file_name=f"WhatsApp_{media_id}",
+                mime_type=mime_type,
+            )
+
+            # 5. Shared preprocess + AI Extraction
             try:
-                data_dict, tokens = await run_ai_extraction(content_bytes, mime_type, tally_ledgers)
+                content_bytes, mime_type = preprocess_invoice_file(content_bytes, mime_type)
+                ops_ctx["mime_type"] = mime_type
+                data_dict, tokens = await run_ai_extraction(
+                    content_bytes, mime_type, tally_ledgers, ops_ctx=ops_ctx
+                )
             except Exception as ai_e:
-                # Refund on failure
                 await sc.rpc("refund_credits", {
                     "user_id_param": user_id,
-                    "amount": 1
+                    "amount": wa_cost
                 }).execute()
+                await log_from_ctx(
+                    ops_ctx,
+                    severity="error",
+                    event_type="channel_exception",
+                    message=str(ai_e),
+                    meta={"credit_outcome": "refunded", "refunded": True},
+                )
                 raise ai_e
-            
+
             state = data_dict.get("Extraction_State")
             if state == "needs_retry":
+                # Reject blurry/unreadable extract — refund pre-deducted credit
+                await sc.rpc("refund_credits", {
+                    "user_id_param": user_id,
+                    "amount": wa_cost
+                }).execute()
+                await log_from_ctx(
+                    ops_ctx,
+                    severity="warning",
+                    event_type="needs_retry",
+                    message="WhatsApp extract needs_retry; credit refunded",
+                    extraction_state=state,
+                    meta={"credit_outcome": "refunded", "refunded": True},
+                )
                 await send_whatsapp_message(
                     from_number,
                     "❌ The image was blurry or the AI could not extract the required fields. Please re-send a clearer photo or a PDF."
@@ -276,13 +332,15 @@ async def process_whatsapp_message_bg(message_data: dict):
                 return
 
             # 6. Save to DB
+            from utils import format_date_to_iso
+
             invoice_data = {
                 "user_id": user_id,
                 "client_id": client_id,
                 "supplier_name": data_dict.get("Supplier_Name"),
                 "supplier_gstin": data_dict.get("Supplier_GSTIN"),
                 "invoice_number": data_dict.get("Invoice_Number"),
-                "invoice_date": data_dict.get("Invoice_Date"),
+                "invoice_date": format_date_to_iso(data_dict.get("Invoice_Date")),
                 "total_amount": data_dict.get("Total_Amount"),
                 "cgst_amount": data_dict.get("CGST_Amount"),
                 "sgst_amount": data_dict.get("SGST_Amount"),
@@ -298,7 +356,8 @@ async def process_whatsapp_message_bg(message_data: dict):
                 "hsn_audit_warning": data_dict.get("HSN_Audit_Warning"),
                 "file_url": file_url,
                 "status": "pending_approval",
-                "source": "whatsapp"
+                "source": "whatsapp",
+                "processing_status": "completed",
             }
 
             resp = await sc.table("invoices").insert(invoice_data).execute()
@@ -306,13 +365,12 @@ async def process_whatsapp_message_bg(message_data: dict):
                 raise Exception("Failed to insert into DB")
 
             invoice_id = resp.data[0]["id"]
-            
-            # Save Line Items
+
             items = data_dict.get("Line_Items", [])
             if items:
-                for item in items:
-                    item["invoice_id"] = invoice_id
-                await sc.table("invoice_line_items").insert(items).execute()
+                await sc.table("invoice_line_items").insert(
+                    line_items_db_payload(invoice_id, items)
+                ).execute()
 
             # 8. Send Success Message
             supplier = data_dict.get("Supplier_Name", "Unknown Vendor")
@@ -324,6 +382,15 @@ async def process_whatsapp_message_bg(message_data: dict):
 
         except Exception as e:
             logger.error(f"Error in process_whatsapp_message_bg: {e}")
+            try:
+                await log_from_ctx(
+                    build_ops_ctx("whatsapp"),
+                    severity="error",
+                    event_type="channel_exception",
+                    message=str(e),
+                )
+            except Exception:
+                pass
             try:
                 from_number = message_data.get("from")
                 if from_number:

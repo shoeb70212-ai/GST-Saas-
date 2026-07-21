@@ -144,6 +144,7 @@ def _make_patched_scan(
     """
     import http_client as hc_mod
     import scan_routes as scan_mod
+    import extraction as ext_mod
 
     if ai_result is None:
         ai_result = (GOOD_EXTRACTED.copy(), 350)
@@ -158,22 +159,36 @@ def _make_patched_scan(
         def __enter__(self_inner):
             app.dependency_overrides[get_current_user] = _auth_override(credits=credits)
             self_inner._p1 = patch.object(hc_mod, "get_shared_client", fake_shared)
-            self_inner._p2 = patch.object(scan_mod, "get_shared_client", fake_shared)
+            self_inner._p2 = patch.object(ext_mod, "get_shared_client", fake_shared)
             self_inner._p3 = patch.object(scan_mod, "run_ai_extraction", new_callable=AsyncMock)
             self_inner._p4 = patch("gstin_service.verify_gstin", new_callable=AsyncMock)
+            # Skip real image/PDF work in unit tests
+            self_inner._p5 = patch.object(
+                scan_mod,
+                "preprocess_invoice_file",
+                side_effect=lambda content, mime, password=None: (content, mime),
+            )
+            self_inner._p6 = patch.object(scan_mod, "client", MagicMock())
 
             self_inner._p1.start()
             self_inner._p2.start()
             mock_ai = self_inner._p3.start()
             mock_gstin = self_inner._p4.start()
+            self_inner._p5.start()
+            self_inner._p6.start()
 
-            mock_ai.return_value = ai_result
+            if isinstance(ai_result, Exception):
+                mock_ai.side_effect = ai_result
+            else:
+                mock_ai.return_value = ai_result
             mock_gstin.return_value = gstin_status
 
             self_inner.mock_ai = mock_ai
             return self_inner
 
         def __exit__(self_inner, *a):
+            self_inner._p6.stop()
+            self_inner._p5.stop()
             self_inner._p4.stop()
             self_inner._p3.stop()
             self_inner._p2.stop()

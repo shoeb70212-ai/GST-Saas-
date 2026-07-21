@@ -1,0 +1,33 @@
+name: Ops Error Spike Alert
+
+on:
+  schedule:
+    - cron: '*/12 * * * *'
+  workflow_dispatch:
+
+jobs:
+  check-spike:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/admin/alerts/check
+        env:
+          BACKEND_URL: ${{ secrets.RENDER_BACKEND_URL }}
+          OPS_ALERT_SECRET: ${{ secrets.OPS_ALERT_SECRET }}
+        run: |
+          if [ -z "$BACKEND_URL" ] || [ -z "$OPS_ALERT_SECRET" ]; then
+            echo "Missing RENDER_BACKEND_URL or OPS_ALERT_SECRET secret; skipping."
+            exit 0
+          fi
+          # Strip trailing slash
+          BASE="${BACKEND_URL%/}"
+          curl -sS -o /tmp/alert.json -w "%{http_code}" \
+            --request POST "${BASE}/api/admin/alerts/check" \
+            --header "X-Ops-Alert-Secret: ${OPS_ALERT_SECRET}" \
+            --header "Content-Type: application/json" \
+            > /tmp/http_code.txt
+          CODE=$(cat /tmp/http_code.txt)
+          echo "HTTP $CODE"
+          cat /tmp/alert.json || true
+          if [ "$CODE" != "200" ]; then
+            exit 1
+          fi

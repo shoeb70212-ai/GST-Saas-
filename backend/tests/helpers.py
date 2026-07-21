@@ -61,35 +61,115 @@ def build_supabase_mock(
 
     class _ChainResult:
         """Captures which table was accessed for execute() to return."""
+
         def __init__(self, name):
             self._name = name
+            self._filters = []
+            self._last_update = None
 
-        # All builder methods return self
-        def select(self, *a, **kw): return self
-        def eq(self, *a, **kw): return self
-        def neq(self, *a, **kw): return self
-        def in_(self, *a, **kw): return self
-        def order(self, *a, **kw): return self
-        def limit(self, *a, **kw): return self
-        def gte(self, *a, **kw): return self
+        def select(self, *a, **kw):
+            return self
+
+        def eq(self, col=None, val=None, *a, **kw):
+            if col is not None:
+                self._filters.append(("eq", col, val))
+            return self
+
+        def neq(self, *a, **kw):
+            return self
+
+        def in_(self, *a, **kw):
+            return self
+
+        def order(self, *a, **kw):
+            return self
+
+        def limit(self, *a, **kw):
+            return self
+
+        def gte(self, *a, **kw):
+            return self
+
+        def gt(self, *a, **kw):
+            return self
+
+        def lt(self, *a, **kw):
+            return self
+
+        def lte(self, *a, **kw):
+            return self
+
+        def is_(self, *a, **kw):
+            return self
+
         def insert(self, data=None, *a, **kw):
             sc.insert_called_with.append((self._name, data))
             return self
-        def update(self, *a, **kw): return self
-        def delete(self, *a, **kw): return self
-        def maybe_single(self): return self
-        def range(self, *a, **kw): return self
-        def single(self): return self
+
+        def update(self, data=None, *a, **kw):
+            sc.update_called_with.append((self._name, data))
+            self._last_update = data
+            return self
+
+        def delete(self, *a, **kw):
+            return self
+
+        def maybe_single(self):
+            return self
+
+        def range(self, *a, **kw):
+            return self
+
+        def single(self):
+            return self
+
+        def ilike(self, *a, **kw):
+            return self
+
+        def or_(self, *a, **kw):
+            return self
+
+        def filter(self, *a, **kw):
+            return self
+
+        @property
+        def not_(self):
+            return self
 
         async def execute(self):
             result = MagicMock()
             recent_inserts = [
                 item for tbl, item in sc.insert_called_with if tbl == self._name
             ]
-            if recent_inserts:
+            if self._last_update is not None:
+                data = list(table_data.get(self._name, []) or [])
+                id_filter = next(
+                    (v for op, c, v in self._filters if op == "eq" and c == "id"),
+                    None,
+                )
+                if id_filter is not None:
+                    out = []
+                    for row in data:
+                        if row.get("id") == id_filter:
+                            out.append({**row, **self._last_update})
+                        else:
+                            out.append(row)
+                    table_data[self._name] = out
+                    result.data = [r for r in out if r.get("id") == id_filter] or [
+                        {**self._last_update}
+                    ]
+                else:
+                    result.data = [self._last_update]
+            elif recent_inserts:
                 result.data = [{"id": "mock_inserted_id"}]
             else:
                 data = table_data.get(self._name, [])
+                id_filter = next(
+                    (v for op, c, v in self._filters if op == "eq" and c == "id"),
+                    None,
+                )
+                if id_filter is not None and isinstance(data, list):
+                    data = [r for r in data if r.get("id") == id_filter]
                 result.data = data
             if self._name in table_counts:
                 result.count = table_counts[self._name]
@@ -98,6 +178,7 @@ def build_supabase_mock(
             return result
 
     sc.insert_called_with = []
+    sc.update_called_with = []
     sc.rpc_called_with = []
     sc.table = lambda name: _ChainResult(name)
 
@@ -123,9 +204,17 @@ def build_supabase_mock(
     )
     sc.storage.from_ = MagicMock(return_value=storage_bucket)
 
-    # auth.admin.list_users (for admin routes)
+    # auth.admin helpers (for admin routes)
     sc.auth.admin.list_users = AsyncMock(return_value=[])
     sc.auth.admin.delete_user = AsyncMock(return_value=None)
+    sc.auth.admin.generate_link = AsyncMock(
+        return_value=MagicMock(
+            properties=MagicMock(action_link="https://example.com/auth/magic")
+        )
+    )
+    sc.auth.admin.get_user_by_id = AsyncMock(
+        return_value=MagicMock(user=MagicMock(email="tenant@example.com", id=user_id))
+    )
 
     return sc
 

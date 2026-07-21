@@ -1,0 +1,126 @@
+{
+  "version": 1,
+  "description": "Synthetic GST invoice golden set for KhataLens extraction eval",
+  "cases": [
+    {
+      "id": "clean_intrastate",
+      "path": "cases/clean_intrastate",
+      "source": "source.pdf",
+      "tags": [
+        "intrastate"
+      ],
+      "license": "synthetic-khatalens",
+      "attribution": "Programmatically generated; not a real vendor invoice."
+    },
+    {
+      "id": "clean_interstate",
+      "path": "cases/clean_interstate",
+      "source": "source.pdf",
+      "tags": [
+        "interstate"
+      ],
+      "license": "synthetic-khatalens",
+      "attribution": "Programmatically generated; not a real vendor invoice."
+    },
+    {
+      "id": "credit_note",
+      "path": "cases/credit_note",
+      "source": "source.pdf",
+      "tags": [
+        "credit_note"
+      ],
+      "license": "synthetic-khatalens",
+      "attribution": "Programmatically generated; not a real vendor invoice."
+    },
+    {
+      "id": "debit_note",
+      "path": "cases/debit_note",
+      "source": "source.pdf",
+      "tags": [
+        "debit_note"
+      ],
+      "license": "synthetic-khatalens",
+      "attribution": "Programmatically generated; not a real vendor invoice."
+    },
+    {
+      "id": "mixed_tax_rates",
+      "path": "cases/mixed_tax_rates",
+      "source": "source.pdf",
+      "tags": [
+        "mixed_rate"
+      ],
+      "license": "synthetic-khatalens",
+      "attribution": "Programmatically generated; not a real vendor invoice."
+    },
+    {
+      "id": "round_off",
+      "path": "cases/round_off",
+      "source": "source.pdf",
+      "tags": [
+        "round_off"
+      ],
+      "license": "synthetic-khatalens",
+      "attribution": "Programmatically generated; not a real vendor invoice."
+    },
+    {
+      "id": "multipage_table",
+      "path": "cases/multipage_table",
+      "source": "source.pdf",
+      "tags": [
+        "multipage"
+      ],
+      "license": "synthetic-khatalens",
+      "attribution": "Programmatically generated; not a real vendor invoice."
+    },
+    {
+      "id": "blurry_low_dpi",
+      "path": "cases/blurry_low_dpi",
+      "source": "source.jpg",
+      "tags": [
+        "blurry_low_dpi"
+      ],
+      "license": "synthetic-khatalens",
+      "attribution": "Programmatically generated; not a real vendor invoice."
+    },
+    {
+      "id": "missing_optional_nulls",
+      "path": "cases/missing_optional_nulls",
+      "source": "source.pdf",
+      "tags": [
+        "missing_optional"
+      ],
+      "license": "synthetic-khatalens",
+      "attribution": "Programmatically generated; not a real vendor invoice."
+    },
+    {
+      "id": "bill_of_supply",
+      "path": "cases/bill_of_supply",
+      "source": "source.pdf",
+      "tags": [
+        "bill_of_supply"
+      ],
+      "license": "synthetic-khatalens",
+      "attribution": "Programmatically generated; not a real vendor invoice."
+    },
+    {
+      "id": "rcm_explicit_yes",
+      "path": "cases/rcm_explicit_yes",
+      "source": "source.pdf",
+      "tags": [
+        "rcm_explicit"
+      ],
+      "license": "synthetic-khatalens",
+      "attribution": "Programmatically generated; not a real vendor invoice."
+    },
+    {
+      "id": "math_broken",
+      "path": "cases/math_broken",
+      "source": "source.pdf",
+      "tags": [
+        "math_broken"
+      ],
+      "license": "synthetic-khatalens",
+      "attribution": "Programmatically generated; not a real vendor invoice."
+    }
+  ]
+}

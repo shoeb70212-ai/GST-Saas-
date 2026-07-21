@@ -1,0 +1,23 @@
+{
+  "Supplier_GSTIN": "27AADCB2230M1Z2",
+  "Invoice_Number": "INV-RCM-01",
+  "Invoice_Date": "03-05-2024",
+  "Reverse_Charge_Applicable": true,
+  "Taxable_Amount": 10000.0,
+  "Total_Amount": 11800.0,
+  "Line_Items": [
+    {
+      "Description": "Legal service",
+      "Amount": 10000,
+      "Tax_Rate": 18
+    }
+  ],
+  "must_match_math": true,
+  "must_null": [],
+  "must_not_auto_accept": false,
+  "critical_fields": [
+    "Reverse_Charge_Applicable",
+    "Invoice_Number",
+    "Total_Amount"
+  ]
+}
