@@ -12,7 +12,7 @@ export function useSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const navigate = useNavigate();
-  const { activeClientId } = useClient();
+  const { activeClientId, refreshCredits, setActiveOrgId, activeOrgId } = useClient();
 
   const [companyName, setCompanyName] = useState('My Company Ltd.');
   const [gstin, setGstin] = useState('');
@@ -116,20 +116,23 @@ export function useSettings() {
 
         const { data: orgData } = await supabase.rpc('get_user_orgs');
         if (orgData && orgData.length > 0) {
-          setUserRole(orgData[0].role);
+          const preferred =
+            (activeOrgId && orgData.find((o: { org_id: string }) => o.org_id === activeOrgId)) ||
+            orgData[0];
+          setUserRole(preferred.role);
 
-          if (orgData[0].role === 'owner' || orgData[0].role === 'admin') {
+          if (preferred.role === 'owner' || preferred.role === 'admin') {
             const { data: orgDetails } = await supabase
               .from('organizations')
               .select('join_code')
-              .eq('id', orgData[0].org_id)
+              .eq('id', preferred.org_id)
               .single();
             if (orgDetails) setJoinCode(orgDetails.join_code);
 
             const { data: members } = await supabase
               .from('organization_members')
               .select('user_id, role, profiles(company_name)')
-              .eq('org_id', orgData[0].org_id);
+              .eq('org_id', preferred.org_id);
             if (members) setTeamMembers(members as typeof teamMembers);
           }
         }
@@ -240,13 +243,18 @@ export function useSettings() {
     e.preventDefault();
     if (!inputJoinCode) return;
     setJoiningFirm(true);
-    const { error } = await supabase.rpc('join_firm', { join_code_param: inputJoinCode.toUpperCase() });
+    const { data: joinedOrgId, error } = await supabase.rpc('join_firm', { join_code_param: inputJoinCode.toUpperCase() });
     setJoiningFirm(false);
 
     if (error) {
       toast.error(error.message || 'Invalid Join Code');
     } else {
       toast.success('Successfully joined the firm!');
+      if (joinedOrgId) {
+        await setActiveOrgId(joinedOrgId as string);
+      } else {
+        await refreshCredits();
+      }
       fetchUser();
     }
   };

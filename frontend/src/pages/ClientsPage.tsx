@@ -8,14 +8,14 @@ import { Modal } from '../components/ui/Modal';
 import { getApiUrl } from '../lib/api';
 
 export default function ClientsPage() {
-  const { clients, loading, refreshClients, activeClientId, setActiveClientId } = useClient();
+  const { clients, loading, refreshClients, activeClientId, setActiveClientId, activeOrgId, orgs } = useClient();
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({ client_name: '', gstin: '', pan: '' });
   const [isSaving, setIsSaving] = useState(false);
   const [invoiceCounts, setInvoiceCounts] = useState<Record<string, number>>({});
 
-  // Enterprise RBAC State
+  // Enterprise RBAC State — prefer ClientContext activeOrgId (profiles.active_org_id)
   const [userRole, setUserRole] = useState<string>('accountant');
   const [currentOrgId, setCurrentOrgId] = useState<string | null>(null);
   const [managingAccessFor, setManagingAccessFor] = useState<string | null>(null);
@@ -72,20 +72,23 @@ export default function ClientsPage() {
       }
 
       if (orgData && orgData.length > 0) {
-        setUserRole(orgData[0].role);
-        setCurrentOrgId(orgData[0].org_id);
-        if (orgData[0].role === 'owner' || orgData[0].role === 'admin') {
+        const preferred =
+          (activeOrgId && orgData.find((o: { org_id: string }) => o.org_id === activeOrgId)) ||
+          orgData[0];
+        setUserRole(preferred.role);
+        setCurrentOrgId(preferred.org_id);
+        if (preferred.role === 'owner' || preferred.role === 'admin') {
           const { data: members } = await supabase
             .from('organization_members')
             .select('user_id, role')
-            .eq('org_id', orgData[0].org_id)
+            .eq('org_id', preferred.org_id)
             .eq('role', 'accountant');
           if (members) setTeamMembers(members);
         }
       }
     };
     fetchRoleAndTeam();
-  }, []);
+  }, [activeOrgId, orgs]);
 
   const isBusiness = localStorage.getItem('accountType') === 'business';
   const entityName = isBusiness ? 'Business' : 'Client';

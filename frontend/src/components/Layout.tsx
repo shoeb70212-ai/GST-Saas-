@@ -24,7 +24,10 @@ export default function Layout() {
   const [clientMenuOpen, setClientMenuOpen] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
-  const { clients, activeClientId, setActiveClientId, credits } = useClient();
+  const { clients, activeClientId, setActiveClientId, credits, orgs, activeOrgId, setActiveOrgId } = useClient();
+  const [orgMenuOpen, setOrgMenuOpen] = useState(false);
+  const activeOrg = orgs.find((o) => o.org_id === activeOrgId) ?? orgs[0];
+  const showOrgSwitcher = orgs.length > 1;
 
   const filteredClients = useMemo(() => {
     if (!clientSearch) return clients;
@@ -115,13 +118,67 @@ export default function Layout() {
           <span className="text-xl font-bold text-text-primary tracking-tight">KhataLens</span>
         </div>
         
-        {/* Client Switcher (Desktop) */}
-        <div className="px-4 pb-4 relative z-10">
+        {/* Firm + Client Switchers (Desktop) */}
+        <div className="px-4 pb-4 relative z-10 space-y-2">
+          {showOrgSwitcher && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setOrgMenuOpen(!orgMenuOpen);
+                  setClientMenuOpen(false);
+                }}
+                className="w-full flex items-center justify-between p-2 rounded-lg bg-bg-sunken/70 border border-border text-left"
+              >
+                <div className="flex items-center gap-2 overflow-hidden min-w-0">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary shrink-0">Firm</span>
+                  <span className="text-xs font-semibold text-text-primary truncate">
+                    {activeOrg?.name || 'Select firm'}
+                  </span>
+                </div>
+                <ChevronDown className="w-3.5 h-3.5 text-text-secondary shrink-0" />
+              </button>
+              <AnimatePresence>
+                {orgMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    className="absolute left-0 right-0 top-[calc(100%+4px)] bg-bg-surface border border-border rounded-xl shadow-lg z-[70] overflow-hidden"
+                  >
+                    <div className="max-h-40 overflow-y-auto p-1.5 space-y-0.5">
+                      {orgs.map((org) => (
+                        <button
+                          key={org.org_id}
+                          type="button"
+                          onClick={() => {
+                            void setActiveOrgId(org.org_id);
+                            setOrgMenuOpen(false);
+                          }}
+                          className={cn(
+                            'w-full text-left px-3 py-2 text-sm rounded-md transition-colors',
+                            activeOrgId === org.org_id
+                              ? 'bg-accent-subtle text-accent font-semibold'
+                              : 'text-text-primary hover:bg-bg-sunken font-medium'
+                          )}
+                        >
+                          <span className="block truncate">{org.name}</span>
+                          <span className="text-[10px] text-text-secondary capitalize">{org.role}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
           <motion.button 
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => {
               setClientSearch('');
+              setOrgMenuOpen(false);
               setClientMenuOpen(!clientMenuOpen);
             }}
             className="w-full flex items-center justify-between p-2.5 rounded-lg bg-bg-sunken border border-border hover:border-border-focus transition-colors shadow-sm"

@@ -279,7 +279,7 @@ Follow-up doc/graph pass committed separately from the original audit code fixes
 ## 9. Verification checklist
 
 - [ ] Apply phase60 on Supabase (staging then prod)
-- [ ] Apply phase65 multi-org wallet resolution on Supabase
+- [x] Apply phase65 multi-org wallet resolution on Supabase
 - [ ] `cd frontend && npm run build`
 - [ ] `cd backend && pytest tests/test_payment_routes.py tests/test_batch_routes.py tests/test_admin_routes.py tests/test_org_resolution.py -q`
 - [ ] Manual: failed bank job restores credits; oversized ZIP returns 413 **without** debit
@@ -306,10 +306,20 @@ Follow-up doc/graph pass committed separately from the original audit code fixes
 
 ### Next after Sprint 3
 
-1. Apply phase65 on staging/prod; smoke multi-org deduct/refund/pack fulfill.
-2. Frontend org switcher: always set `profiles.active_org_id` when user picks a firm (heal nulls).
+1. ~~Apply phase65 on staging/prod; smoke multi-org deduct/refund/pack fulfill.~~ **Done** — applied live on `wmxwjkmxyrngvitxseei` (GST saas); verified `resolve_user_org_id`, `decrement_credits`, `refund_credits`, `upgrade_user_tier`.
+2. ~~Frontend org switcher: always set `profiles.active_org_id` when user picks a firm (heal nulls).~~ **Done** — `ClientContext` heals null `active_org_id`, firm switcher in Layout (multi-org), client pick syncs org, join-firm refreshes wallet.
 3. Optional: code-review-graph embeddings (`sentence-transformers` / OpenAI provider).
 4. Optional: tighten WhatsApp/public edge-case tests; drop one-off e2e path rewriter (already applied under `/app/*`).
+
+### Sprint 4 follow-up (org switcher)
+
+| Change | Path / notes |
+|--------|----------------|
+| Prefer + heal `profiles.active_org_id` for credit badge | `frontend/src/lib/ClientContext.tsx` |
+| Firm switcher when `orgs.length > 1` | `frontend/src/components/Layout.tsx` |
+| Join firm → `setActiveOrgId` + credit refresh | `frontend/src/pages/settings/useSettings.ts` |
+| Clients page role/team uses active org | `frontend/src/pages/ClientsPage.tsx` |
+| phase65 live apply | Supabase project `wmxwjkmxyrngvitxseei` |
 
 ---
 
