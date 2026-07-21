@@ -120,7 +120,7 @@ async def process_batch_worker(invoice_id: str, content: bytes, mime_type: str, 
         supabase_client.postgrest.auth(token)
         await supabase_client.table("invoices").update({"processing_status": "failed", "error_message": str(e)}).eq("id", invoice_id).execute()
 
-@router.post("/api/upload-batch")
+@router.post("/upload-batch")
 async def upload_batch(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...), 

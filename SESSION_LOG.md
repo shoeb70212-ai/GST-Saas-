@@ -188,5 +188,21 @@
 
 **Next Time**: 
 - Verify that the Playwright E2E tests have passed following the Phase 44 RLS database migration.
-- Spin up gency-email-intelligence-engineer to build the Auto-Ingest pipeline.
-- Spin up gency-ai-citation-strategist to optimize KhataLens for AI search.
+- SPIN UP  gency-email-intelligence-engineer to build the Auto-Ingest pipeline.
+- SPIN UP  gency-ai-citation-strategist to optimize KhataLens for AI search.
+
+## Session: 2026-07-21
+- **Accomplished**:
+  - Found and resolved the silent workspace creation failure (removed non-existent `is_active` column from insert payload).
+  - Resolved RLS insert policies on `clients` preventing accountants and legacy users from creating clients.
+  - Broadened the policy to all organization members and created an `ensure_user_org` fallback safety net function.
+  - Fixed the scanned invoice visibility bug where invoices were filtered by scanning user's ID rather than only by client ID (removed `user_id` query filters on `SavedInvoicesPage.tsx` and `DashboardPage.tsx`).
+  - Fixed encoding syntax and relative path configurations in `apply_migration` script.
+- **Pending/Open**:
+  - Deploy frontend updates via Coolify and verify invoice/client creation directly in the web UI.
+  - Verify that the Playwright E2E tests have passed following the Phase 56 DB migration.
+- **Decisions**:
+  - Broadened clients INSERT RLS check to all members of an organization rather than just owners/admins, as accountants need to be able to create clients under their workspace.
+- **Next Time**:
+  - Ensure the client runs the Phase 56 SQL migration (`migration_phase56_fix_client_insert_rls.sql`) in their Supabase dashboard.
+  - Redeploy frontend on Coolify and verify workspace / client creations.

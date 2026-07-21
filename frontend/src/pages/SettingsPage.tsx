@@ -125,7 +125,7 @@ export default function SettingsPage() {
         const { data: clientsData } = await supabase
           .from('clients')
           .select('id, client_name')
-          .eq('user_id', session.user.id);
+          .order('created_at', { ascending: false });
         if (clientsData) {
           setClients(clientsData);
         }

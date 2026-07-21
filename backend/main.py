@@ -588,7 +588,7 @@ from sales_routes import router as sales_router
 
 # app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
-app.include_router(batch_router, prefix="/api/batch", tags=["batch"])
+app.include_router(batch_router, prefix="/api", tags=["batch"])
 app.include_router(reconcile_router, prefix="/api/reconcile", tags=["reconcile"])
 app.include_router(payment_router, prefix="/api", tags=["payments"])
 app.include_router(public_router, prefix="/api/public", tags=["public"])

@@ -3,6 +3,7 @@ import requests
 import time
 import zipfile
 import io
+import pytest
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
@@ -13,6 +14,8 @@ SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
 TEST_EMAIL = os.getenv("TEST_EMAIL")
 TEST_PASSWORD = os.getenv("TEST_PASSWORD")
 
+
+@pytest.mark.integration
 def test_zip_upload():
     if not all([SUPABASE_URL, SUPABASE_ANON_KEY]):
         print("Missing credentials.")

@@ -44,7 +44,7 @@ async def _verify_user(token: str):
     return user_id, supabase_client
 
 
-@router.post("/api/create-order")
+@router.post("/create-order")
 async def create_order(req: OrderRequest, authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -120,7 +120,7 @@ async def create_order(req: OrderRequest, authorization: str = Header(None)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/webhooks/payment")
+@router.post("/webhooks/payment")
 async def razorpay_webhook(request: Request):
     """Razorpay webhook — trusted server-to-server source for credit granting."""
     body = await request.body()
@@ -182,7 +182,7 @@ async def razorpay_webhook(request: Request):
     return {"status": "ok"}
 
 
-@router.post("/api/verify-payment")
+@router.post("/verify-payment")
 async def verify_payment(
     request: Request,
     authorization: str = Header(None)
@@ -286,7 +286,7 @@ async def verify_payment(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/audit/usage-logs")
+@router.get("/audit/usage-logs")
 async def get_usage_logs(authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")

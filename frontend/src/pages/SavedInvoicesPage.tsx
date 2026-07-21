@@ -366,6 +366,22 @@ export default function SavedInvoicesPage() {
   };
 
 
+  if (!activeClientId) {
+    return (
+      <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 pb-20">
+        <div className="card p-12 flex flex-col items-center justify-center text-center border-dashed border-border border-2">
+          <div className="w-16 h-16 rounded-full bg-bg-sunken flex items-center justify-center mb-4">
+            <FileText className="w-8 h-8 text-text-disabled" />
+          </div>
+          <h3 className="text-lg font-bold text-text-primary mb-2">No Client Selected</h3>
+          <p className="text-text-secondary max-w-md">
+            Please select an active client from the sidebar or go to <strong>Client Management</strong> to add your first client.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (invoicesError) {
     return (
       <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 pb-20">

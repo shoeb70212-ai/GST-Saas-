@@ -54,3 +54,14 @@ lerna-debug.log*
 Thumbs.db
 # Added by code-review-graph
 .code-review-graph/
+
+# Test / coverage artifacts
+.coverage
+htmlcov/
+
+# Local debug scripts (use service-role keys — never commit)
+debug_*.py
+fix_*.py
+test_insert*.py
+test_orgs.py
+scratch_*.py

@@ -1,5 +1,16 @@
+"""
+Shared pytest fixtures for the KhataLens test suite.
+
+Key fix over the previous version:
+  - ChainableMock now tracks _current_table per-chain-instance so parallel
+    .table("a")...execute() and .table("b")...execute() calls don't
+    clobber each other's table context.
+  - execute() returns data keyed by the table that was set on *this* chain.
+  - insert() records are returned per-table so assertions can be precise.
+"""
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
+
 
 @pytest.fixture
 def mock_supabase_execute_response():
@@ -9,68 +20,87 @@ def mock_supabase_execute_response():
         return mock_resp
     return _create_response
 
+
 @pytest.fixture
 def mock_supabase_builder():
     """
     Creates a deeply chainable mock for Supabase query builders.
-    .table().select().eq().in_().order().limit().execute()
+
+    Usage:
+        db = mock_supabase_builder(db_state={"invoices": [{"id": "inv-1"}]})
+        result = await db.table("invoices").select("*").execute()
+        assert result.data == [{"id": "inv-1"}]
+
+    The mock correctly isolates table context per chain: two simultaneous
+    .table("a") and .table("b") chains return the correct data for each.
     """
-    class ChainableMock:
-        def __init__(self, db_state=None):
-            # db_state is a dict: {"table_name": [data_list]}
-            self.db_state = db_state if db_state is not None else {}
-            self.insert_called_with = []
-            self.rpc_called_with = []
-            self._current_table = None
+    class ChainInstance:
+        """A single query chain — remembers which table it started on."""
 
-        def table(self, table_name):
-            self._current_table = table_name
-            return self
+        def __init__(self, table_name: str, root: "ChainableMock"):
+            self._table = table_name
+            self._root = root
 
-        def select(self, columns):
-            return self
-
-        def eq(self, col, val):
-            return self
-
-        def neq(self, col, val):
-            return self
-
-        def in_(self, col, vals):
-            return self
-
-        def order(self, col, **kwargs):
-            return self
-
-        def limit(self, count):
-            return self
+        # ── Builder methods — all return self ──────────────────────────────
+        def select(self, *a, **kw): return self
+        def eq(self, *a, **kw): return self
+        def neq(self, *a, **kw): return self
+        def in_(self, *a, **kw): return self
+        def order(self, *a, **kw): return self
+        def limit(self, *a, **kw): return self
+        def filter(self, *a, **kw): return self
+        def gte(self, *a, **kw): return self
+        def lte(self, *a, **kw): return self
+        def single(self): return self
+        def update(self, *a, **kw): return self
+        def delete(self): return self
 
         def insert(self, data):
-            self.insert_called_with.append((self._current_table, data))
+            self._root.insert_called_with.append((self._table, data))
             return self
 
-        def rpc(self, func_name, params=None):
+        async def execute(self):
+            mock_resp = MagicMock()
+            # If this chain ended with an insert, return a fake inserted row
+            recent_inserts = [
+                item for tbl, item in self._root.insert_called_with
+                if tbl == self._table
+            ]
+            if recent_inserts:
+                mock_resp.data = [{"id": "mock_inserted_id"}]
+            else:
+                mock_resp.data = self._root.db_state.get(self._table, [])
+            mock_resp.count = len(mock_resp.data)
+            return mock_resp
+
+    class ChainableMock:
+        def __init__(self, db_state=None):
+            self.db_state = db_state if db_state is not None else {}
+            self.insert_called_with: list[tuple[str, dict]] = []
+            self.rpc_called_with: list[tuple[str, dict]] = []
+
+        def table(self, table_name: str) -> ChainInstance:
+            return ChainInstance(table_name, self)
+
+        def rpc(self, func_name: str, params=None):
             self.rpc_called_with.append((func_name, params))
             return self
 
         async def execute(self):
             mock_resp = MagicMock()
-            if self.insert_called_with and self.insert_called_with[-1][0] == self._current_table:
-                # Mocking a returning insert
-                mock_resp.data = [{"id": "mock_inserted_id"}]
-            else:
-                mock_resp.data = self.db_state.get(self._current_table, [])
+            mock_resp.data = [{"id": "mock_rpc_id"}]
             return mock_resp
 
     return ChainableMock
 
+
 @pytest.fixture
 def mock_openai_client():
     mock_client = AsyncMock()
-    # Mocking client.beta.chat.completions.parse
     mock_parse = AsyncMock()
     mock_client.beta.chat.completions.parse = mock_parse
     return mock_client
+
 
 @pytest.fixture
 def sample_unallocated_txns():
@@ -82,7 +112,7 @@ def sample_unallocated_txns():
             "reference_no": "REF123",
             "withdrawal": 10000.50,
             "deposit": 0,
-            "allocated_amount": 0
+            "allocated_amount": 0,
         },
         {
             "id": "txn_2",
@@ -91,9 +121,10 @@ def sample_unallocated_txns():
             "reference_no": "REF456",
             "withdrawal": 5000.00,
             "deposit": 0,
-            "allocated_amount": 0
-        }
+            "allocated_amount": 0,
+        },
     ]
+
 
 @pytest.fixture
 def sample_unpaid_invoices():
@@ -103,13 +134,13 @@ def sample_unpaid_invoices():
             "supplier_name": "VendorA",
             "total_amount": 10000.50,
             "paid_amount": 0,
-            "invoice_date": "2026-05-10T00:00:00Z"
+            "invoice_date": "2026-05-10T00:00:00Z",
         },
         {
             "id": "inv_2",
             "supplier_name": "VendorB",
             "total_amount": 6000.00,
             "paid_amount": 0,
-            "invoice_date": "2026-05-12T00:00:00Z"
-        }
+            "invoice_date": "2026-05-12T00:00:00Z",
+        },
     ]

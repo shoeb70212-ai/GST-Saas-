@@ -47,7 +47,7 @@ export default function WalletPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("No session");
       const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
-      const res = await fetch(`${apiUrl}/api/usage-logs`, {
+      const res = await fetch(`${apiUrl}/api/audit/usage-logs`, {
         headers: { 'Authorization': `Bearer ${session.access_token}` }
       });
       if (!res.ok) throw new Error('Failed to fetch usage logs');

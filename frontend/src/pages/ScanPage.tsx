@@ -1,5 +1,6 @@
 import React from 'react';
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useDropzone } from 'react-dropzone';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UploadCloud, CheckCircle2, FileText, Loader2, Sparkles, Settings, X, File as FileIcon, ChevronDown, ChevronUp, Cloud, RefreshCw, AlertCircle, AlertTriangle, Table2 } from 'lucide-react';
@@ -276,6 +277,7 @@ const InvoiceRow = React.memo(function InvoiceRow({ fs, visibleColumns, onUpdate
 export default function ScanPage() {
   const { fileStates, setFileStates, visibleColumns, setVisibleColumns } = useScanContext();
   const { activeClientId, refreshCredits } = useClient();
+  const queryClient = useQueryClient();
 
   const [isExporting, setIsExporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -682,12 +684,25 @@ export default function ScanPage() {
       if (!session) return;
       const fs = fileStates.find(f => f.id === fileId);
       if (!fs) return;
-      
+
+      if (!activeClientId) {
+        toast.error('No active client selected. Please select a client before scanning.');
+        return;
+      }
+
       await saveSingleInvoiceToDb(fileId, fs, data, session.user.id);
       setFileStates(prev => prev.map(f => f.id === fileId ? { ...f, savedToCloud: true } : f));
+      // Invalidate the invoices list cache so SavedInvoicesPage reflects new data immediately
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
     } catch (err: any) {
       console.error("Auto-save failed:", err);
-      toast.error(`Auto-save failed: ${err.message || 'Unknown error'}`);
+      // Provide actionable error: if it's an auth/access error, guide the user
+      const msg = err.message || 'Unknown error';
+      if (msg.includes('Unauthorized') || msg.includes('access')) {
+        toast.error(`Save failed: You may not have access to this client. Go to Client Management and verify.`);
+      } else {
+        toast.error(`Auto-save failed: ${msg}`);
+      }
     }
   };
 
@@ -739,6 +754,7 @@ export default function ScanPage() {
       }
       
       toast.success("Successfully saved pending invoices.");
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
     } catch (err: any) {
       toast.error(err.message || 'Failed to save to cloud.');
     } finally {
