@@ -1,15 +1,14 @@
 import os
 import uuid
 import logging
-import httpx
-from http_client import get_shared_client
 import pandas as pd
 import io
-from fastapi import APIRouter, File, UploadFile, HTTPException, Header, BackgroundTasks, Form
+from fastapi import APIRouter, File, UploadFile, HTTPException, BackgroundTasks, Form, Depends
 from fastapi.responses import StreamingResponse
 from supabase import create_async_client
 from bank_service import process_bank_statement_bg
-from utils import get_user_supabase_client, ensure_sufficient_credits, verify_client_access
+from utils import ensure_sufficient_credits, verify_client_access, get_current_user
+import credits as credit_costs
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +47,6 @@ async def _prepare_statement_content(
     pdf_password: str | None,
 ) -> tuple[bytes, str, int]:
     """Validate file, return (content, extension, credit_cost)."""
-    import math
     import fitz
 
     _, ext = os.path.splitext(filename or "")
@@ -56,7 +54,7 @@ async def _prepare_statement_content(
     if ext not in ['.pdf', '.xlsx', '.xls', '.csv']:
         ext = '.pdf'
 
-    cost = 2
+    cost = credit_costs.BANK_BASE
     if ext == '.pdf':
         try:
             doc = fitz.open(stream=content, filetype="pdf")
@@ -74,7 +72,7 @@ async def _prepare_statement_content(
                 doc = fitz.open(stream=content, filetype="pdf")
                 if doc.needs_pass:
                     raise ValueError("Could not unlock PDF even after password authentication.")
-            cost = max(2, math.ceil(max(len(doc), 1) / 5) * 2)
+            cost = credit_costs.bank_pdf_cost(len(doc))
         except ValueError as ve:
             raise HTTPException(status_code=400, detail=str(ve))
         except HTTPException:
@@ -90,7 +88,7 @@ async def _prepare_statement_content(
             else:
                 dfs = _read_excel_workbook(content, ext)
                 total_rows = sum(len(df) for df in dfs.values())
-            cost = max(2, math.ceil(total_rows / 50) * 2)
+            cost = credit_costs.bank_spreadsheet_cost(total_rows)
         except HTTPException:
             raise
         except Exception as e:
@@ -101,17 +99,6 @@ async def _prepare_statement_content(
             )
 
     return content, ext, cost
-
-
-async def get_user_from_token(token: str):
-    async with get_shared_client() as client:
-        resp = await client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if resp.status_code != 200:
-            raise HTTPException(status_code=401, detail="Invalid session token")
-        return resp.json().get("id")
 
 
 async def _verify_statement_access(sc, statement_id: str) -> str:
@@ -137,16 +124,9 @@ def _read_excel_workbook(content: bytes, ext: str):
 
 
 @router.get("/list/{client_id}")
-async def list_bank_statements(client_id: str, authorization: str = Header(None)):
+async def list_bank_statements(client_id: str, auth: dict = Depends(get_current_user)):
     """Returns all bank statements for a client, ordered newest first."""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    token = authorization.split(" ")[1]
-    await get_user_from_token(token)
-
-    sc = await get_user_supabase_client(authorization)
-
+    sc = auth["supabase_client"]
     await verify_client_access(sc, client_id)
 
     resp = await sc.table("bank_statements")\
@@ -164,18 +144,15 @@ async def upload_bank_statement(
     file: UploadFile = File(...),
     client_id: str = Form(...),
     pdf_password: str = Form(None),
-    authorization: str = Header(None)
+    auth: dict = Depends(get_current_user),
 ):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    token = authorization.split(" ")[1]
-    user_id = await get_user_from_token(token)
+    user_id = auth["user_id"]
+    sc = auth["supabase_client"]
 
     content = await file.read()
     if len(content) > 25 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large. Max 25MB.")
 
-    sc = await get_user_supabase_client(authorization)
     await verify_client_access(sc, client_id)
 
     content, ext, cost = await _prepare_statement_content(content, file.filename, pdf_password)
@@ -237,15 +214,11 @@ async def retry_bank_statement(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     pdf_password: str = Form(None),
-    authorization: str = Header(None),
+    auth: dict = Depends(get_current_user),
 ):
     """Re-upload a file for a failed/cancelled statement and restart processing."""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    token = authorization.split(" ")[1]
-    user_id = await get_user_from_token(token)
-
-    sc = await get_user_supabase_client(authorization)
+    user_id = auth["user_id"]
+    sc = auth["supabase_client"]
     await _verify_statement_access(sc, statement_id)
 
     existing = await sc.table("bank_statements").select("id, client_id, status").eq("id", statement_id).execute()
@@ -306,11 +279,8 @@ async def retry_bank_statement(
 
 
 @router.get("/{statement_id}/status")
-async def get_statement_status(statement_id: str, authorization: str = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    sc = await get_user_supabase_client(authorization)
+async def get_statement_status(statement_id: str, auth: dict = Depends(get_current_user)):
+    sc = auth["supabase_client"]
 
     # Ownership check (RLS enforces this, but explicit check gives better error)
     await _verify_statement_access(sc, statement_id)
@@ -338,11 +308,8 @@ async def get_statement_status(statement_id: str, authorization: str = Header(No
 
 
 @router.post("/{statement_id}/cancel")
-async def cancel_statement(statement_id: str, authorization: str = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    sc = await get_user_supabase_client(authorization)
+async def cancel_statement(statement_id: str, auth: dict = Depends(get_current_user)):
+    sc = auth["supabase_client"]
 
     # Ownership check
     await _verify_statement_access(sc, statement_id)
@@ -362,11 +329,8 @@ async def cancel_statement(statement_id: str, authorization: str = Header(None))
 
 
 @router.get("/{statement_id}/transactions")
-async def get_transactions(statement_id: str, authorization: str = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    sc = await get_user_supabase_client(authorization)
+async def get_transactions(statement_id: str, auth: dict = Depends(get_current_user)):
+    sc = auth["supabase_client"]
 
     # Ownership check
     await _verify_statement_access(sc, statement_id)
@@ -376,11 +340,8 @@ async def get_transactions(statement_id: str, authorization: str = Header(None))
 
 
 @router.get("/{statement_id}/export")
-async def export_excel(statement_id: str, authorization: str = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    sc = await get_user_supabase_client(authorization)
+async def export_excel(statement_id: str, auth: dict = Depends(get_current_user)):
+    sc = auth["supabase_client"]
 
     # Ownership check
     await _verify_statement_access(sc, statement_id)

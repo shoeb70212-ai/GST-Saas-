@@ -10,6 +10,7 @@ import sys
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
+import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -18,6 +19,7 @@ os.environ.setdefault("VITE_SUPABASE_ANON_KEY", "test-anon-key")
 os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-service-key")
 
 from main import app
+from utils import get_current_user
 from tests.helpers import make_async_factory, build_supabase_mock
 
 client = TestClient(app)
@@ -45,58 +47,28 @@ def _make_zip(files: dict[str, bytes] | None = None) -> bytes:
     return buf.getvalue()
 
 
-def _make_supabase_mock(
-    user_id: str = "user-123",
-    credits_rpc_result: int = 5,
-    client_exists: bool = True,
-    insert_data: list | None = None,
-):
-    mock_sc = AsyncMock()
+def _override_auth(user_id: str = "user-123", supabase_client=None):
+    mock_sc = supabase_client or build_supabase_mock(user_id=user_id)
 
-    mock_user = MagicMock()
-    mock_user.user.id = user_id
-    mock_sc.auth.get_user = AsyncMock(return_value=mock_user)
-    mock_sc.postgrest.auth = MagicMock()
+    async def _fake():
+        return {
+            "user_id": user_id,
+            "supabase_client": mock_sc,
+            "token": "fake.token",
+        }
 
-    # profiles (tally_ledgers)
-    mock_sc.table.return_value.select.return_value.eq.return_value.execute = AsyncMock(
-        return_value=MagicMock(data=[{"tally_ledgers": None}])
-    )
+    app.dependency_overrides[get_current_user] = _fake
+    return mock_sc
 
-    # rpc decrement_credits
-    mock_sc.rpc.return_value.execute = AsyncMock(
-        return_value=MagicMock(data=credits_rpc_result)
-    )
 
-    # clients check
-    import http_client as hc_module
-    from contextlib import asynccontextmanager
-    from unittest.mock import MagicMock as MM
+def _clear_auth():
+    app.dependency_overrides.pop(get_current_user, None)
 
-    class FakeHTTPClient:
-        async def get(self, url, **kw):
-            resp = MM()
-            resp.status_code = 200
-            if "clients?" in url:
-                resp.json = lambda: [{"id": "client-abc"}] if client_exists else []
-            else:
-                resp.json = lambda: []
-            return resp
 
-        async def __aenter__(self): return self
-        async def __aexit__(self, *a): pass
-
-    # invoices bulk insert
-    mock_sc.table.return_value.insert.return_value.execute = AsyncMock(
-        return_value=MagicMock(
-            data=insert_data or [
-                {"id": "inv-1"},
-                {"id": "inv-2"},
-            ]
-        )
-    )
-
-    return mock_sc, FakeHTTPClient()
+@pytest.fixture(autouse=True)
+def _cleanup_auth_overrides():
+    yield
+    _clear_auth()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -190,14 +162,13 @@ class TestBatchZipValidation:
 # ═══════════════════════════════════════════════════════════════
 
 class TestBatchOwnership:
-    @patch("batch_routes.create_async_client")
-    def test_accessing_another_users_client_returns_403(self, mock_create):
+    def test_accessing_another_users_client_returns_403(self):
         """Outsider without has_client_access → 403."""
         mock_sc = build_supabase_mock(
             table_data={"profiles": [{"tally_ledgers": None}]},
             rpc_results={"has_client_access": False},
         )
-        mock_create.side_effect = make_async_factory(mock_sc)
+        _override_auth(supabase_client=mock_sc)
 
         zip_bytes = _make_zip()
         response = client.post(
@@ -210,8 +181,7 @@ class TestBatchOwnership:
         assert any(name == "has_client_access" for name, _ in mock_sc.rpc_called_with)
 
     @patch("batch_routes.process_batch_worker")
-    @patch("batch_routes.create_async_client")
-    def test_org_teammate_with_has_client_access_can_upload(self, mock_create, _mock_worker):
+    def test_org_teammate_with_has_client_access_can_upload(self, _mock_worker):
         """Teammate (not clients.user_id) may batch-upload when RPC allows."""
         mock_sc = build_supabase_mock(
             user_id="teammate-456",
@@ -221,7 +191,7 @@ class TestBatchOwnership:
                 "decrement_credits": 8,
             },
         )
-        mock_create.side_effect = make_async_factory(mock_sc)
+        _override_auth(user_id="teammate-456", supabase_client=mock_sc)
 
         zip_bytes = _make_zip()
         response = client.post(
@@ -242,8 +212,7 @@ class TestBatchOwnership:
 # ═══════════════════════════════════════════════════════════════
 
 class TestBatchCredits:
-    @patch("batch_routes.create_async_client")
-    def test_insufficient_credits_returns_402(self, mock_create):
+    def test_insufficient_credits_returns_402(self):
         """decrement_credits returning -1 → 402."""
         mock_sc = build_supabase_mock(
             table_data={"profiles": [{"tally_ledgers": None}]},
@@ -252,7 +221,7 @@ class TestBatchCredits:
                 "decrement_credits": -1,
             },
         )
-        mock_create.side_effect = make_async_factory(mock_sc)
+        _override_auth(supabase_client=mock_sc)
 
         zip_bytes = _make_zip()
         response = client.post(

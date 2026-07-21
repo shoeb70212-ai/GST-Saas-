@@ -1,14 +1,12 @@
 import pandas as pd
 import io
-import asyncio
 import calendar
 import logging
 import re
 from datetime import date
-from fastapi import APIRouter, File, UploadFile, HTTPException, Header, Form
-import httpx
+from fastapi import APIRouter, File, UploadFile, HTTPException, Form, Depends
 from http_client import get_shared_client
-from utils import get_user_supabase_client, verify_client_access
+from utils import verify_client_access, get_current_user
 import os
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
@@ -42,24 +40,13 @@ async def upload_sales_register(
     file: UploadFile = File(...),
     client_id: str = Form(...),
     period: str = Form(...),
-    authorization: str = Header(None)
+    auth: dict = Depends(get_current_user),
 ):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-        
-    token = authorization.split(" ")[1]
-    
-    async with get_shared_client() as http_client:
-        user_resp = await http_client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_resp.status_code != 200:
-            raise HTTPException(status_code=401, detail="Invalid session token")
-        user_id = user_resp.json().get("id")
+    user_id = auth["user_id"]
+    token = auth["token"]
 
     # Firm-wide org access via has_client_access (not clients.user_id owner-only)
-    sc = await get_user_supabase_client(authorization)
+    sc = auth["supabase_client"]
     await verify_client_access(sc, client_id)
 
     content = await file.read()
@@ -193,14 +180,11 @@ async def upload_sales_register(
 async def get_prediction(
     client_id: str,
     period: str,
-    authorization: str = Header(None)
+    auth: dict = Depends(get_current_user),
 ):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-        
-    token = authorization.split(" ")[1]
+    token = auth["token"]
 
-    sc = await get_user_supabase_client(authorization)
+    sc = auth["supabase_client"]
     await verify_client_access(sc, client_id)
 
     async with get_shared_client() as http_client:

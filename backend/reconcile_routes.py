@@ -4,12 +4,10 @@ import asyncio
 import calendar
 import re
 import json
-import math
 import os
 import logging
 from datetime import date
-from fastapi import APIRouter, File, UploadFile, HTTPException, Header, Form
-import httpx
+from fastapi import APIRouter, File, UploadFile, HTTPException, Form, Depends
 from http_client import get_shared_client
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
@@ -17,7 +15,8 @@ SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
 from collections import defaultdict
 import rapidfuzz
 from openai import AsyncOpenAI
-from utils import get_user_supabase_client, verify_client_access
+from utils import verify_client_access, get_current_user
+import credits as credit_costs
 
 logger = logging.getLogger(__name__)
 
@@ -52,25 +51,14 @@ async def reconcile_gstr2b(
     client_id: str = Form(...),
     period: str = Form(...),
     tolerance: str = Form("1.0"),
-    authorization: str = Header(None)
+    auth: dict = Depends(get_current_user),
 ):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-        
-    token = authorization.split(" ")[1]
+    user_id = auth["user_id"]
+    token = auth["token"]
     tol_val = float(tolerance)
-    
-    async with get_shared_client() as http_client:
-        user_resp = await http_client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_resp.status_code != 200:
-            raise HTTPException(status_code=401, detail="Invalid session token")
-        user_id = user_resp.json().get("id")
 
     # Firm-wide org access via has_client_access (not clients.user_id owner-only)
-    sc = await get_user_supabase_client(authorization)
+    sc = auth["supabase_client"]
     await verify_client_access(sc, client_id)
 
     content = await file.read()
@@ -276,25 +264,14 @@ async def deep_match_reconcile(
     client_id: str = Form(...),
     period: str = Form(...),
     tolerance: str = Form("1.0"),
-    authorization: str = Header(None)
+    auth: dict = Depends(get_current_user),
 ):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-        
-    token = authorization.split(" ")[1]
+    user_id = auth["user_id"]
+    token = auth["token"]
     tol_val = float(tolerance)
-    
-    async with get_shared_client() as http_client:
-        user_resp = await http_client.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if user_resp.status_code != 200:
-            raise HTTPException(status_code=401, detail="Invalid session token")
-        user_id = user_resp.json().get("id")
 
     # Firm-wide org access via has_client_access (not clients.user_id owner-only)
-    sc = await get_user_supabase_client(authorization)
+    sc = auth["supabase_client"]
     await verify_client_access(sc, client_id)
 
     async with get_shared_client() as http_client:
@@ -337,7 +314,7 @@ async def deep_match_reconcile(
             raise HTTPException(status_code=500, detail="Gemini API Key not configured for Deep Match.")
 
         total_items = len(missing_in_2b) + len(unmatched_2b)
-        cost = max(5, math.ceil(total_items / 20) * 5)
+        cost = credit_costs.deep_match_cost(total_items)
 
         # Check credits and Deduct (after Gemini key check so we never charge then 500)
         rpc_resp = await http_client.post(

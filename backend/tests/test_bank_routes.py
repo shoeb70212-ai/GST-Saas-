@@ -9,6 +9,7 @@ import io
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 import sys, os
+import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -17,7 +18,8 @@ os.environ.setdefault("VITE_SUPABASE_ANON_KEY", "test-anon-key")
 os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-service-key")
 
 from main import app
-from tests.helpers import make_async_factory, build_supabase_mock
+from utils import get_current_user
+from tests.helpers import build_supabase_mock
 
 http_client = TestClient(app)
 
@@ -33,11 +35,7 @@ MINIMAL_JPEG = (
 )
 
 
-async def _fake_user_id(token: str):
-    return "user-123"
-
-
-def _bank_mock(clients=None, statements=None, transactions=None, has_access=True):
+def _bank_mock(clients=None, statements=None, transactions=None, has_access=True, user_id="user-123"):
     table_data = {}
     if clients is not None:
         table_data["clients"] = clients
@@ -46,10 +44,34 @@ def _bank_mock(clients=None, statements=None, transactions=None, has_access=True
     if transactions is not None:
         table_data["bank_transactions"] = transactions
     return build_supabase_mock(
-        user_id="user-123",
+        user_id=user_id,
         table_data=table_data,
         rpc_results={"has_client_access": has_access},
     )
+
+
+def _override_auth(user_id: str = "user-123", supabase_client=None):
+    mock_sc = supabase_client or _bank_mock(user_id=user_id)
+
+    async def _fake():
+        return {
+            "user_id": user_id,
+            "supabase_client": mock_sc,
+            "token": "fake.token",
+        }
+
+    app.dependency_overrides[get_current_user] = _fake
+    return mock_sc
+
+
+def _clear_auth():
+    app.dependency_overrides.pop(get_current_user, None)
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_auth_overrides():
+    yield
+    _clear_auth()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -82,10 +104,9 @@ class TestBankStatementUpload:
         )
         assert response.status_code == 401
 
-    @patch("bank_routes.get_user_from_token", new_callable=AsyncMock)
-    def test_file_over_25mb_returns_400(self, mock_user):
+    def test_file_over_25mb_returns_400(self):
         """Files over 25 MB must be rejected before processing."""
-        mock_user.return_value = "user-123"
+        _override_auth()
         big_file = b'%PDF-1.4\n' + b'\x00' * (25 * 1024 * 1024 + 1)
         response = http_client.post(
             "/api/bank-statements/upload",
@@ -96,15 +117,10 @@ class TestBankStatementUpload:
         assert response.status_code == 400
 
     @patch("bank_routes.process_bank_statement_bg")
-    @patch("bank_routes.get_user_from_token")
-    @patch("bank_routes.get_user_supabase_client")
-    def test_unknown_extension_processed_as_pdf(self, mock_sc_fn, mock_user_fn, _mock_bg):
+    def test_unknown_extension_processed_as_pdf(self, _mock_bg):
         """Unknown extensions are treated as PDF; invalid PDF bytes return 400."""
-        async def _fake_user(_token):
-            return "user-123"
-        mock_user_fn.side_effect = _fake_user
         mock_sc = _bank_mock(clients=[{"id": "client-abc"}])
-        mock_sc_fn.side_effect = make_async_factory(mock_sc)
+        _override_auth(supabase_client=mock_sc)
 
         response = http_client.post(
             "/api/bank-statements/upload",
@@ -116,13 +132,10 @@ class TestBankStatementUpload:
         assert response.status_code == 400
         assert "PDF" in (response.json().get("detail") or "")
 
-    @patch("bank_routes.get_user_from_token", new_callable=AsyncMock)
-    @patch("bank_routes.get_user_supabase_client")
-    def test_accessing_other_users_client_returns_403(self, mock_sc_fn, mock_user):
+    def test_accessing_other_users_client_returns_403(self):
         """Outsider without has_client_access → 403."""
-        mock_user.return_value = "user-123"
         mock_sc = _bank_mock(clients=[], has_access=False)
-        mock_sc_fn.side_effect = make_async_factory(mock_sc)
+        _override_auth(supabase_client=mock_sc)
 
         response = http_client.post(
             "/api/bank-statements/upload",
@@ -136,17 +149,14 @@ class TestBankStatementUpload:
     @patch("bank_routes.ensure_sufficient_credits", new_callable=AsyncMock)
     @patch("bank_routes._store_statement_file", new_callable=AsyncMock)
     @patch("bank_routes._prepare_statement_content", new_callable=AsyncMock)
-    @patch("bank_routes.get_user_from_token", new_callable=AsyncMock)
-    @patch("bank_routes.get_user_supabase_client")
     def test_org_teammate_with_has_client_access_can_upload(
-        self, mock_sc_fn, mock_user, mock_prepare, mock_store, mock_credits, _mock_bg
+        self, mock_prepare, mock_store, mock_credits, _mock_bg
     ):
         """Org teammate (not clients.user_id owner) may upload when RPC allows."""
-        mock_user.return_value = "teammate-456"
         mock_prepare.return_value = (MINIMAL_PDF, ".pdf", 2)
         mock_store.return_value = "client-abc/bank_stmt.pdf"
-        mock_sc = _bank_mock(clients=[], has_access=True)
-        mock_sc_fn.side_effect = make_async_factory(mock_sc)
+        mock_sc = _bank_mock(clients=[], has_access=True, user_id="teammate-456")
+        _override_auth(user_id="teammate-456", supabase_client=mock_sc)
 
         response = http_client.post(
             "/api/bank-statements/upload",
@@ -161,12 +171,9 @@ class TestBankStatementUpload:
             for name, _ in mock_sc.rpc_called_with
         )
 
-    @patch("bank_routes.get_user_from_token", new_callable=AsyncMock)
-    @patch("bank_routes.get_user_supabase_client")
-    def test_list_denied_without_has_client_access(self, mock_sc_fn, mock_user):
-        mock_user.return_value = "outsider-789"
-        mock_sc = _bank_mock(has_access=False)
-        mock_sc_fn.side_effect = make_async_factory(mock_sc)
+    def test_list_denied_without_has_client_access(self):
+        mock_sc = _bank_mock(has_access=False, user_id="outsider-789")
+        _override_auth(user_id="outsider-789", supabase_client=mock_sc)
 
         response = http_client.get(
             "/api/bank-statements/list/client-abc",
@@ -174,17 +181,15 @@ class TestBankStatementUpload:
         )
         assert response.status_code == 403
 
-    @patch("bank_routes.get_user_from_token", new_callable=AsyncMock)
-    @patch("bank_routes.get_user_supabase_client")
-    def test_list_allowed_for_teammate_with_access(self, mock_sc_fn, mock_user):
-        mock_user.return_value = "teammate-456"
+    def test_list_allowed_for_teammate_with_access(self):
         mock_sc = _bank_mock(
             statements=[{"id": "stmt-1", "bank_name": "HDFC", "status": "completed",
                          "account_number": None, "file_url": None, "created_at": "2024-01-01",
                          "error_message": None}],
             has_access=True,
+            user_id="teammate-456",
         )
-        mock_sc_fn.side_effect = make_async_factory(mock_sc)
+        _override_auth(user_id="teammate-456", supabase_client=mock_sc)
 
         response = http_client.get(
             "/api/bank-statements/list/client-abc",
@@ -203,10 +208,9 @@ class TestBankStatementStatus:
         response = http_client.get("/api/bank-statements/stmt-123/status")
         assert response.status_code == 401
 
-    @patch("bank_routes.get_user_supabase_client")
-    def test_nonexistent_statement_returns_404(self, mock_sc_fn):
+    def test_nonexistent_statement_returns_404(self):
         mock_sc = _bank_mock(statements=[])
-        mock_sc_fn.side_effect = make_async_factory(mock_sc)
+        _override_auth(supabase_client=mock_sc)
 
         response = http_client.get(
             "/api/bank-statements/nonexistent-id/status",
@@ -214,16 +218,16 @@ class TestBankStatementStatus:
         )
         assert response.status_code == 404
 
-    @patch("bank_routes.get_user_supabase_client")
-    def test_completed_statement_returns_status(self, mock_sc_fn):
+    def test_completed_statement_returns_status(self):
         mock_sc = _bank_mock(statements=[{
             "id": "stmt-123",
             "status": "completed",
             "bank_name": "HDFC",
             "account_number": "1234567890",
             "file_url": None,
+            "client_id": "client-abc",
         }])
-        mock_sc_fn.side_effect = make_async_factory(mock_sc)
+        _override_auth(supabase_client=mock_sc)
 
         response = http_client.get(
             "/api/bank-statements/stmt-123/status",
@@ -242,14 +246,13 @@ class TestBankStatementExport:
         response = http_client.get("/api/bank-statements/stmt-123/export")
         assert response.status_code == 401
 
-    @patch("bank_routes.get_user_supabase_client")
-    def test_transactions_with_math_errors_blocked_from_export(self, mock_sc_fn):
+    def test_transactions_with_math_errors_blocked_from_export(self):
         """
         Export must be blocked if any transaction has has_math_error=True.
         This prevents exporting corrupt data to accounting software.
         """
         mock_sc = _bank_mock(
-            statements=[{"id": "stmt-123"}],
+            statements=[{"id": "stmt-123", "client_id": "client-abc"}],
             transactions=[{
                 "id": "txn-1",
                 "txn_date": "2024-01-01",
@@ -261,7 +264,7 @@ class TestBankStatementExport:
                 "needs_manual_review": False,
             }],
         )
-        mock_sc_fn.side_effect = make_async_factory(mock_sc)
+        _override_auth(supabase_client=mock_sc)
 
         response = http_client.get(
             "/api/bank-statements/stmt-123/export",
@@ -269,11 +272,10 @@ class TestBankStatementExport:
         )
         assert response.status_code == 400
 
-    @patch("bank_routes.get_user_supabase_client")
-    def test_transactions_needing_review_blocked_from_export(self, mock_sc_fn):
+    def test_transactions_needing_review_blocked_from_export(self):
         """Export must also be blocked if needs_manual_review=True."""
         mock_sc = _bank_mock(
-            statements=[{"id": "stmt-123"}],
+            statements=[{"id": "stmt-123", "client_id": "client-abc"}],
             transactions=[{
                 "id": "txn-1",
                 "txn_date": None,
@@ -285,7 +287,7 @@ class TestBankStatementExport:
                 "needs_manual_review": True,
             }],
         )
-        mock_sc_fn.side_effect = make_async_factory(mock_sc)
+        _override_auth(supabase_client=mock_sc)
 
         response = http_client.get(
             "/api/bank-statements/stmt-123/export",

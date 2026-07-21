@@ -128,9 +128,9 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 |----|-----|---------|----------|----------------|
 | A1 | — | Same-origin `/api` via nginx is correct | `frontend/nginx.conf`, `docker-compose.yml`, `lib/api.ts` | Keep; document in onboarding |
 | A2 | P2 | CORS allowlist hard-coded; Coolify host may differ | `backend/main.py` | **Done:** `CORS_ORIGINS` env (comma-separated); defaults preserved; rejects `*` |
-| A3 | P2 | Auth duplicated per route; `utils.get_current_user` underused | routers vs `utils.py` | `Depends(get_current_user)` everywhere |
-| A4 | P2 | Scan still in `main.py` (~600 lines) | `main.py` | Extract `scan_routes.py` |
-| A5 | P2 | Nested `/` public + protected routes | `App.tsx` | Prefer `/app/*` shell |
+| A3 | P2 | Auth duplicated per route; `utils.get_current_user` underused | routers vs `utils.py` | **Progress:** Depends on scan/payment/public + batch/bank/reconcile/sales/usage/bank_reconcile |
+| A4 | P2 | Scan still in `main.py` (~600 lines) | `main.py` | **Done:** extracted `scan_routes.py` |
+| A5 | P2 | Nested `/` public + protected routes | `App.tsx` | Prefer `/app/*` shell (deferred) |
 
 ### 4.2 Credit / wallet
 
@@ -216,11 +216,12 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 
 ### P2 (later)
 
-1. ~~Extract scan routes; env CORS.~~ **Partial** (`scan_routes.py`, `CORS_ORIGINS`, `credits.INVOICE_SCAN`) — ScanPage/Settings split + full cost centralization still open.
+1. ~~Extract scan routes; env CORS.~~ **Partial** (`scan_routes.py`, `CORS_ORIGINS`, `credits.INVOICE_SCAN`) — ScanPage/Settings split still open.
 2. Split ScanPage / SettingsPage.
-3. Centralize remaining costs in `backend/credits.py` + single doc table (scan cost done; bank/deep-match/batch still inline).
-4. Update stale monetization / ProGate docs.
-5. Rebuild code-review-graph DB (was locked/empty during audit).
+3. ~~Centralize remaining costs in `backend/credits.py`.~~ **Done** this pass — bank/deep-match/batch helpers + `Depends(get_current_user)` on batch/bank/reconcile/sales/usage-logs/bank_reconcile.
+4. Update stale monetization / ProGate docs (partial: CREDITS_DOCUMENTATION points at `credits.py`).
+5. Rebuild code-review-graph DB (was locked/empty during audit) — deferred.
+6. Prefer `/app/*` shell for nested public/protected routes — deferred.
 
 ---
 

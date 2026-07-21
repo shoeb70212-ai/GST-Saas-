@@ -2,7 +2,7 @@ import os
 import logging
 import httpx
 from http_client import get_shared_client
-from fastapi import APIRouter, HTTPException, Header, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 import razorpay
 from supabase import create_async_client
@@ -281,18 +281,9 @@ async def verify_payment(
 
 
 @router.get("/audit/usage-logs")
-async def get_usage_logs(authorization: str = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    token = authorization.split(" ")[1]
-    sc = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-    try:
-        user_resp = await sc.auth.get_user(token)
-        user_id = user_resp.user.id
-        sc.postgrest.auth(token)
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid session token")
+async def get_usage_logs(auth: dict = Depends(get_current_user)):
+    user_id = auth["user_id"]
+    sc = auth["supabase_client"]
 
     # Get active org
     profile_resp = await sc.table("profiles").select("active_org_id").eq("id", user_id).execute()

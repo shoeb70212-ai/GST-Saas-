@@ -391,8 +391,7 @@ class TestUsageLogs:
         response = client.get("/api/audit/usage-logs")
         assert response.status_code == 401
 
-    @patch("payment_routes.create_async_client")
-    def test_returns_list_of_logs(self, mock_create):
+    def test_returns_list_of_logs(self):
         mock_sc = build_supabase_mock(
             user_id="user-123",
             table_data={
@@ -400,13 +399,12 @@ class TestUsageLogs:
                 "credit_usage_logs": [{"id": "log-1", "task_type": "invoice_scan", "tokens_used": 500}],
             }
         )
-        mock_create.side_effect = make_async_factory(mock_sc)
+        _override_auth(supabase_client=mock_sc)
 
         response = client.get(
             "/api/audit/usage-logs",
             headers={"Authorization": "Bearer fake.jwt.token"},
         )
-        assert response.status_code in (200, 401)
-        if response.status_code == 200:
-            assert response.json()["status"] == "success"
-            assert isinstance(response.json()["data"], list)
+        assert response.status_code == 200
+        assert response.json()["status"] == "success"
+        assert isinstance(response.json()["data"], list)

@@ -2,12 +2,13 @@ import io
 import zipfile
 import base64
 import logging
-from fastapi import APIRouter, File, UploadFile, HTTPException, Header, BackgroundTasks, Form
+from fastapi import APIRouter, File, UploadFile, HTTPException, BackgroundTasks, Form, Depends
 import os
 import re
 from supabase import create_async_client
 # To avoid circular import with main.py, import these where used
-from utils import validate_file_content, sanitize_filename, verify_client_access
+from utils import validate_file_content, sanitize_filename, verify_client_access, get_current_user
+import credits as credit_costs
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +112,7 @@ async def process_batch_worker(invoice_id: str, content: bytes, mime_type: str, 
             try:
                 await supabase_client.rpc("refund_credits", {
                     "user_id_param": user_id,
-                    "amount": 1,
+                    "amount": credit_costs.BATCH_PER_FILE,
                 }).execute()
             except Exception as refund_e:
                 logger.error(
@@ -133,28 +134,17 @@ async def process_batch_worker(invoice_id: str, content: bytes, mime_type: str, 
 @router.post("/upload-batch")
 async def upload_batch(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...), 
+    file: UploadFile = File(...),
     client_id: str = Form(...),
-    authorization: str = Header(None)
+    auth: dict = Depends(get_current_user),
 ):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-        
-    token = authorization.split(" ")[1]
-    
-    # 1. Verify User and Get Profile
-    supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-    
-    try:
-        user_resp = await supabase_client.auth.get_user(token)
-        user_id = user_resp.user.id
-        supabase_client.postgrest.auth(token)
-        
-        profile_resp = await supabase_client.table("profiles").select("tally_ledgers").eq("id", user_id).execute()
-        tally_ledgers = profile_resp.data[0].get("tally_ledgers") if profile_resp.data else None
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid session token")
-        
+    user_id = auth["user_id"]
+    token = auth["token"]
+    supabase_client = auth["supabase_client"]
+
+    profile_resp = await supabase_client.table("profiles").select("tally_ledgers").eq("id", user_id).execute()
+    tally_ledgers = profile_resp.data[0].get("tally_ledgers") if profile_resp.data else None
+
     # Verify client access via has_client_access (org teammate or assignee)
     await verify_client_access(supabase_client, client_id)
         
@@ -204,7 +194,7 @@ async def upload_batch(
             if not pending_records:
                 raise HTTPException(status_code=400, detail="No valid images or PDFs found in ZIP.")
 
-            cost = len(pending_records)
+            cost = credit_costs.batch_upload_cost(len(pending_records))
 
             # Atomic credit deduction after validation
             rpc_resp = await supabase_client.rpc("decrement_credits", {

@@ -7,13 +7,15 @@ The system is designed to be **dynamic**—different tasks consume varying amoun
 
 ## 2. Core Credit Costs
 
+Canonical formulas live in `backend/credits.py`. Keep this table and `PricingPage.tsx` aligned with that module.
+
 | Task | Base Credit Cost | Scaling Factor | Endpoint / Service |
 | :--- | :--- | :--- | :--- |
-| **Invoice Scan (Web)** | 1 Credit | 1 per document | `backend/main.py` |
+| **Invoice Scan (Web)** | 1 Credit | 1 per document | `backend/scan_routes.py` |
 | **Invoice Scan (WhatsApp)**| 1 Credit | 1 per receipt/image | `backend/whatsapp_service.py` |
-| **Batch Invoice Upload** | 1 Credit | 1 per document inside the zip | `backend/batch_routes.py` |
-| **Bank Statement Scan** | 2 Credits | +2 Credits per 5 pages (PDF) or 50 rows (Excel) | `backend/bank_routes.py` |
-| **AI Deep Match (Recon)** | 5 Credits | +5 Credits per 20 items cross-referenced | `backend/reconcile_routes.py` |
+| **Batch Invoice Upload** | 1 Credit | 1 per document inside the zip | `backend/batch_routes.py` (`batch_upload_cost`) |
+| **Bank Statement Scan** | 2 Credits | +2 Credits per 5 pages (PDF) or 50 rows (Excel) | `backend/bank_routes.py` (`bank_pdf_cost` / `bank_spreadsheet_cost`) |
+| **AI Deep Match (Recon)** | 5 Credits | +5 Credits per 20 items cross-referenced | `backend/reconcile_routes.py` (`deep_match_cost`) |
 
 ## 3. Backend Logic & Architecture
 
@@ -31,11 +33,12 @@ Located in Supabase (`migration_phase41_usage_audit.sql`), this function acts as
 If `decrement_credits` returns `-1`, the FastAPI backend **immediately** halts execution and throws an `HTTPException(status_code=402, detail="Insufficient credits")`.
 This prevents the backend from making expensive calls to OpenRouter/Gemini APIs when the user's wallet is empty. 
 
-#### Example (`main.py` snippet)
+#### Example (`scan_routes.py` snippet)
 ```python
+scan_cost = credit_costs.INVOICE_SCAN
 rpc_resp = await http_client.post(
     f"{SUPABASE_URL}/rest/v1/rpc/decrement_credits",
-    json={"user_id_param": user_id, "amount": 1, ...}
+    json={"user_id_param": user_id, "amount": scan_cost, ...}
 )
 
 if rpc_resp.json() == -1:
@@ -43,12 +46,11 @@ if rpc_resp.json() == -1:
 ```
 
 ### 3.3. Volume-Based Scaling Logic
-Certain tasks, like Bank Statements and Deep Matching, are not fixed cost. The backend dynamically calculates the `cost` variable before requesting the deduction.
+Certain tasks, like Bank Statements and Deep Matching, are not fixed cost. Helpers in `backend/credits.py` calculate the `cost` before deduction:
 
-- **Bank Statements:** Evaluates the number of pages (for PDFs) or the total row count (for CSV/Excel).
-  `cost = max(2, math.ceil(len(pdf_pages) / 5) * 2)`
-- **AI Deep Match:** Evaluates the sum of missing GSTR-2B entries + unmatched Purchase Register entries.
-  `cost = max(5, math.ceil(total_items / 20) * 5)`
+- **Bank Statements:** `bank_pdf_cost(pages)` / `bank_spreadsheet_cost(rows)` → `max(2, ceil(n / unit) * 2)`
+- **AI Deep Match:** `deep_match_cost(total_items)` → `max(5, ceil(items / 20) * 5)`
+- **Batch ZIP:** `batch_upload_cost(file_count)` → `1 × queued files`
 
 ### 3.4. Upfront vs Post Deduction
 - **Upfront Check (Batch/Bank):** Because a user might upload a 500-page bank statement or a zip file of 10,000 invoices, `batch_routes.py` and `bank_routes.py` calculate the total cost and run `decrement_credits` *before* the background task starts. If insufficient, it fails immediately.

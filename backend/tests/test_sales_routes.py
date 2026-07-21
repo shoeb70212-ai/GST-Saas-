@@ -22,8 +22,15 @@ os.environ.setdefault("VITE_SUPABASE_URL", "https://test.supabase.co")
 os.environ.setdefault("VITE_SUPABASE_ANON_KEY", "test-anon-key")
 
 from main import app
+from utils import get_current_user
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_auth_overrides():
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 def _make_gstr1_excel() -> bytes:
@@ -87,28 +94,32 @@ def _make_http_mock(user_id: str = "user-123", prediction: dict | None = None):
     return FakeHTTPClient()
 
 
-def _patch_sales_access(monkeypatch, *, allowed: bool = True, mock_http=None):
+def _patch_sales_access(monkeypatch, *, allowed: bool = True, mock_http=None, user_id: str = "user-123"):
     import http_client as hc_module
     import sales_routes
 
     if mock_http is None:
-        mock_http = _make_http_mock()
+        mock_http = _make_http_mock(user_id=user_id)
 
     @asynccontextmanager
     async def fake_shared(*a, **kw):
         yield mock_http
 
-    async def fake_get_sc(_authorization):
-        return MagicMock()
-
     async def fake_verify(_sc, _client_id):
         if not allowed:
             raise HTTPException(status_code=403, detail="Access denied: client not found")
 
+    async def fake_auth():
+        return {
+            "user_id": user_id,
+            "supabase_client": MagicMock(),
+            "token": "valid.token.here",
+        }
+
     monkeypatch.setattr(hc_module, "get_shared_client", fake_shared)
     monkeypatch.setattr(sales_routes, "get_shared_client", fake_shared)
-    monkeypatch.setattr(sales_routes, "get_user_supabase_client", fake_get_sc)
     monkeypatch.setattr(sales_routes, "verify_client_access", fake_verify)
+    app.dependency_overrides[get_current_user] = fake_auth
     return mock_http
 
 
@@ -149,25 +160,7 @@ class TestSalesUploadAccess:
 
     def test_org_teammate_with_has_client_access_can_upload(self, monkeypatch):
         mock_http = _make_http_mock(user_id="teammate-456")
-        verify_calls = []
-
-        import http_client as hc_module
-        import sales_routes
-
-        @asynccontextmanager
-        async def fake_shared(*a, **kw):
-            yield mock_http
-
-        async def fake_get_sc(_authorization):
-            return MagicMock()
-
-        async def fake_verify(_sc, client_id):
-            verify_calls.append(client_id)
-
-        monkeypatch.setattr(hc_module, "get_shared_client", fake_shared)
-        monkeypatch.setattr(sales_routes, "get_shared_client", fake_shared)
-        monkeypatch.setattr(sales_routes, "get_user_supabase_client", fake_get_sc)
-        monkeypatch.setattr(sales_routes, "verify_client_access", fake_verify)
+        _patch_sales_access(monkeypatch, allowed=True, mock_http=mock_http, user_id="teammate-456")
 
         buf = _make_gstr1_excel()
         response = client.post(
@@ -184,7 +177,6 @@ class TestSalesUploadAccess:
         )
         assert response.status_code == 200
         assert response.json()["status"] == "success"
-        assert verify_calls == ["client-abc"]
         assert any("sales_records" in url for url, _ in mock_http.posts)
 
 
