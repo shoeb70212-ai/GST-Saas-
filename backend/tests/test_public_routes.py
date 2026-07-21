@@ -179,6 +179,25 @@ class TestPublicUpload:
         )
         assert response.status_code in (401, 422)
 
+    def test_expired_upload_token_returns_401(self):
+        expired, _ = create_public_upload_token(CLIENT_ID, ttl_seconds=-10)
+        response = client.post(
+            "/api/public/upload",
+            data={"client_id": CLIENT_ID, "upload_token": expired},
+            files={"files": ("inv.jpg", io.BytesIO(MINIMAL_JPEG), "image/jpeg")},
+        )
+        assert response.status_code == 401
+        assert "expired" in response.json()["detail"].lower()
+
+    def test_token_for_other_client_returns_401(self):
+        other_token = _token_for("client-other-999")
+        response = client.post(
+            "/api/public/upload",
+            data={"client_id": CLIENT_ID, "upload_token": other_token},
+            files={"files": ("inv.jpg", io.BytesIO(MINIMAL_JPEG), "image/jpeg")},
+        )
+        assert response.status_code == 401
+
     @patch("public_routes.create_async_client")
     @patch("public_routes.get_shared_client")
     def test_insufficient_credits_returns_402_before_queue(self, mock_shared, mock_create):
@@ -199,6 +218,60 @@ class TestPublicUpload:
             files={"files": ("inv.jpg", io.BytesIO(MINIMAL_JPEG), "image/jpeg")},
         )
         assert response.status_code == 402
+
+    @patch("public_routes.create_async_client")
+    @patch("public_routes.get_shared_client")
+    def test_storage_failure_refunds_credit(self, mock_shared, mock_create):
+        """Storage 500 after deduct must refund before surfacing error."""
+        mock_sc = build_supabase_mock(
+            table_data={
+                "clients": [{"user_id": "user-abc"}],
+                "profiles": [{"tally_ledgers": None}],
+                "invoices": [],
+            },
+        )
+        mock_create.side_effect = make_async_factory(mock_sc)
+
+        class FailStorageHTTP:
+            posts: list = []
+
+            async def post(self, url, **kw):
+                FailStorageHTTP.posts.append(url)
+                resp = MagicMock()
+                if "decrement_credits" in url:
+                    resp.status_code = 200
+                    resp.json = MagicMock(return_value=50)
+                elif "refund_credits" in url:
+                    resp.status_code = 200
+                    resp.json = MagicMock(return_value=True)
+                else:
+                    # storage object upload
+                    resp.status_code = 500
+                    resp.text = "storage boom"
+                    resp.json = MagicMock(return_value={"error": "storage boom"})
+                return resp
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                pass
+
+        @asynccontextmanager
+        async def fake_shared(*a, **kw):
+            yield FailStorageHTTP()
+
+        mock_shared.side_effect = fake_shared
+        FailStorageHTTP.posts = []
+
+        response = client.post(
+            "/api/public/upload",
+            data={"client_id": CLIENT_ID, "upload_token": _token_for()},
+            files={"files": ("inv.jpg", io.BytesIO(MINIMAL_JPEG), "image/jpeg")},
+        )
+        assert response.status_code == 500
+        assert any("refund_credits" in u for u in FailStorageHTTP.posts)
+        assert any("decrement_credits" in u for u in FailStorageHTTP.posts)
 
     @patch("public_routes.create_async_client")
     @patch("public_routes.get_shared_client")
