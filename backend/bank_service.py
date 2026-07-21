@@ -138,6 +138,21 @@ async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes
     overall_account_number = None
     total_statement_tokens = 0
 
+    async def _fail(message: str):
+        logger.error(f"Bank statement {statement_id} failed: {message}")
+        await sc.table("bank_statements").update({
+            "status": "failed",
+            "error_message": message[:500],
+        }).eq("id", statement_id).execute()
+        try:
+            await sc.rpc("refund_credits", {
+                "user_id_param": user_id,
+                "amount": cost,
+            }).execute()
+            logger.info(f"Refunded {cost} credits for failed statement {statement_id}")
+        except Exception as refund_e:
+            logger.error(f"Failed to refund credits for statement {statement_id}: {refund_e}")
+
     try:
         if extension in ['.xlsx', '.xls', '.csv']:
             import pandas as pd
@@ -145,7 +160,16 @@ async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes
                 df = pd.read_csv(io.BytesIO(file_path_or_bytes))
                 dfs = {"Sheet1": df}
             else:
-                dfs = pd.read_excel(io.BytesIO(file_path_or_bytes), sheet_name=None)
+                bio = io.BytesIO(file_path_or_bytes)
+                engine = "xlrd" if extension == ".xls" else "openpyxl"
+                try:
+                    dfs = pd.read_excel(bio, sheet_name=None, engine=engine)
+                except ImportError as ie:
+                    raise RuntimeError(
+                        f"Server missing Excel support ({engine}). Redeploy backend with openpyxl/xlrd installed."
+                    ) from ie
+                except Exception as xe:
+                    raise RuntimeError(f"Could not parse Excel file ({extension}): {xe}") from xe
                 
             for sheet_name, df in dfs.items():
                 df.dropna(how='all', axis=0, inplace=True)
@@ -176,7 +200,6 @@ async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes
             doc = fitz.open(stream=file_path_or_bytes, filetype="pdf")
             if doc.needs_pass and pdf_password:
                 doc.authenticate(pdf_password)
-            first_page_text = doc[0].get_text()
             statement_period_context = "Unknown. Look at the text for context."
             
             total_pages = len(doc)
@@ -268,30 +291,21 @@ async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes
         await sc.table("bank_statements").update({
             "status": "completed",
             "bank_name": overall_bank_name,
-            "account_number": overall_account_number
+            "account_number": overall_account_number,
+            "error_message": None,
         }).eq("id", statement_id).execute()
         
         # Log Token Usage (credits were already deducted upfront in the router)
-        await sc.rpc("decrement_credits", {
-            "user_id_param": user_id, 
-            "amount": 0,
-            "task_type_param": "bank_statement_processing",
-            "file_name_param": f"statement_{statement_id}",
-            "tokens_used_param": total_statement_tokens
-        }).execute()
+        try:
+            await sc.rpc("decrement_credits", {
+                "user_id_param": user_id, 
+                "amount": 0,
+                "task_type_param": "bank_statement_processing",
+                "file_name_param": f"statement_{statement_id}",
+                "tokens_used_param": total_statement_tokens
+            }).execute()
+        except Exception as log_e:
+            logger.warning(f"Token usage log failed for {statement_id}: {log_e}")
         
     except Exception as e:
-        logger.error(f"Error processing bank statement: {e}")
-        await sc.table("bank_statements").update({
-            "status": "failed"
-        }).eq("id", statement_id).execute()
-        # Refund the upfront-deducted credits since processing failed.
-        # Note: decrement_credits ignores amount <= 0 (log-only); must use refund_credits.
-        try:
-            await sc.rpc("refund_credits", {
-                "user_id_param": user_id,
-                "amount": cost,
-            }).execute()
-            logger.info(f"Refunded {cost} credits for failed statement {statement_id}")
-        except Exception as refund_e:
-            logger.error(f"Failed to refund credits for statement {statement_id}: {refund_e}")
+        await _fail(str(e))

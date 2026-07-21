@@ -276,8 +276,15 @@ export default function BankStatementsPage() {
                       </div>
                     )}
                     {stmt.status === 'failed' && (
-                      <div className="flex items-center gap-2 text-error text-sm font-medium bg-error-subtle px-3 py-1.5 rounded-full border border-error/20">
-                        <AlertTriangle className="w-3.5 h-3.5" /> Failed
+                      <div className="flex flex-col items-end gap-1 max-w-xs">
+                        <div className="flex items-center gap-2 text-error text-sm font-medium bg-error-subtle px-3 py-1.5 rounded-full border border-error/20">
+                          <AlertTriangle className="w-3.5 h-3.5" /> Failed
+                        </div>
+                        {stmt.error_message && (
+                          <p className="text-xs text-error/80 text-right leading-snug" title={stmt.error_message}>
+                            {stmt.error_message}
+                          </p>
+                        )}
                       </div>
                     )}
                     

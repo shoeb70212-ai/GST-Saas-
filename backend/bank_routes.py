@@ -31,10 +31,25 @@ async def get_user_from_token(token: str):
 
 
 async def _verify_client_ownership(sc, client_id: str, user_id: str):
-    """Verify that a client_id belongs to the authenticated user."""
+    """Verify the authenticated user can access this client (org member or owner)."""
+    try:
+        access = await sc.rpc("has_client_access", {"check_client_id": client_id}).execute()
+        if access.data is True:
+            return
+    except Exception as e:
+        logger.warning(f"has_client_access RPC failed, falling back to user_id check: {e}")
+
     client_resp = await sc.table("clients").select("id").eq("id", client_id).eq("user_id", user_id).execute()
     if not client_resp.data:
         raise HTTPException(status_code=403, detail="Access denied: client not found")
+
+
+def _read_excel_workbook(content: bytes, ext: str):
+    """Read .xls/.xlsx with an explicit engine so Coolify images don't silently miss deps."""
+    bio = io.BytesIO(content)
+    if ext == ".xls":
+        return pd.read_excel(bio, sheet_name=None, engine="xlrd")
+    return pd.read_excel(bio, sheet_name=None, engine="openpyxl")
 
 
 async def _verify_statement_ownership(sc, statement_id: str):
@@ -59,7 +74,7 @@ async def list_bank_statements(client_id: str, authorization: str = Header(None)
     await _verify_client_ownership(sc, client_id, user_id)
 
     resp = await sc.table("bank_statements")\
-        .select("id, bank_name, account_number, status, file_url, created_at")\
+        .select("id, bank_name, account_number, status, file_url, created_at, error_message")\
         .eq("client_id", client_id)\
         .order("created_at", desc=True)\
         .execute()
@@ -124,11 +139,15 @@ async def upload_bank_statement(
                 df = pd.read_csv(io.BytesIO(content))
                 total_rows = len(df)
             else:
-                dfs = pd.read_excel(io.BytesIO(content), sheet_name=None)
+                dfs = _read_excel_workbook(content, ext)
                 total_rows = sum(len(df) for df in dfs.values())
             cost = max(2, math.ceil(total_rows / 50) * 2)
         except Exception as e:
             logger.error(f"Failed to calculate Excel cost: {e}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not read spreadsheet ({ext}). Ensure the file is a valid Excel/CSV export. Details: {e}",
+            )
 
     # NOTE: Removed non-atomic pre-check — rely solely on atomic RPC return value (fixes race condition H2)
 
@@ -151,6 +170,11 @@ async def upload_bank_statement(
         await sc.table("bank_statements").update({"file_url": file_path}).eq("id", statement_id).execute()
     except Exception as e:
         logger.error(f"Storage upload failed: {e}")
+        await sc.table("bank_statements").update({
+            "status": "failed",
+            "error_message": f"File storage failed: {e}",
+        }).eq("id", statement_id).execute()
+        raise HTTPException(status_code=500, detail="Failed to store bank statement file. Please try again.")
 
     # Deduct credit via atomic RPC (removes race condition — H2 fix)
     rpc_resp = await sc.rpc("decrement_credits", {
@@ -163,7 +187,10 @@ async def upload_bank_statement(
 
     if rpc_resp.data == -1:
         # Revert processing status
-        await sc.table("bank_statements").update({"status": "failed"}).eq("id", statement_id).execute()
+        await sc.table("bank_statements").update({
+            "status": "failed",
+            "error_message": f"Insufficient credits (need {cost}).",
+        }).eq("id", statement_id).execute()
         raise HTTPException(status_code=402, detail=f"Insufficient credits. This {cost * 5}-page/row statement requires {cost} credits. Please recharge your wallet.")
 
     # Start background task
