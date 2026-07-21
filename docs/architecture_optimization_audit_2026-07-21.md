@@ -19,9 +19,9 @@ The highest remaining risks are **wallet integrity and monetization trust bounda
 4. Batch ZIP charged **before** zip-bomb validation.
 5. Signup trigger still inserted dropped `profiles.credits` (phase 54).
 
-**This audit sprint implemented fixes for those P0/P1 items** (see §8). Remaining work is RBAC product decisions, public-upload hardening, recon grid virtualization, and leftover P2 docs/graph/`/app/*` shell.
+**This audit sprint implemented fixes for those P0/P1 items** (see §8). Remaining deferred P2 is primarily the `/app/*` shell restructure. ProGate/monetization docs + code-review-graph rebuild progressed in a follow-up pass; recon virtualization and clients aggregates already shipped earlier (`200cb63`).
 
-Knowledge graph was empty at audit start (`build_or_update_graph` hit a DB lock); findings are evidence-based from migrations + source via parallel domain audits.
+Knowledge graph was empty at audit start (`build_or_update_graph` hit a DB lock); rebuilt later on `main` @ `c7cbaa4` (full build + postprocess; embeddings skipped — local `sentence-transformers` not installed). Graph DB stays gitignored under `.code-review-graph/`.
 
 ---
 
@@ -154,7 +154,7 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 |------|--------|-------|
 | Scan / save | Good post-incident | Do not regress clientId binding / `save_invoice_atomic` |
 | Clients | Good | Phase 58 `create_client_secure`; multi-org `LIMIT 1` still P2 |
-| GSTR-2B recon | Good | Strong memoization; large grids need virtualization |
+| GSTR-2B recon | Good | Strong memoization; large grids virtualized (`200cb63`) |
 | Bank | Good | Ownership aligned with `has_client_access` (firm-wide) |
 | Tax liability | OK | Uses ErrorState |
 | Virtual CFO | Improved | ErrorState added; routes ungated post-ProGate |
@@ -169,11 +169,11 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 | F1 | P1 | Scattered API URL resolution | 7 pages vs `getApiUrl` | **Fixed** unify on `getApiUrl()` |
 | F2 | P1 | Wallet / CFO missing ErrorState | pages | **Fixed** |
 | F3 | P1 | Unbounded wallet transactions select | WalletPage | **Fixed** `.limit(50)` |
-| F4 | P1 | Unbounded clients invoice id fetch | `ClientsPage.tsx` | Aggregate RPC / count |
-| F5 | P1 | Recon period `select('*')` + dual map, no virtualization | `ReconciliationPage.tsx` | Column project + virtualize |
+| F4 | P1 | Unbounded clients invoice id fetch | `ClientsPage.tsx` | **Done** aggregate RPC / count (`200cb63`) |
+| F5 | P1 | Recon period `select('*')` + dual map, no virtualization | `ReconciliationPage.tsx` | **Done** column project + virtualize (`200cb63`) |
 | F6 | P1 | `/admin` UI has no client role gate | `App.tsx` | Soft gate + API enforce |
 | F7 | P2 | Mega-pages Scan (~1055), Settings (~858) | pages | **Done:** `pages/scan/*` + `pages/settings/*` (hooks + section components); thin re-exports |
-| F8 | P2 | Docs still describe ProGate | monetization docs | Update docs |
+| F8 | P2 | Docs still describe ProGate | monetization docs | **Done** — credits-only sync (`13_Monetization_Architecture`, Master, `CREDITS_DOCUMENTATION`) |
 
 ### 4.5 Security & RLS
 
@@ -189,7 +189,7 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 
 | ID | Sev | Finding | Recommendation |
 |----|-----|---------|----------------|
-| P1 | P1 | Recon 1k+ rows: no virtualization | `@tanstack/react-virtual` or windowing |
+| P1 | P1 | Recon 1k+ rows: no virtualization | **Done** (`200cb63`) |
 | P2 | P2 | Admin tenants full-table profiles | Paginate |
 | P3 | — | Batch semaphore(5), scan chunk 5, bank chunks | Keep |
 | P4 | P2 | N+1 risk in admin / heavy gathers | Bound parallelism |
@@ -209,7 +209,7 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 1. Public upload: deduct/reserve before AI; signed upload tokens; tighter rate limits.
 2. ~~Align bank/batch ownership with `has_client_access`.~~ **Done** (`5f7c6a8`); GSTR reconcile + sales aligned to same helper.
 3. ~~Decide RBAC: restore `client_assignments` vs firm-wide access; document.~~ **Decided: firm-wide** (S1). Assignments table kept for cross-org edge cases only.
-4. Clients page aggregate counts; recon column projection + virtualization.
+4. ~~Clients page aggregate counts; recon column projection + virtualization.~~ **Done** (`200cb63`).
 5. Soft-gate `/admin` + `/cfo` if monetization requires it (API still authoritative). ~~Done soft-gate~~ (`e91a525`).
 6. Restore `transactions` ledger writes in `upgrade_user_tier`. ~~Done~~ (`ae53718`).
 7. Refund policy for failed batch workers / deep-match AI exceptions. ~~Done~~ (`f0e06cf`).
@@ -217,11 +217,11 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 ### P2 (later)
 
 1. ~~Extract scan routes; env CORS.~~ **Done** (`scan_routes.py`, `CORS_ORIGINS`, `credits.INVOICE_SCAN`).
-2. ~~Split ScanPage / SettingsPage.~~ **Done** — `frontend/src/pages/scan/` (`useScanWorkflow`, upload/grid panels, InvoiceRow, save helpers) and `frontend/src/pages/settings/` (`useSettings`, nav + per-tab components); auto-save `clientId` binding preserved.
-3. ~~Centralize remaining costs in `backend/credits.py`.~~ **Done** this pass — bank/deep-match/batch helpers + `Depends(get_current_user)` on batch/bank/reconcile/sales/usage-logs/bank_reconcile.
-4. Update stale monetization / ProGate docs (partial: CREDITS_DOCUMENTATION points at `credits.py`).
-5. Rebuild code-review-graph DB (was locked/empty during audit) — deferred.
-6. Prefer `/app/*` shell for nested public/protected routes — deferred.
+2. ~~Split ScanPage / SettingsPage.~~ **Done** — `frontend/src/pages/scan/` (`useScanWorkflow`, upload/grid panels, InvoiceRow, save helpers) and `frontend/src/pages/settings/` (`useSettings`, nav + per-tab components); auto-save `clientId` binding preserved (`c7cbaa4`).
+3. ~~Centralize remaining costs in `backend/credits.py`.~~ **Done** — bank/deep-match/batch helpers + `Depends(get_current_user)` on batch/bank/reconcile/sales/usage-logs/bank_reconcile (`1d45283`).
+4. ~~Update stale monetization / ProGate docs.~~ **Done** — aligned with credits-only gating (`da96538`) + current packs/costs.
+5. ~~Rebuild code-review-graph DB.~~ **Done** — full rebuild + postprocess on workspace (DB gitignored; embeddings optional / not installed locally).
+6. Prefer `/app/*` shell for nested public/protected routes — **deferred (next pass)**.
 
 ---
 
@@ -243,12 +243,13 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 | Day | Focus | Outcome |
 |-----|-------|---------|
 | 1 | Apply phase60 + verify signup + credit IDOR tests | Migration live; pytest for unauthorized refund |
-| 2 | Public upload harden (pre-deduct + token) | Stop free AI / wallet drain |
+| 2 | Public upload harden (pre-deduct + token) | **Done** (`b0edffc`) |
 | 3 | Ownership = `has_client_access` for bank/batch/GSTR/sales | **Done** — firm-wide org members; no owner-only FastAPI gate |
 | 4 | RBAC product decision + RPC adjust | **Done** — firm-wide default documented (S1); no RPC rollback |
-| 5 | Recon virtualization + Clients aggregates | Smooth 1k+ row periods |
-| 6–7 | `upgrade_user_tier` ledger + admin UI org credits display | Wallet history + admin truth |
-| Buffer | Docs sync; graph rebuild; extract `credits.py` | Less drift |
+| 5 | Recon virtualization + Clients aggregates | **Done** (`200cb63`) |
+| 6–7 | `upgrade_user_tier` ledger + admin UI org credits display | **Done** ledger (`ae53718`); soft-gates (`e91a525`) |
+| Buffer | Docs sync; graph rebuild; extract `credits.py` | **Done** (docs + graph this pass; `credits.py` in `1d45283`) |
+| Next | `/app/*` shell for public vs protected routes | Nested route clarity (A5) |
 
 ---
 
@@ -266,9 +267,11 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 | Wallet ErrorState + limit + no profile.credits fallback | `frontend/src/pages/WalletPage.tsx` |
 | Virtual CFO ErrorState | `frontend/src/pages/VirtualCfoPage.tsx` |
 | Deep Match cost copy | `frontend/src/pages/ReconciliationPage.tsx` |
-| ScanPage / SettingsPage modularization | `frontend/src/pages/scan/*`, `frontend/src/pages/settings/*` |
+| ScanPage / SettingsPage modularization | `frontend/src/pages/scan/*`, `frontend/src/pages/settings/*` (`c7cbaa4`) |
+| ProGate / monetization docs sync (credits-only) | `docs/13_Monetization_Architecture.md`, `docs/KhataLens_Master_Document.md`, `CREDITS_DOCUMENTATION.md` |
+| Code-review-graph full rebuild + postprocess | Local `.code-review-graph/` (gitignored) |
 
-**Not committed/pushed by auditor** — parent/user should review, run tests, apply migration, then commit.
+Follow-up doc/graph pass committed separately from the original audit code fixes.
 
 ---
 

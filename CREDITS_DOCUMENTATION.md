@@ -56,12 +56,18 @@ Certain tasks, like Bank Statements and Deep Matching, are not fixed cost. Helpe
 - **Upfront Check (Batch/Bank):** Because a user might upload a 500-page bank statement or a zip file of 10,000 invoices, `batch_routes.py` and `bank_routes.py` calculate the total cost and run `decrement_credits` *before* the background task starts. If insufficient, it fails immediately.
 - **Post Deduction (Single Invoices):** For a standard 1-credit invoice scan, the AI extraction runs, and the credit is deducted immediately upon completion. If the user hits 0 credits, the *next* upload will be blocked.
 
-## 4. Frontend Integration
+## 4. Access model (credits-only)
 
-### 4.1. Pricing Page (`/pricing`)
+KhataLens does **not** hard-lock Virtual CFO, Tax Liability, GSTR-2B reconciliation, or client management behind a Pro subscription. Those surfaces stay available to authenticated users. You only spend credits when running AI-powered tasks (see Section 2). Soft role gates (e.g. `/admin`) may still apply; API authorization remains authoritative. Do not reintroduce `<ProGate>`-style feature locks without product sign-off (`da96538`).
+
+**Wallet packs (server catalog):** Starter **₹2,499 / 1,000 credits** · Pro **₹7,999 / 5,000 credits** (`payment_routes.CREDIT_PACKS` / Pricing page).
+
+## 5. Frontend Integration
+
+### 5.1. Pricing Page (`/pricing`)
 The `PricingPage.tsx` component serves as the public-facing documentation for the credit system. It clearly maps out the costs described in Section 2, ensuring users understand exactly what they are paying for before they recharge.
 
-### 4.2. Wallet Dashboard (`/wallet`)
+### 5.2. Wallet Dashboard (`/wallet`)
 The Wallet page allows authenticated users to:
 1. View their live, available credit balance.
 2. See their `credit_usage_logs` and `transactions` (recharges).

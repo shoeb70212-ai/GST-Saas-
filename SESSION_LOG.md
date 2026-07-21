@@ -154,6 +154,8 @@
   - Run the migrations on the production Supabase instance.
   - Populate GitHub Secrets and verify the CI/CD pipeline runs green.
 
+> **Later correction (2026-07-21):** Pack prices are now Starter ₹2,499 / Pro ₹7,999. Hard `<ProGate>` locks were removed (`da96538`) in favor of credits-only gating — see `docs/13_Monetization_Architecture.md`.
+
 ## 2026-07-16 (Dynamic Weighted Credits & PDF Passwords)
 - **Accomplished**:
   - Investigated and resolved the backend failure related to OpenAI/OpenRouter API key usage (`bank_service.py`).

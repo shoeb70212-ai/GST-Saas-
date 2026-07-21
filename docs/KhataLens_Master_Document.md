@@ -82,7 +82,7 @@ To monetize the platform specifically for the Indian B2B market, we bypassed tra
 
 - **Wallet Architecture:** CAs purchase "Starter" or "Pro" passes via a native `react-razorpay` integration.
 - **Atomic Ledger Idempotency:** To prevent double-crediting if webhooks or frontend payloads fire twice during network drops, the Supabase Postgres RPC (`upgrade_user_tier`) guarantees mathematical idempotency by cross-checking the `transactions` ledger for duplicate `payment_id` signatures before granting credits.
-- **Enterprise UI Gating:** A custom React `<ProGate>` Higher Order Component restricts access to the CFO Dashboard and Tax Liability tools, ensuring absolute compliance with SaaS billing tiers.
+- **Credits-only access:** Wallet passes top up org credits; AI tasks (scan, bank, deep match, etc.) deduct credits and return 402 when empty. Virtual CFO, Tax Liability, and core tools are not hard-locked behind a Pro tier (`ProGate` removed — `da96538`).
 
 ---
 
