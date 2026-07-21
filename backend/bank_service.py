@@ -10,6 +10,7 @@ from typing import Optional
 from supabase import create_async_client
 import json
 from dotenv import load_dotenv
+from utils import get_org_credits
 
 logger = logging.getLogger(__name__)
 
@@ -124,10 +125,19 @@ async def extract_bank_statement_chunk(md_text: str, statement_period: str) -> B
         logger.error(f"GPT-4o-mini extraction failed: {e}")
         return BankStatementExtract(transactions=[], account_number=None, bank_name=None), 0
 
-async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes, user_id: str, client_id: str, extension: str = '.pdf', pdf_password: str = None, cost: int = 2):
+async def process_bank_statement_bg(
+    statement_id: str,
+    file_path_or_bytes: bytes,
+    user_id: str,
+    client_id: str,
+    extension: str = '.pdf',
+    pdf_password: str = None,
+    cost: int = 2,
+    file_name: str | None = None,
+):
     """
     Background worker that chunks the file, runs extraction, performs math checks, and saves to DB.
-    If processing fails, refunds the upfront-deducted credits.
+    Credits are deducted only after a successful scan that invoked the AI model (tokens > 0).
     """
     SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_ANON_KEY)
     sc = await create_async_client(SUPABASE_URL, SERVICE_ROLE)
@@ -137,6 +147,8 @@ async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes
     overall_bank_name = None
     overall_account_number = None
     total_statement_tokens = 0
+    ai_invoked = False
+    credits_reserved = False
 
     async def _fail(message: str):
         logger.error(f"Bank statement {statement_id} failed: {message}")
@@ -144,14 +156,25 @@ async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes
             "status": "failed",
             "error_message": message[:500],
         }).eq("id", statement_id).execute()
-        try:
-            await sc.rpc("refund_credits", {
-                "user_id_param": user_id,
-                "amount": cost,
-            }).execute()
-            logger.info(f"Refunded {cost} credits for failed statement {statement_id}")
-        except Exception as refund_e:
-            logger.error(f"Failed to refund credits for statement {statement_id}: {refund_e}")
+
+    async def _before_ai_call():
+        nonlocal credits_reserved
+        if credits_reserved:
+            return
+        credits_reserved = True
+        balance = await get_org_credits(sc, user_id)
+        if balance < cost:
+            raise RuntimeError(
+                f"Insufficient credits (need {cost}). Please recharge your wallet and retry."
+            )
+
+    async def _run_ai_extraction(md_text: str, period: str):
+        nonlocal total_statement_tokens, ai_invoked
+        await _before_ai_call()
+        ai_invoked = True
+        extract_result, tokens = await extract_bank_statement_chunk(md_text, period)
+        total_statement_tokens += tokens
+        return extract_result
 
     try:
         if extension in ['.xlsx', '.xls', '.csv']:
@@ -188,8 +211,7 @@ async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes
                     if chunk_df.empty: continue
                     
                     md_text = chunk_df.to_markdown(index=False)
-                    extract_result, tokens = await extract_bank_statement_chunk(md_text, "Unknown period (Excel/CSV)")
-                    total_statement_tokens += tokens
+                    extract_result = await _run_ai_extraction(md_text, "Unknown period (Excel/CSV)")
                     
                     if extract_result.bank_name and not overall_bank_name: overall_bank_name = extract_result.bank_name
                     if extract_result.account_number and not overall_account_number: overall_account_number = extract_result.account_number
@@ -232,8 +254,7 @@ async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes
                     continue
                     
                 logger.debug(f"Requesting AI extraction for chunk {i}")
-                extract_result, tokens = await extract_bank_statement_chunk(md_text, statement_period_context)
-                total_statement_tokens += tokens
+                extract_result = await _run_ai_extraction(md_text, statement_period_context)
                 logger.debug(f"AI extraction completed for chunk {i}")
                 
                 if extract_result.bank_name and not overall_bank_name: overall_bank_name = extract_result.bank_name
@@ -297,31 +318,32 @@ async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes
             "account_number": overall_account_number,
             "error_message": None,
         }).eq("id", statement_id).execute()
-        
-        # Attach token usage to the prepaid charge row (upload/retry) — do NOT log amount=0
-        # which looks like "0 credits deducted" for a successful scan.
-        try:
-            recent = await sc.table("credit_usage_logs").select("id").eq(
-                "user_id", user_id
-            ).in_("task_type", ["bank_statement_upload", "bank_statement_retry"]).order(
-                "created_at", desc=True
-            ).limit(1).execute()
-            if recent.data:
-                await sc.table("credit_usage_logs").update({
-                    "tokens_used": total_statement_tokens,
-                    "file_name": f"statement_{statement_id}",
-                }).eq("id", recent.data[0]["id"]).execute()
-            elif total_statement_tokens:
-                await sc.rpc("decrement_credits", {
-                    "user_id_param": user_id,
-                    "amount": 0,
-                    "task_type_param": "bank_statement_tokens",
-                    "file_name_param": f"statement_{statement_id}",
-                    "tokens_used_param": total_statement_tokens,
-                    "status_param": "prepaid",
-                }).execute()
-        except Exception as log_e:
-            logger.warning(f"Token usage log failed for {statement_id}: {log_e}")
+
+        # Charge only when AI ran and the scan completed successfully.
+        if ai_invoked and total_statement_tokens > 0:
+            rpc_resp = await sc.rpc("decrement_credits", {
+                "user_id_param": user_id,
+                "amount": cost,
+                "task_type_param": "bank_statement_processing",
+                "file_name_param": file_name or f"statement_{statement_id}",
+                "tokens_used_param": total_statement_tokens,
+            }).execute()
+            if rpc_resp.data == -1:
+                logger.error(
+                    f"Bank statement {statement_id} completed but credit deduction failed (need {cost})"
+                )
+                await sc.table("bank_statements").update({
+                    "status": "failed",
+                    "error_message": (
+                        f"Scan finished but could not deduct {cost} credits. "
+                        "Please recharge your wallet and retry."
+                    ),
+                }).eq("id", statement_id).execute()
+                await sc.table("bank_transactions").delete().eq("statement_id", statement_id).execute()
+        elif ai_invoked:
+            logger.info(
+                f"Bank statement {statement_id} completed with no billable AI tokens — no credits deducted"
+            )
         
     except Exception as e:
         await _fail(str(e))

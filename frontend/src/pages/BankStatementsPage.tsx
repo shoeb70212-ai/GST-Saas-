@@ -104,8 +104,8 @@ export default function BankStatementsPage() {
       if (!res.ok) throw new Error(json.detail || 'Upload failed');
       
       toast.success(
-        json.cost
-          ? `Statement queued — ${json.cost} credits charged`
+        json.estimated_cost
+          ? `Statement queued — up to ${json.estimated_cost} credits if AI scan succeeds`
           : (json.message || 'Statement uploaded successfully')
       );
       await refreshCredits();
@@ -203,8 +203,8 @@ export default function BankStatementsPage() {
       if (!res.ok) throw new Error(json.detail || 'Retry failed');
 
       toast.success(
-        json.cost
-          ? `Retry started — ${json.cost} credits charged`
+        json.estimated_cost
+          ? `Retry started — up to ${json.estimated_cost} credits if AI scan succeeds`
           : (json.message || 'Retry started')
       );
       await refreshCredits();

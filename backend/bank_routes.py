@@ -9,7 +9,7 @@ from fastapi import APIRouter, File, UploadFile, HTTPException, Header, Backgrou
 from fastapi.responses import StreamingResponse
 from supabase import create_async_client
 from bank_service import process_bank_statement_bg
-from utils import get_user_supabase_client
+from utils import get_user_supabase_client, ensure_sufficient_credits
 
 logger = logging.getLogger(__name__)
 
@@ -209,24 +209,34 @@ async def upload_bank_statement(
     if update_payload:
         await sc.table("bank_statements").update(update_payload).eq("id", statement_id).execute()
 
-    rpc_resp = await sc.rpc("decrement_credits", {
-        "user_id_param": user_id,
-        "amount": cost,
-        "task_type_param": "bank_statement_upload",
-        "file_name_param": file.filename,
-        "tokens_used_param": 0
-    }).execute()
-
-    if rpc_resp.data == -1:
+    # Credits are charged only after a successful AI scan — verify balance upfront.
+    try:
+        await ensure_sufficient_credits(sc, user_id, cost)
+    except HTTPException:
         await sc.table("bank_statements").update({
             "status": "failed",
             "error_message": f"Insufficient credits (need {cost}).",
         }).eq("id", statement_id).execute()
-        raise HTTPException(status_code=402, detail=f"Insufficient credits. This statement requires {cost} credits. Please recharge your wallet.")
+        raise
 
-    background_tasks.add_task(process_bank_statement_bg, statement_id, content, user_id, client_id, ext, pdf_password, cost)
+    background_tasks.add_task(
+        process_bank_statement_bg,
+        statement_id,
+        content,
+        user_id,
+        client_id,
+        ext,
+        pdf_password,
+        cost,
+        file.filename,
+    )
 
-    return {"status": "success", "statement_id": statement_id, "message": "Bank statement is processing in the background.", "cost": cost}
+    return {
+        "status": "success",
+        "statement_id": statement_id,
+        "message": "Bank statement is processing in the background.",
+        "estimated_cost": cost,
+    }
 
 
 @router.post("/{statement_id}/retry")
@@ -275,24 +285,33 @@ async def retry_bank_statement(
         "error_message": None if file_path else "File stored in memory only — storage upload failed (will still process).",
     }).eq("id", statement_id).execute()
 
-    rpc_resp = await sc.rpc("decrement_credits", {
-        "user_id_param": user_id,
-        "amount": cost,
-        "task_type_param": "bank_statement_retry",
-        "file_name_param": file.filename,
-        "tokens_used_param": 0
-    }).execute()
-
-    if rpc_resp.data == -1:
+    try:
+        await ensure_sufficient_credits(sc, user_id, cost)
+    except HTTPException:
         await sc.table("bank_statements").update({
             "status": "failed",
             "error_message": f"Insufficient credits (need {cost}).",
         }).eq("id", statement_id).execute()
-        raise HTTPException(status_code=402, detail=f"Insufficient credits. This statement requires {cost} credits.")
+        raise
 
-    background_tasks.add_task(process_bank_statement_bg, statement_id, content, user_id, client_id, ext, pdf_password, cost)
+    background_tasks.add_task(
+        process_bank_statement_bg,
+        statement_id,
+        content,
+        user_id,
+        client_id,
+        ext,
+        pdf_password,
+        cost,
+        file.filename,
+    )
 
-    return {"status": "success", "statement_id": statement_id, "message": "Retry started.", "cost": cost}
+    return {
+        "status": "success",
+        "statement_id": statement_id,
+        "message": "Retry started.",
+        "estimated_cost": cost,
+    }
 
 
 @router.get("/{statement_id}/status")

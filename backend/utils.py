@@ -120,6 +120,36 @@ def compute_file_hash(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
+async def get_org_credits(sc, user_id: str) -> int:
+    """Return the active organization's credit balance for a user."""
+    try:
+        profile_resp = await sc.table("profiles").select("active_org_id").eq("id", user_id).execute()
+        active_org_id = profile_resp.data[0].get("active_org_id") if profile_resp.data else None
+
+        if active_org_id:
+            org_resp = await sc.table("organizations").select("credits").eq("id", active_org_id).execute()
+        else:
+            org_resp = await sc.table("organizations").select("credits").eq("owner_id", user_id).limit(1).execute()
+
+        if org_resp.data:
+            return int(org_resp.data[0].get("credits") or 0)
+    except Exception as e:
+        logger.warning(f"Could not fetch org credits for {user_id}: {e}")
+    return 0
+
+
+async def ensure_sufficient_credits(sc, user_id: str, cost: int) -> None:
+    """Raise 402 if the user's organization cannot afford `cost` credits."""
+    if cost <= 0:
+        return
+    credits = await get_org_credits(sc, user_id)
+    if credits < cost:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Insufficient credits. This statement requires {cost} credits. Please recharge your wallet.",
+        )
+
+
 import io
 
 

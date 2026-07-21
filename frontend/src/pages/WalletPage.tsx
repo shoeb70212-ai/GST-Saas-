@@ -323,7 +323,7 @@ export default function WalletPage() {
                       ? `-${deducted}`
                       : deducted < 0
                         ? `+${Math.abs(deducted)}`
-                        : 'Prepaid';
+                        : '0';
                   const creditClass =
                     deducted > 0
                       ? 'text-accent'
@@ -338,7 +338,7 @@ export default function WalletPage() {
                     <td className="p-4 font-mono font-medium text-text-primary">{log.tokens_used?.toLocaleString() || 0}</td>
                     <td className={`p-4 font-bold ${creditClass}`}>{creditLabel}</td>
                     <td className="p-4">
-                      <span className={`badge ${log.status === 'success' || log.status === 'prepaid' ? 'bg-success-subtle text-success border-success/20' : log.status === 'refunded' ? 'bg-warning-subtle text-warning border-warning/20' : 'bg-error-subtle text-error border-error/20'} border flex items-center gap-1 w-max`}>
+                      <span className={`badge ${log.status === 'success' ? 'bg-success-subtle text-success border-success/20' : log.status === 'refunded' ? 'bg-warning-subtle text-warning border-warning/20' : 'bg-error-subtle text-error border-error/20'} border flex items-center gap-1 w-max`}>
                         {log.status === 'success' ? <ShieldCheck className="w-3 h-3" /> : null} {log.status}
                       </span>
                     </td>
