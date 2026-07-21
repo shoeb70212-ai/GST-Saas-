@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useClient } from '../lib/ClientContext';
 import { cn } from '../lib/utils';
 import KhataLensIcon from './KhataLensIcon';
+import CommandPalette from './CommandPalette';
 
 type NavItem = { name: string; path: string; icon: typeof LayoutDashboard };
 
@@ -329,7 +330,16 @@ export default function Layout() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden relative w-full">
         <div className="hidden md:flex h-[52px] items-center justify-between px-6 bg-bg-surface border-b border-border z-40 sticky top-0">
-          <div />
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event('khatalens:open-palette'))}
+            className="flex items-center gap-2 h-8 px-3 rounded-lg bg-bg-sunken border border-border text-text-secondary hover:text-text-primary hover:border-border-focus transition-colors text-xs"
+            title="Open command palette (Ctrl/⌘ K)"
+          >
+            <Search className="w-3.5 h-3.5" />
+            <span>Jump to…</span>
+            <kbd className="font-mono text-[10px] text-text-disabled border border-border rounded px-1 py-0.5 ml-1">Ctrl K</kbd>
+          </button>
           <div className="flex items-center gap-3">
             <Link to="/app/scan" className="btn-primary !h-8 !text-xs !rounded-lg px-3.5">
               <ScanLine className="w-3.5 h-3.5" /> Quick Scan
@@ -453,6 +463,7 @@ export default function Layout() {
         <div className="flex-1 overflow-auto md:pb-0 pb-16 relative">
           <Outlet />
         </div>
+        <CommandPalette />
       </div>
 
       {/* Mobile Bottom Nav */}

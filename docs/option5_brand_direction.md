@@ -1,6 +1,6 @@
 # Option 5 — Locked brand direction (KhataLens)
 
-**Status:** Phase A shipped (2026-07-21) — Fog & Copper Seal tokens, fonts, landing truth/layout, dashboard Today strip + grouped sidebar. Phase B leftovers: Cmd+K, live unmatched 2B/bank KPI RPCs, deeper empty-state polish.  
+**Status:** Phase B shipped (2026-07-21) — Cmd+K palette, live unmatched 2B/bank Today KPIs (`get_today_strip_counts`), purposeful chart empty states (no gray fake pies), fog wash de-warmed. Phase A tokens/fonts/landing remain. Phase C leftover: landing product photography / motion polish if needed.  
 **Locked system:** **Fog & Copper Seal**  
 **Supersedes:** prior “Cool ledger” deep-teal proposal (`#0B5F6B` + Source Serif 4 + IBM Plex Sans).  
 **Canvas:** [`docs/canvases/option5-product-polish-design-plan.canvas.tsx`](./canvases/option5-product-polish-design-plan.canvas.tsx) (also mirrored under Cursor canvases).
@@ -16,10 +16,20 @@
 - [x] `BRAND_ACCENT_HEX` synced to `#B56A3A`
 - [x] Landing brand-first hero + honest sections (layout, not tokens-only)
 - [x] Dashboard Today strip + Continue work; Layout sidebar IA groups
-- [ ] Phase B: Cmd+K; unmatched 2B/bank counts via dedicated RPC; richer empty states
+- [x] Phase B: Cmd+K; unmatched 2B/bank counts via `get_today_strip_counts`; richer empty states
 - [ ] Phase C polish: more product photography / motion refinement if needed
 
 ---
+
+## Phase B ship checklist (done)
+
+- [x] Cmd/Ctrl+K command palette (`CommandPalette.tsx`) under `/app/*` — no new deps
+- [x] Header “Jump to…” + keyboard shortcut
+- [x] Live Today KPIs: wallet · invoices · **2B unmatched** · **bank unmatched** (copper when action needed)
+- [x] Honest empty KPI copy when no 2B / bank data yet (“Upload” + CTA route)
+- [x] Migration `migration_phase66_today_strip_counts.sql` + remote apply
+- [x] Analytics empty: Scan / Upload 2B / Upload bank panels — removed gray chart shells & indigo stroke
+- [x] Fog base explicit `#F3F4F2` body wash (removed warm copper tint that read as cream)
 
 ## Why this direction (one system)
 
@@ -119,7 +129,7 @@ Aligned with user design prefs + 2025–26 high-craft B2B patterns (purposeful m
 | Phase | Scope |
 |-------|--------|
 | **A — Trust & tokens + layout** | ✅ Shipped 2026-07-21: false claims fixed; Fog & Copper + Newsreader/Public Sans/Plex Mono; Razorpay accent; landing brand-first hero; dashboard Today strip; grouped sidebar. |
-| **B — Dashboard IA (remaining)** | Live unmatched 2B/bank KPI RPCs; optional Cmd+K; richer empty states. |
+| **B — Dashboard IA (remaining)** | ✅ Shipped 2026-07-21: live unmatched 2B/bank KPIs (`get_today_strip_counts`); Cmd+K palette; chart empty states with Scan/2B/Bank CTAs. |
 | **C — Landing polish** | More product shots / motion refinement if needed (core layout already in A). |
 
 ---

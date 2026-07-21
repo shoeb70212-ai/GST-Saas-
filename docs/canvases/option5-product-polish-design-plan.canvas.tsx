@@ -213,10 +213,10 @@ const PHASES = [
     work: "False claims fixed; Fog & Copper tokens; fonts; BRAND_ACCENT_HEX; brand-first landing; Today strip; grouped sidebar.",
   },
   {
-    phase: "B — Dashboard IA (remaining)",
-    effort: "1–2 weeks",
-    risk: "Medium",
-    work: "Live unmatched 2B/bank KPI RPCs; optional Cmd+K; richer empty states.",
+    phase: "B — Dashboard IA ✅",
+    effort: "Shipped 2026-07-21",
+    risk: "Low",
+    work: "Live unmatched 2B/bank KPIs (get_today_strip_counts); Cmd+K; chart empty CTAs.",
   },
   {
     phase: "C — Landing polish",
@@ -263,7 +263,8 @@ export default function Option5ProductPolishDesignPlan() {
           <Pill tone="info">Option 5</Pill>
           <Pill tone="success">Fog & Copper Seal</Pill>
           <Pill tone="success">Phase A shipped</Pill>
-          <Pill tone="neutral">Phase B leftovers</Pill>
+          <Pill tone="success">Phase B shipped</Pill>
+          <Pill tone="neutral">Phase C optional</Pill>
         </Row>
         <H1>KhataLens — locked brand & polish plan</H1>
         <Text tone="secondary">
@@ -277,8 +278,8 @@ export default function Option5ProductPolishDesignPlan() {
       <Callout tone="success" title="Phase A shipped (2026-07-21)">
         Landing truth fixed (prepaid packs, no fake ratings/JSON-LD stars).
         Fog & Copper tokens + fonts live. Brand-first hero, Today strip, and
-        grouped sidebar landed. Phase B: live unmatched 2B/bank KPIs, Cmd+K,
-        richer empty states.
+        grouped sidebar landed. Phase B also shipped: live unmatched 2B/bank
+        KPIs, Cmd+K, richer empty states. Phase C optional.
       </Callout>
 
       <Grid columns={4} gap={12}>
@@ -532,9 +533,8 @@ export default function Option5ProductPolishDesignPlan() {
         rows={PHASES.map((p) => [p.phase, p.effort, p.risk, p.work])}
       />
       <Callout tone="success" title="Recommended sequence">
-        Phase A (truth + Fog & Copper tokens) first. Phase B dashboard IA for
-        daily retention. Phase C landing last — once pricing/FAQ/schema are
-        honest and the palette/fonts are locked by you.
+        Phase A + B shipped. Phase C landing polish optional — pricing/FAQ
+        and Fog & Copper are already locked.
       </Callout>
 
       <Divider />

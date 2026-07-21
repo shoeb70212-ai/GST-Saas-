@@ -93,7 +93,33 @@ export default function DashboardPage() {
     gcTime: 30 * 60 * 1000,
   });
 
-  const { data: analyticsData, isError: isAnalyticsError, refetch: refetchAnalytics } = useQuery<AnalyticsData | null>({
+  const {
+    data: stripCounts,
+    isError: isStripError,
+    refetch: refetchStrip,
+  } = useQuery({
+    queryKey: ['dashboard', 'today-strip', activeClientId],
+    queryFn: async () => {
+      if (!activeClientId) {
+        return { unmatched_2b_count: 0, unmatched_bank_count: 0, has_2b_data: false, has_bank_data: false };
+      }
+      const { data, error } = await supabase.rpc('get_today_strip_counts', {
+        client_id_param: activeClientId,
+      });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      return {
+        unmatched_2b_count: Number(row?.unmatched_2b_count ?? 0),
+        unmatched_bank_count: Number(row?.unmatched_bank_count ?? 0),
+        has_2b_data: Boolean(row?.has_2b_data),
+        has_bank_data: Boolean(row?.has_bank_data),
+      };
+    },
+    enabled: !!activeClientId,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const { data: analyticsData, isPending: isAnalyticsPending, isError: isAnalyticsError, refetch: refetchAnalytics } = useQuery<AnalyticsData | null>({
     queryKey: ['invoices', 'analytics', activeClientId],
     queryFn: async () => {
       if (!activeClientId) return null;
@@ -118,6 +144,10 @@ export default function DashboardPage() {
   const metrics = dashboardData?.metrics || DEFAULT_METRICS;
   const recentInvoices = dashboardData?.recentInvoices || [];
   const needsReview = dashboardData?.needsReview ?? 0;
+  const unmatched2b = stripCounts?.unmatched_2b_count ?? 0;
+  const unmatchedBank = stripCounts?.unmatched_bank_count ?? 0;
+  const has2bData = stripCounts?.has_2b_data ?? false;
+  const hasBankData = stripCounts?.has_bank_data ?? false;
 
   useEffect(() => {
     const saved = localStorage.getItem('khatalens_widgets');
@@ -270,7 +300,8 @@ export default function DashboardPage() {
   }
 
   const lowCredits = credits !== null && credits < 50;
-  const hasReviewQueue = needsReview > 0;
+  const has2bAction = has2bData && unmatched2b > 0;
+  const hasBankAction = hasBankData && unmatchedBank > 0;
 
   return (
     <div className="p-4 md:p-6 max-w-content mx-auto space-y-6 pb-20">
@@ -343,39 +374,95 @@ export default function DashboardPage() {
           <p className="text-xs text-text-secondary mt-1">{lowCredits ? 'Low — top up credits' : 'Credits available'}</p>
         </Link>
 
-        <div className="bg-bg-surface border border-border rounded-xl p-4">
+        <Link
+          to="/app/invoices"
+          className="bg-bg-surface border border-border rounded-xl p-4 hover:border-border-focus transition-colors"
+        >
           <div className="flex items-center gap-1.5 text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2">
             <FileText className="w-3.5 h-3.5" /> Invoices
           </div>
           <p className="text-2xl font-mono font-semibold text-text-primary tracking-tight">
             {metrics.invoiceCount.toLocaleString('en-IN')}
           </p>
-          <p className="text-xs text-text-secondary mt-1">Scanned for this client</p>
-        </div>
-
-        <Link
-          to="/app/invoices"
-          className="bg-bg-surface border border-border rounded-xl p-4 hover:border-border-focus transition-colors"
-        >
-          <div className="flex items-center gap-1.5 text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2">
-            <AlertTriangle className="w-3.5 h-3.5" /> Needs review
-          </div>
-          <p className={cn('text-2xl font-mono font-semibold tracking-tight', hasReviewQueue ? 'text-accent' : 'text-text-primary')}>
-            {needsReview}
+          <p className="text-xs text-text-secondary mt-1">
+            {needsReview > 0 ? `${needsReview} need review` : 'Scanned for this client'}
           </p>
-          <p className="text-xs text-text-secondary mt-1">{hasReviewQueue ? 'Low-confidence extractions' : 'All clear'}</p>
         </Link>
 
-        <Link
-          to="/app/reconcile"
-          className="bg-bg-surface border border-border rounded-xl p-4 hover:border-border-focus transition-colors"
-        >
-          <div className="flex items-center gap-1.5 text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2">
-            <Network className="w-3.5 h-3.5" /> GSTR-2B
-          </div>
-          <p className="text-2xl font-display font-semibold text-text-primary tracking-tight">Match</p>
-          <p className="text-xs text-text-secondary mt-1">Open 2B reconciliation</p>
-        </Link>
+        {isStripError ? (
+          <button
+            type="button"
+            onClick={() => void refetchStrip()}
+            className="bg-bg-surface border border-border rounded-xl p-4 text-left hover:border-border-focus transition-colors"
+          >
+            <div className="flex items-center gap-1.5 text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2">
+              <Network className="w-3.5 h-3.5" /> 2B unmatched
+            </div>
+            <p className="text-sm font-semibold text-text-primary">Could not load count</p>
+            <p className="text-xs text-accent mt-1">Retry</p>
+          </button>
+        ) : (
+          <Link
+            to="/app/reconcile"
+            className="bg-bg-surface border border-border rounded-xl p-4 hover:border-border-focus transition-colors"
+          >
+            <div className="flex items-center gap-1.5 text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2">
+              <Network className="w-3.5 h-3.5" /> 2B unmatched
+            </div>
+            {!has2bData ? (
+              <>
+                <p className="text-2xl font-display font-semibold text-text-primary tracking-tight">Upload</p>
+                <p className="text-xs text-text-secondary mt-1">No GSTR-2B file yet</p>
+              </>
+            ) : (
+              <>
+                <p className={cn('text-2xl font-mono font-semibold tracking-tight', has2bAction ? 'text-accent' : 'text-text-primary')}>
+                  {unmatched2b.toLocaleString('en-IN')}
+                </p>
+                <p className="text-xs text-text-secondary mt-1">
+                  {has2bAction ? 'Mismatch / missing in 2B' : 'All clear for uploaded periods'}
+                </p>
+              </>
+            )}
+          </Link>
+        )}
+
+        {isStripError ? (
+          <Link
+            to="/app/bank-reconcile"
+            className="bg-bg-surface border border-border rounded-xl p-4 hover:border-border-focus transition-colors"
+          >
+            <div className="flex items-center gap-1.5 text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2">
+              <Banknote className="w-3.5 h-3.5" /> Bank unmatched
+            </div>
+            <p className="text-sm font-semibold text-text-primary">Open bank match</p>
+            <p className="text-xs text-text-secondary mt-1">Count unavailable</p>
+          </Link>
+        ) : (
+          <Link
+            to={hasBankData ? '/app/bank-reconcile' : '/app/bank-statements'}
+            className="bg-bg-surface border border-border rounded-xl p-4 hover:border-border-focus transition-colors"
+          >
+            <div className="flex items-center gap-1.5 text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2">
+              <Banknote className="w-3.5 h-3.5" /> Bank unmatched
+            </div>
+            {!hasBankData ? (
+              <>
+                <p className="text-2xl font-display font-semibold text-text-primary tracking-tight">Upload</p>
+                <p className="text-xs text-text-secondary mt-1">No bank statement yet</p>
+              </>
+            ) : (
+              <>
+                <p className={cn('text-2xl font-mono font-semibold tracking-tight', hasBankAction ? 'text-accent' : 'text-text-primary')}>
+                  {unmatchedBank.toLocaleString('en-IN')}
+                </p>
+                <p className="text-xs text-text-secondary mt-1">
+                  {hasBankAction ? 'Withdrawals not fully allocated' : 'All withdrawals allocated'}
+                </p>
+              </>
+            )}
+          </Link>
+        )}
       </div>
 
       {/* Continue work — text+button rows, not icon pastel grid */}
@@ -494,6 +581,8 @@ export default function DashboardPage() {
           message="Could not load advanced analytics data."
           onRetry={refetchAnalytics}
         />
+      ) : isAnalyticsPending ? (
+        <AnalyticsSkeleton />
       ) : (
         <AnalyticsCharts data={analyticsData ?? null} />
       )}

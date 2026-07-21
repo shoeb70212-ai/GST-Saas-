@@ -339,12 +339,17 @@ Follow-up doc/graph pass committed separately from the original audit code fixes
 | Dashboard Today strip + Continue work | `DashboardPage.tsx` |
 | Sidebar IA groups (Today / Reconcile / Practice / Account) | `Layout.tsx` |
 
-### Phase B leftovers
+### Phase B — shipped
 
-- Cmd+K command palette
-- Live unmatched GSTR-2B / bank KPI counts via dedicated RPC (Today strip currently links to Match + review count)
-- Deeper empty-state patterns across scan/wallet/bank
+| Change | Notes |
+|--------|--------|
+| Cmd+K command palette | `frontend/src/components/CommandPalette.tsx` + Layout mount / Jump-to button |
+| Live unmatched 2B / bank KPIs | RPC `get_today_strip_counts` — `migration_phase66_today_strip_counts.sql` |
+| Today strip KPIs | Wallet · invoices · 2B unmatched · bank unmatched |
+| Analytics empty states | Purposeful Scan / 2B / Bank CTAs; no gray fake charts; copper chart stroke |
+| Fog wash | Explicit `#F3F4F2` body; removed warm copper tint |
 
----
+### Phase C leftovers
 
-*End of audit.*
+- Landing product photography / motion polish if still needed
+- Optional deeper empty-state patterns on scan/wallet/bank pages

@@ -1,6 +1,6 @@
 # Option 5 — Product polish design plan
 
-**Status:** Phase A shipped (2026-07-21) — Fog & Copper Seal  
+**Status:** Phase B shipped (2026-07-21) — Fog & Copper Seal + dashboard IA  
 **Date:** 2026-07-21  
 **Canonical brand lock:** [`option5_brand_direction.md`](./option5_brand_direction.md)
 
@@ -13,7 +13,7 @@
 ## Proceed sequence
 
 1. **Phase A — Trust & tokens + layout** ✅ Shipped: landing truth; Fog `#F3F4F2` + Copper `#B56A3A`; Newsreader / Public Sans / IBM Plex Mono; brand-first landing; dashboard Today strip; grouped sidebar; `BRAND_ACCENT_HEX` synced.
-2. **Phase B — Dashboard IA (remaining):** Live unmatched 2B/bank KPI RPCs; optional Cmd+K; richer empty states.
+2. **Phase B — Dashboard IA** ✅ Shipped: live unmatched 2B/bank KPIs (`get_today_strip_counts`); Cmd+K palette; richer chart empty states.
 3. **Phase C — Landing polish (optional):** More product shots / motion refinement.
 
 ## Locked colour tokens (Fog & Copper Seal)
