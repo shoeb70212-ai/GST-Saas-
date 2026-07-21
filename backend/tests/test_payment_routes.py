@@ -11,6 +11,7 @@ import json
 import hmac
 import hashlib
 import pytest
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 import sys, os
@@ -24,6 +25,7 @@ os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-service-key")
 os.environ.setdefault("RAZORPAY_KEY_ID", "rzp_test_mock")
 os.environ.setdefault("RAZORPAY_KEY_SECRET", "rzp_test_secret")
 os.environ.setdefault("RAZORPAY_WEBHOOK_SECRET", "webhook_secret_123")
+os.environ.setdefault("ENVIRONMENT", "development")
 
 from main import app
 from tests.helpers import make_async_factory, build_supabase_mock
@@ -41,6 +43,32 @@ def _make_supabase_mock(
             "payment_orders": [order_data] if order_data else [],
         },
     )
+
+
+def _fake_fulfill_http(rpc_body: dict | None = None, status_code: int = 200):
+    """Async context manager yielding an httpx-like client for fulfill_payment_order."""
+    body = rpc_body if rpc_body is not None else {
+        "success": True,
+        "message": "Credits granted successfully",
+        "credits_granted": 1000,
+    }
+    posted = []
+
+    class FakeHTTP:
+        async def post(self, url, **kw):
+            posted.append({"url": url, "json": kw.get("json"), "headers": kw.get("headers")})
+            resp = MagicMock()
+            resp.status_code = status_code
+            resp.text = json.dumps(body)
+            resp.json = MagicMock(return_value=body)
+            return resp
+
+    @asynccontextmanager
+    async def factory(*a, **kw):
+        yield FakeHTTP()
+
+    factory.posted = posted  # type: ignore[attr-defined]
+    return factory
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -188,6 +216,77 @@ class TestVerifyPayment:
             headers={"Authorization": "Bearer fake.jwt.token"},
         )
         assert response.status_code in (400, 401, 422)
+
+    @patch("payment_routes.get_shared_client")
+    @patch("payment_routes.create_async_client")
+    def test_pending_order_calls_fulfill_rpc_with_server_amounts(self, mock_create, mock_shared):
+        """Happy path: mock Razorpay mode fulfills via idempotent RPC (ledger written in SQL)."""
+        order = {
+            "order_id": "order_mock_abc",
+            "user_id": "user-123",
+            "expected_credits": 1000,
+            "expected_amount": 249900,
+            "plan_type": "starter",
+            "status": "pending",
+        }
+        mock_sc = build_supabase_mock(user_id="user-123", table_data={"payment_orders": [order]})
+        mock_create.side_effect = make_async_factory(mock_sc)
+        fake_http = _fake_fulfill_http({
+            "success": True,
+            "message": "Credits granted successfully",
+            "credits_granted": 1000,
+        })
+        mock_shared.side_effect = fake_http
+
+        response = client.post(
+            "/api/verify-payment",
+            json={
+                "razorpay_payment_id": "pay_ledger_1",
+                "razorpay_order_id": "order_mock_abc",
+                "razorpay_signature": "sig_mock",
+            },
+            headers={"Authorization": "Bearer fake.jwt.token"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["credits_granted"] == 1000
+        assert len(fake_http.posted) == 1
+        payload = fake_http.posted[0]["json"]
+        assert payload["p_order_id"] == "order_mock_abc"
+        assert payload["p_payment_id"] == "pay_ledger_1"
+        assert payload["p_amount_paid"] == 249900
+        assert "fulfill_payment_order" in fake_http.posted[0]["url"]
+
+    @patch("payment_routes.get_shared_client")
+    @patch("payment_routes.create_async_client")
+    def test_fulfill_rpc_failure_returns_400(self, mock_create, mock_shared):
+        order = {
+            "order_id": "order_fail",
+            "user_id": "user-123",
+            "expected_credits": 1000,
+            "expected_amount": 249900,
+            "plan_type": "starter",
+            "status": "pending",
+        }
+        mock_sc = build_supabase_mock(user_id="user-123", table_data={"payment_orders": [order]})
+        mock_create.side_effect = make_async_factory(mock_sc)
+        mock_shared.side_effect = _fake_fulfill_http({
+            "success": False,
+            "error": "Amount mismatch",
+        })
+
+        response = client.post(
+            "/api/verify-payment",
+            json={
+                "razorpay_payment_id": "pay_fail",
+                "razorpay_order_id": "order_fail",
+                "razorpay_signature": "sig_mock",
+            },
+            headers={"Authorization": "Bearer fake.jwt.token"},
+        )
+        assert response.status_code == 400
+        assert "Amount mismatch" in response.json()["detail"]
 
 
 # ═══════════════════════════════════════════════════════════════
