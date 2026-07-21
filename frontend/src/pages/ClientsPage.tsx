@@ -106,30 +106,20 @@ export default function ClientsPage() {
         if (error) throw error;
         toast.success(`${entityName} updated successfully`);
       } else {
-        // Guard: Ensure the user has an organization before inserting.
-        // If currentOrgId is null, call ensure_user_org to auto-create one.
-        let orgIdForInsert = currentOrgId;
-        if (!orgIdForInsert) {
-          const { data: fallbackOrgId, error: orgError } = await supabase.rpc('ensure_user_org');
-          if (orgError || !fallbackOrgId) {
-            throw new Error('No organization found. Please refresh the page or contact support.');
-          }
-          orgIdForInsert = fallbackOrgId;
-          setCurrentOrgId(fallbackOrgId);
-        }
-
-        // Ensure the user's profile has active_org_id set,
-        // otherwise the trigger will overwrite org_id with NULL.
-        await supabase.from('profiles').update({ active_org_id: orgIdForInsert }).eq('id', session.user.id);
-
-        const { error, data } = await supabase
-          .from('clients')
-          .insert({ ...formData, user_id: session.user.id, org_id: orgIdForInsert })
-          .select()
-          .single();
+        // Use SECURITY DEFINER RPC to bypass flaky direct-insert RLS path.
+        const { data: rpcData, error } = await supabase.rpc('create_client_secure', {
+          p_client_name: formData.client_name,
+          p_gstin: formData.gstin || null,
+          p_pan: formData.pan || null,
+        });
         if (error) throw error;
+        const data = rpcData as Client;
+
+        if (data?.org_id && data.org_id !== currentOrgId) {
+          setCurrentOrgId(data.org_id);
+        }
         
-        if (clients.length === 0 && data) {
+        if (clients.length === 0 && data?.id) {
           setActiveClientId(data.id);
         }
         

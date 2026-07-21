@@ -653,11 +653,15 @@ export default function ScanPage() {
       upi_id: data.UPI_ID,
       expense_category: data.Expense_Category,
       invoice_type: data.Invoice_Type,
-      reverse_charge_applicable: data.Reverse_Charge_Applicable,
+      reverse_charge_applicable:
+        typeof data.Reverse_Charge_Applicable === 'boolean'
+          ? data.Reverse_Charge_Applicable
+          : null,
       cess_amount: safeNum(data.Cess_Amount),
       irn: data.IRN,
       original_invoice_number: data.Original_Invoice_Number,
-      original_invoice_date: formatDateToIso(data.Original_Invoice_Date)
+      original_invoice_date: formatDateToIso(data.Original_Invoice_Date),
+      extraction_state: data.Extraction_State || 'auto_accepted',
     };
 
     const lineItems = (data.Line_Items || []).map((item: any) => ({

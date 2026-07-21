@@ -4,6 +4,7 @@ import { supabase } from './supabase';
 export interface Client {
   id: string;
   user_id: string;
+  org_id?: string;
   client_name: string;
   gstin: string;
   pan: string;
