@@ -323,4 +323,15 @@ Follow-up doc/graph pass committed separately from the original audit code fixes
 
 ---
 
+## 11. Sprint Option 5 — Design plan (2026-07-21)
+
+**Scope:** Research + plan only (no UI redesign implementation in this sprint).
+
+**Deliverable:** Cursor canvas  
+`C:\Users\Junaid\.cursor\projects\d-GST-SAAS\canvases\option5-product-polish-design-plan.canvas.tsx`
+
+Covers brand direction (exit cream/Playfair cliché → cool teal ledger), dashboard IA for CA workflow, truthful landing copy constraints, and phased rollout A→B→C. Proceed with **Phase A** first: fix landing false claims + token swap.
+
+---
+
 *End of audit.*
