@@ -250,23 +250,23 @@ export default function LandingPage() {
       <LandingHero />
 
       {/* Trust strip — below fold; facts only, no fake ratings */}
-      <section className="py-8 px-6 border-y border-border bg-bg-surface" aria-label="Product facts">
-        <div className="max-w-content mx-auto flex flex-wrap items-center justify-center gap-x-10 gap-y-4 text-sm text-text-secondary font-medium">
-          <span className="inline-flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-accent" aria-hidden="true" /> Supabase RLS isolation</span>
-          <span className="inline-flex items-center gap-2"><Lock className="w-4 h-4 text-accent" aria-hidden="true" /> Org-scoped wallets</span>
-          <span className="inline-flex items-center gap-2"><Building2 className="w-4 h-4 text-accent" aria-hidden="true" /> Tally & Zoho export</span>
-          <span className="inline-flex items-center gap-2"><FileCheck className="w-4 h-4 text-accent" aria-hidden="true" /> GSTIN field validation</span>
+      <section className="py-5 px-6 border-y border-border bg-bg-surface" aria-label="Product facts">
+        <div className="max-w-content mx-auto flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-[13px] text-text-secondary font-medium">
+          <span className="inline-flex items-center gap-2"><ShieldCheck className="w-3.5 h-3.5 text-accent" aria-hidden="true" /> Supabase RLS isolation</span>
+          <span className="inline-flex items-center gap-2"><Lock className="w-3.5 h-3.5 text-accent" aria-hidden="true" /> Org-scoped wallets</span>
+          <span className="inline-flex items-center gap-2"><Building2 className="w-3.5 h-3.5 text-accent" aria-hidden="true" /> Tally & Zoho export</span>
+          <span className="inline-flex items-center gap-2"><FileCheck className="w-3.5 h-3.5 text-accent" aria-hidden="true" /> GSTIN field validation</span>
         </div>
       </section>
 
-      {/* Workflow — Motion 2: stagger once */}
-      <section id="workflow" className="py-20 md:py-28 px-6" aria-labelledby="workflow-heading">
+      {/* Workflow — Motion 3: stagger once on scroll */}
+      <section id="workflow" className="py-14 md:py-20 px-6" aria-labelledby="workflow-heading">
         <div className="max-w-content mx-auto">
-          <div className="mb-12 max-w-xl">
-            <h2 id="workflow-heading" className="text-3xl md:text-4xl font-display font-semibold text-text-primary mb-3">
+          <div className="mb-8 max-w-xl">
+            <h2 id="workflow-heading" className="text-2xl md:text-3xl font-display font-semibold text-text-primary mb-2 tracking-tight">
               Four steps on the desk
             </h2>
-            <p className="text-text-secondary text-lg">
+            <p className="text-text-secondary text-base md:text-lg">
               From a photograph of a bill to a filing-ready export — without reformatting spreadsheets by hand.
             </p>
           </div>
@@ -279,7 +279,7 @@ export default function LandingPage() {
               hidden: {},
               visible: { transition: { staggerChildren: 0.08 } }
             }}
-            className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 list-none p-0 m-0"
+            className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 list-none p-0 m-0"
           >
             {workflowSteps.map((step) => (
               <motion.li
@@ -300,48 +300,48 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Features — minimal cards only as list containers */}
-      <section id="features" className="py-20 md:py-28 px-6 bg-bg-surface border-y border-border" aria-labelledby="features-heading">
+      {/* Features — list rhythm, not card spam */}
+      <section id="features" className="py-14 md:py-20 px-6 bg-bg-surface border-y border-border" aria-labelledby="features-heading">
         <div className="max-w-content mx-auto">
-          <div className="mb-14 max-w-xl">
-            <h2 id="features-heading" className="text-3xl md:text-4xl font-display font-semibold text-text-primary mb-3">
+          <div className="mb-9 max-w-xl">
+            <h2 id="features-heading" className="text-2xl md:text-3xl font-display font-semibold text-text-primary mb-2 tracking-tight">
               Built for CA practice work
             </h2>
-            <p className="text-text-secondary text-lg">
+            <p className="text-text-secondary text-base md:text-lg">
               Core tools stay available. AI tasks spend org wallet credits.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-12 mb-20">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-8 mb-14">
             {capabilities.map((cap) => (
-              <div key={cap.title}>
-                <cap.icon className="w-5 h-5 text-text-secondary mb-3" aria-hidden="true" />
-                <h3 className="font-display text-lg font-semibold text-text-primary mb-2">{cap.title}</h3>
+              <div key={cap.title} className="border-t border-border pt-4">
+                <cap.icon className="w-4 h-4 text-text-secondary mb-2.5" aria-hidden="true" />
+                <h3 className="font-display text-base font-semibold text-text-primary mb-1.5">{cap.title}</h3>
                 <p className="text-sm text-text-secondary leading-relaxed">{cap.body}</p>
               </div>
             ))}
           </div>
 
           {/* Product demos — below fold; scan animation + match samples */}
-          <div className="space-y-12">
+          <div className="space-y-8">
             <div>
-              <h3 className="font-display text-xl font-semibold mb-2 text-text-primary">Scan desk</h3>
-              <p className="text-sm text-text-secondary mb-4 max-w-lg">
+              <h3 className="font-display text-lg font-semibold mb-1.5 text-text-primary">Scan desk</h3>
+              <p className="text-sm text-text-secondary mb-3 max-w-lg">
                 Bills in, structured fields out — flagged when extraction is unsure.
               </p>
               <div className="border border-border bg-bg-base overflow-hidden max-w-3xl">
                 <HeroAnimation />
               </div>
             </div>
-            <div className="grid lg:grid-cols-2 gap-10">
+            <div className="grid lg:grid-cols-2 gap-8">
               <div>
-                <h3 className="font-display text-xl font-semibold mb-4 text-text-primary">Bank statement extract</h3>
+                <h3 className="font-display text-lg font-semibold mb-3 text-text-primary">Bank statement extract</h3>
                 <div className="border border-border bg-bg-base p-4 overflow-hidden">
                   <BankStatementDemo />
                 </div>
               </div>
               <div>
-                <h3 className="font-display text-xl font-semibold mb-4 text-text-primary">Invoice ↔ bank match</h3>
+                <h3 className="font-display text-lg font-semibold mb-3 text-text-primary">Invoice ↔ bank match</h3>
                 <div className="border border-border bg-bg-base p-4 overflow-hidden">
                   <ReconciliationDemo />
                 </div>
@@ -352,13 +352,13 @@ export default function LandingPage() {
       </section>
 
       {/* Pricing — prepaid packs, honest enterprise */}
-      <section id="pricing" className="py-20 md:py-28 px-6" aria-labelledby="pricing-heading">
+      <section id="pricing" className="py-14 md:py-20 px-6" aria-labelledby="pricing-heading">
         <div className="max-w-narrow mx-auto">
-          <div className="text-center mb-14">
-            <h2 id="pricing-heading" className="text-3xl md:text-4xl font-display font-semibold text-text-primary mb-3">
+          <div className="text-center mb-9">
+            <h2 id="pricing-heading" className="text-2xl md:text-3xl font-display font-semibold text-text-primary mb-2 tracking-tight">
               Prepaid credit packs
             </h2>
-            <p className="text-text-secondary text-lg max-w-lg mx-auto">
+            <p className="text-text-secondary text-base md:text-lg max-w-lg mx-auto">
               One-time top-ups. No monthly subscription. Credits stay in your org wallet until you use them.
             </p>
           </div>
@@ -461,17 +461,17 @@ export default function LandingPage() {
       </section>
 
       {/* FAQ */}
-      <section id="faq" className="py-20 md:py-28 px-6 bg-bg-surface border-t border-border" aria-labelledby="faq-heading">
+      <section id="faq" className="py-14 md:py-20 px-6 bg-bg-surface border-t border-border" aria-labelledby="faq-heading">
         <div className="max-w-prose mx-auto">
-          <div className="mb-10">
-            <h2 id="faq-heading" className="text-3xl md:text-4xl font-display font-semibold text-text-primary mb-3">
+          <div className="mb-7">
+            <h2 id="faq-heading" className="text-2xl md:text-3xl font-display font-semibold text-text-primary mb-2 tracking-tight">
               Questions from the desk
             </h2>
-            <p className="text-text-secondary">
+            <p className="text-text-secondary text-sm md:text-base">
               Straight answers — no invented ratings or user counts.
             </p>
           </div>
-          <div className="space-y-3" role="list">
+          <div className="space-y-2.5" role="list">
             {faqData.map((item) => (
               <div key={item.question} role="listitem">
                 <FaqItem question={item.question} answer={item.answer} />
@@ -483,14 +483,14 @@ export default function LandingPage() {
 
       {/* Final CTA + footer */}
       <footer className="bg-bg-base border-t border-border">
-        <div className="py-24 px-6 text-center">
-          <div className="w-14 h-14 mx-auto rounded-xl bg-accent flex items-center justify-center mb-8">
-            <KhataLensIcon size={28} className="text-white" />
+        <div className="py-16 md:py-20 px-6 text-center">
+          <div className="w-12 h-12 mx-auto rounded-xl bg-accent flex items-center justify-center mb-6">
+            <KhataLensIcon size={24} className="text-white" />
           </div>
-          <h2 className="text-3xl md:text-5xl font-display font-semibold mb-4 text-text-primary tracking-tight">
+          <h2 className="text-3xl md:text-4xl font-display font-semibold mb-3 text-text-primary tracking-tight">
             Ready for month-end?
           </h2>
-          <p className="text-lg text-text-secondary mb-10 max-w-md mx-auto">
+          <p className="text-base md:text-lg text-text-secondary mb-8 max-w-md mx-auto">
             Open a workspace, scan a bill, and see extraction on your own documents.
           </p>
           <Link
