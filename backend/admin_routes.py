@@ -98,8 +98,16 @@ async def update_tenant_quota(tenant_id: str, data: QuotaUpdate, user=Depends(ve
 
     admin_client = await create_async_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-    # Update credits in profiles table
-    resp = await admin_client.table("profiles").update({"credits": data.new_quota}).eq("id", tenant_id).execute()
+    # Org wallet is authoritative (profiles.credits dropped in phase 54)
+    profile_resp = await admin_client.table("profiles").select("active_org_id").eq("id", tenant_id).maybe_single().execute()
+    org_id = profile_resp.data.get("active_org_id") if profile_resp.data else None
+    if not org_id:
+        org_resp = await admin_client.table("organizations").select("id").eq("owner_id", tenant_id).limit(1).execute()
+        org_id = org_resp.data[0]["id"] if org_resp.data else None
+    if not org_id:
+        raise HTTPException(status_code=404, detail="Tenant organization not found")
+
+    resp = await admin_client.table("organizations").update({"credits": data.new_quota}).eq("id", org_id).execute()
 
     # Check for error instead of empty data (Supabase updates can return empty data on success)
     if hasattr(resp, 'error') and resp.error:

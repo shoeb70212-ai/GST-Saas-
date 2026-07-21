@@ -285,14 +285,12 @@ async def process_bank_statement_bg(statement_id: str, file_path_or_bytes: bytes
         await sc.table("bank_statements").update({
             "status": "failed"
         }).eq("id", statement_id).execute()
-        # Refund the upfront-deducted credits since processing failed
+        # Refund the upfront-deducted credits since processing failed.
+        # Note: decrement_credits ignores amount <= 0 (log-only); must use refund_credits.
         try:
-            await sc.rpc("decrement_credits", {
+            await sc.rpc("refund_credits", {
                 "user_id_param": user_id,
-                "amount": -cost,  # Negative amount = refund (adds credits back)
-                "task_type_param": "bank_statement_refund",
-                "file_name_param": f"statement_{statement_id}",
-                "tokens_used_param": total_statement_tokens
+                "amount": cost,
             }).execute()
             logger.info(f"Refunded {cost} credits for failed statement {statement_id}")
         except Exception as refund_e:

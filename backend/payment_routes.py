@@ -19,14 +19,20 @@ RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "rzp_test_mock")
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "rzp_test_secret")
 RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", RAZORPAY_KEY_SECRET)
 
+# Server-side catalog — never trust client amount/credits for fulfillment
+CREDIT_PACKS = {
+    "starter": {"credits": 1000, "amount_inr": 2499},
+    "pro": {"credits": 5000, "amount_inr": 7999},
+}
+
 rzp_client = None
 if RAZORPAY_KEY_ID != "rzp_test_mock":
     rzp_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
 
 class OrderRequest(BaseModel):
-    amount: float  # Amount in INR (float to handle paise correctly)
-    credits: int
+    amount: float | None = None  # Ignored; kept for API compatibility
+    credits: int | None = None  # Ignored; kept for API compatibility
     plan_type: str  # 'starter' or 'pro'
 
 
@@ -52,6 +58,14 @@ async def create_order(req: OrderRequest, authorization: str = Header(None)):
     token = authorization.split(" ")[1]
     user_id, supabase_client = await _verify_user(token)
 
+    pack = CREDIT_PACKS.get((req.plan_type or "").lower())
+    if not pack:
+        raise HTTPException(status_code=400, detail="Invalid plan_type. Use 'starter' or 'pro'.")
+
+    credits = pack["credits"]
+    amount_inr = pack["amount_inr"]
+    order_amount = int(amount_inr * 100)  # Razorpay expects paise
+
     if not rzp_client:
         if os.getenv("ENVIRONMENT", "development") == "production":
             raise HTTPException(status_code=500, detail="Mock payments are disabled in production")
@@ -63,9 +77,9 @@ async def create_order(req: OrderRequest, authorization: str = Header(None)):
             await supabase_client.table("payment_orders").insert({
                 "order_id": mock_order_id,
                 "user_id": user_id,
-                "expected_credits": req.credits,
-                "expected_amount": int(req.amount * 100),
-                "plan_type": req.plan_type,
+                "expected_credits": credits,
+                "expected_amount": order_amount,
+                "plan_type": req.plan_type.lower(),
                 "status": "pending"
             }).execute()
         except Exception as e:
@@ -74,13 +88,12 @@ async def create_order(req: OrderRequest, authorization: str = Header(None)):
 
         return {
             "order_id": mock_order_id,
-            "amount": int(req.amount * 100),
+            "amount": order_amount,
             "currency": "INR",
             "key_id": RAZORPAY_KEY_ID
         }
 
     try:
-        order_amount = int(req.amount * 100)  # Razorpay expects paise
         order_currency = "INR"
         order_receipt = f"rcptid_{user_id[:8]}"
 
@@ -98,9 +111,9 @@ async def create_order(req: OrderRequest, authorization: str = Header(None)):
             await supabase_client.table("payment_orders").insert({
                 "order_id": order_id,
                 "user_id": user_id,
-                "expected_credits": req.credits,
+                "expected_credits": credits,
                 "expected_amount": order_amount,
-                "plan_type": req.plan_type,
+                "plan_type": req.plan_type.lower(),
                 "status": "pending"
             }).execute()
         except Exception as e:

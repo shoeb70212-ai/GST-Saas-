@@ -1,12 +1,15 @@
 import io
 import zipfile
 import base64
+import logging
 from fastapi import APIRouter, File, UploadFile, HTTPException, Header, BackgroundTasks, Form
 import os
 import re
 from supabase import create_async_client
 # To avoid circular import with main.py, import these where used
 from utils import validate_file_content, sanitize_filename
+
+logger = logging.getLogger(__name__)
 
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
@@ -157,43 +160,26 @@ async def upload_batch(
             
             if not valid_files:
                 raise HTTPException(status_code=400, detail="No valid images or PDFs found in ZIP.")
-            
-            cost = len(valid_files)
-            
-            # Atomic credit deduction — no pre-check (fixes race condition H2)
-            # The decrement_credits RPC returns -1 if insufficient credits
-            rpc_resp = await supabase_client.rpc("decrement_credits", {
-                "user_id_param": user_id, 
-                "amount": cost,
-                "task_type_param": "batch_upload_upfront",
-                "file_name_param": file.filename,
-                "tokens_used_param": 0
-            }).execute()
-            
-            if rpc_resp.data == -1:
-                raise HTTPException(status_code=402, detail=f"Insufficient credits. This batch contains {cost} invoices. Please recharge your wallet.")
-            
+
+            # Validate size + extract before charging (avoids permanent credit loss on 413)
             batch_ids = []
-            
-            # Prepare batch for bulk insert
             pending_records = []
             file_details = []
-            
             total_uncompressed_size = 0
-            MAX_TOTAL_SIZE = 50 * 1024 * 1024 # 50MB max total uncompressed
-            
+            MAX_TOTAL_SIZE = 50 * 1024 * 1024  # 50MB max total uncompressed
+
             for fname in valid_files:
                 file_info = z.getinfo(fname)
                 total_uncompressed_size += file_info.file_size
                 if total_uncompressed_size > MAX_TOTAL_SIZE:
                     raise HTTPException(status_code=413, detail="Zip archive is too large when uncompressed (Zip Bomb prevention).")
-                
+
                 file_bytes = z.read(fname)
                 try:
                     mime_type = validate_file_content(file_bytes, fname)
                 except HTTPException:
-                    continue # Skip invalid files
-                
+                    continue  # Skip invalid files
+
                 safe_fname = sanitize_filename(fname.split('/')[-1])
                 import uuid
                 pending_records.append({
@@ -207,27 +193,60 @@ async def upload_batch(
                     "bytes": file_bytes,
                     "mime": mime_type
                 })
-                
-            if pending_records:
-                print("DEBUG pending_records:", pending_records)
+
+            if not pending_records:
+                raise HTTPException(status_code=400, detail="No valid images or PDFs found in ZIP.")
+
+            cost = len(pending_records)
+
+            # Atomic credit deduction after validation
+            rpc_resp = await supabase_client.rpc("decrement_credits", {
+                "user_id_param": user_id,
+                "amount": cost,
+                "task_type_param": "batch_upload_upfront",
+                "file_name_param": file.filename,
+                "tokens_used_param": 0
+            }).execute()
+
+            if rpc_resp.data == -1:
+                raise HTTPException(status_code=402, detail=f"Insufficient credits. This batch contains {cost} invoices. Please recharge your wallet.")
+
+            try:
                 ins_resp = await supabase_client.table("invoices").insert(pending_records).execute()
                 if ins_resp.data:
                     for i, row in enumerate(ins_resp.data):
                         invoice_id = row["id"]
                         batch_ids.append(invoice_id)
-                        
+
                         background_tasks.add_task(
-                            process_batch_worker, 
-                            invoice_id=invoice_id, 
-                            content=file_details[i]["bytes"], 
-                            mime_type=file_details[i]["mime"], 
-                            user_id=user_id, 
+                            process_batch_worker,
+                            invoice_id=invoice_id,
+                            content=file_details[i]["bytes"],
+                            mime_type=file_details[i]["mime"],
+                            user_id=user_id,
                             token=token,
                             tally_ledgers=tally_ledgers
                         )
                 else:
-                    print("Failed to bulk insert pending invoices")
-                        
+                    logger.error("Failed to bulk insert pending invoices after credit deduction")
+                    await supabase_client.rpc("refund_credits", {
+                        "user_id_param": user_id,
+                        "amount": cost,
+                    }).execute()
+                    raise HTTPException(status_code=500, detail="Failed to queue batch invoices.")
+            except HTTPException:
+                raise
+            except Exception as insert_e:
+                logger.error(f"Batch insert failed after credit deduction: {insert_e}")
+                try:
+                    await supabase_client.rpc("refund_credits", {
+                        "user_id_param": user_id,
+                        "amount": cost,
+                    }).execute()
+                except Exception as refund_e:
+                    logger.error(f"Failed to refund batch credits: {refund_e}")
+                raise HTTPException(status_code=500, detail="Failed to queue batch invoices.")
+
             return {"status": "success", "message": f"Queued {len(batch_ids)} files for processing.", "queued_ids": batch_ids}
             
     except zipfile.BadZipFile:

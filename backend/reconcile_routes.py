@@ -339,11 +339,15 @@ async def deep_match_reconcile(
                 
         if not unmatched_2b:
             return {"status": "success", "message": "No unmatched GSTR-2B records available for Deep Match."}
-            
+
+        GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+        if not GEMINI_API_KEY:
+            raise HTTPException(status_code=500, detail="Gemini API Key not configured for Deep Match.")
+
         total_items = len(missing_in_2b) + len(unmatched_2b)
         cost = max(5, math.ceil(total_items / 20) * 5)
 
-        # Check credits and Deduct
+        # Check credits and Deduct (after Gemini key check so we never charge then 500)
         rpc_resp = await http_client.post(
             f"{SUPABASE_URL}/rest/v1/rpc/decrement_credits",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
@@ -351,22 +355,17 @@ async def deep_match_reconcile(
         )
         if rpc_resp.status_code != 200:
             raise HTTPException(status_code=500, detail="Internal error during credit deduction.")
-        
+
         # Robust -1 insufficient credits check (fixes Bug #7 — fragile try/except ValueError)
         rpc_result = rpc_resp.json()
         if rpc_result == -1:
             raise HTTPException(status_code=402, detail="Insufficient credits for AI Deep Match.")
-            
+
     # Prepare Gemini Payloads
     pr_subset = [{"id": inv["id"], "supplier": inv.get("supplier_name"), "gstin": inv.get("supplier_gstin"), "inv_num": inv.get("invoice_number"), "amount": inv.get("taxable_amount")} for inv in missing_in_2b]
     b2b_subset = [{"id": rec["id"], "gstin": rec.get("supplier_gstin"), "inv_num": rec.get("invoice_number"), "amount": rec.get("taxable_value")} for rec in unmatched_2b]
-    
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-    gemini_client = AsyncOpenAI(api_key=GEMINI_API_KEY, base_url="https://generativelanguage.googleapis.com/v1beta/openai/") if GEMINI_API_KEY else None
-    
-    if not gemini_client:
-        raise HTTPException(status_code=500, detail="Gemini API Key not configured for Deep Match.")
-        
+
+    gemini_client = AsyncOpenAI(api_key=GEMINI_API_KEY, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
     # AI Token Limit Protection: Chunk PR Invoices into batches of 50
     pr_chunks = [pr_subset[i:i + 50] for i in range(0, len(pr_subset), 50)]
     all_matches = []
