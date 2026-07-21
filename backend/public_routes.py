@@ -13,6 +13,7 @@ from supabase import create_async_client
 from http_client import get_shared_client
 from utils import validate_file_content, sanitize_filename, compute_file_hash, SUPABASE_URL, SUPABASE_SERVICE_KEY, get_current_user
 from public_upload_tokens import create_public_upload_token, verify_public_upload_token
+import credits as credit_costs
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ async def _rpc_decrement_credit(user_id: str, file_name: str, tokens_used: int =
             },
             json={
                 "user_id_param": user_id,
-                "amount": 1,
+                "amount": credit_costs.PUBLIC_UPLOAD,
                 "task_type_param": "public_upload",
                 "file_name_param": file_name,
                 "tokens_used_param": tokens_used,
@@ -60,7 +61,8 @@ async def _rpc_decrement_credit(user_id: str, file_name: str, tokens_used: int =
     return rpc_resp.json()
 
 
-async def _rpc_refund_credit(user_id: str, amount: int = 1) -> None:
+async def _rpc_refund_credit(user_id: str, amount: int | None = None) -> None:
+    refund_amount = credit_costs.PUBLIC_UPLOAD if amount is None else amount
     async with get_shared_client() as http_client:
         await http_client.post(
             f"{SUPABASE_URL}/rest/v1/rpc/refund_credits",
@@ -69,7 +71,7 @@ async def _rpc_refund_credit(user_id: str, amount: int = 1) -> None:
                 "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
                 "Content-Type": "application/json",
             },
-            json={"user_id_param": user_id, "amount": amount},
+            json={"user_id_param": user_id, "amount": refund_amount},
         )
 
 

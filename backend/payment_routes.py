@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Header, Request, Depends
 from pydantic import BaseModel
 import razorpay
 from supabase import create_async_client
+from utils import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -36,27 +37,10 @@ class OrderRequest(BaseModel):
     plan_type: str  # 'starter' or 'pro'
 
 
-async def _verify_user(token: str):
-    """Shared helper: verify JWT and return (user_id, supabase_client)."""
-    if not token:
-        raise HTTPException(status_code=401, detail="Unauthorized: Missing token")
-    supabase_client = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-    try:
-        user_resp = await supabase_client.auth.get_user(token)
-        user_id = user_resp.user.id
-        supabase_client.postgrest.auth(token)
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid session token")
-    return user_id, supabase_client
-
-
 @router.post("/create-order")
-async def create_order(req: OrderRequest, authorization: str = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    token = authorization.split(" ")[1]
-    user_id, supabase_client = await _verify_user(token)
+async def create_order(req: OrderRequest, auth: dict = Depends(get_current_user)):
+    user_id = auth["user_id"]
+    supabase_client = auth["supabase_client"]
 
     pack = CREDIT_PACKS.get((req.plan_type or "").lower())
     if not pack:
@@ -198,14 +182,11 @@ async def razorpay_webhook(request: Request):
 @router.post("/verify-payment")
 async def verify_payment(
     request: Request,
-    authorization: str = Header(None)
+    auth: dict = Depends(get_current_user),
 ):
     """Verify payment — uses server-stored order data, NOT client-supplied credits."""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    token = authorization.split(" ")[1]
-    user_id, supabase_client = await _verify_user(token)
+    user_id = auth["user_id"]
+    supabase_client = auth["supabase_client"]
 
     data = await request.json()
     payment_id = data.get("razorpay_payment_id")

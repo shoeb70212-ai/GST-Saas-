@@ -58,28 +58,45 @@ def test_scan_invoice_without_auth_returns_401():
 
 
 def test_scan_invoice_with_invalid_bearer_returns_401():
-    """Malformed / expired JWT must be rejected with 401."""
-    from unittest.mock import MagicMock, patch
-    from contextlib import asynccontextmanager
+    """Malformed / expired JWT must be rejected with 401 via Depends(get_current_user)."""
     import io
-
-    class FakeHTTP:
-        async def get(self, url, **kw):
-            resp = MagicMock()
-            resp.status_code = 401
-            return resp
-        async def __aenter__(self): return self
-        async def __aexit__(self, *a): pass
-
-    @asynccontextmanager
-    async def fake_shared(*a, **kw):
-        yield FakeHTTP()
+    from fastapi import HTTPException
+    from utils import get_current_user
 
     jpeg_bytes = b'\xff\xd8\xff\xe0' + b'\x00' * 20 + b'\xff\xd9'
-    with patch("main.get_shared_client", fake_shared):
+
+    async def reject():
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid session token")
+
+    app.dependency_overrides[get_current_user] = reject
+    try:
         response = client.post(
             "/api/scan-invoice",
             files={"file": ("test.jpg", io.BytesIO(jpeg_bytes), "image/jpeg")},
             headers={"Authorization": "Bearer not.a.real.token"},
         )
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
     assert response.status_code == 401
+
+
+def test_cors_origins_default_excludes_wildcard():
+    """CORS allowlist must never include '*' when credentials are enabled."""
+    from main import ALLOWED_ORIGINS
+    assert "*" not in ALLOWED_ORIGINS
+    assert "http://localhost:5173" in ALLOWED_ORIGINS
+
+
+def test_cors_origins_env_override(monkeypatch):
+    monkeypatch.setenv("CORS_ORIGINS", "https://app.example.com, https://staging.example.com")
+    # Re-parse without reloading whole app
+    from main import _parse_cors_origins
+    origins = _parse_cors_origins()
+    assert origins == ["https://app.example.com", "https://staging.example.com"]
+
+
+def test_cors_origins_rejects_wildcard_env(monkeypatch):
+    monkeypatch.setenv("CORS_ORIGINS", "*")
+    from main import _parse_cors_origins, _DEFAULT_CORS_ORIGINS
+    origins = _parse_cors_origins()
+    assert origins == list(_DEFAULT_CORS_ORIGINS)

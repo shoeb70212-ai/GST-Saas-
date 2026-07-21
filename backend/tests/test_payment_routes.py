@@ -28,6 +28,7 @@ os.environ.setdefault("RAZORPAY_WEBHOOK_SECRET", "webhook_secret_123")
 os.environ.setdefault("ENVIRONMENT", "development")
 
 from main import app
+from utils import get_current_user
 from tests.helpers import make_async_factory, build_supabase_mock
 
 client = TestClient(app)
@@ -43,6 +44,31 @@ def _make_supabase_mock(
             "payment_orders": [order_data] if order_data else [],
         },
     )
+
+
+def _override_auth(user_id: str = "user-123", supabase_client=None):
+    """Wire Depends(get_current_user) to a controlled mock client."""
+    mock_sc = supabase_client or _make_supabase_mock(user_id=user_id)
+
+    async def _fake():
+        return {
+            "user_id": user_id,
+            "supabase_client": mock_sc,
+            "token": "fake.jwt.token",
+        }
+
+    app.dependency_overrides[get_current_user] = _fake
+    return mock_sc
+
+
+def _clear_auth():
+    app.dependency_overrides.pop(get_current_user, None)
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_auth_overrides():
+    yield
+    _clear_auth()
 
 
 def _fake_fulfill_http(rpc_body: dict | None = None, status_code: int = 200):
@@ -91,38 +117,31 @@ class TestCreateOrder:
         )
         assert response.status_code == 401
 
-    @patch("payment_routes.create_async_client")
-    def test_mock_mode_returns_order_id(self, mock_create):
+    def test_mock_mode_returns_order_id(self):
         """In dev mock mode (rzp_test_mock key), order is created without Razorpay."""
-        mock_sc = _make_supabase_mock()
-        mock_create.return_value = AsyncMock(return_value=mock_sc)()
-        # create_async_client is awaited, so set it as a coroutine returning mock_sc
-        async def _async_return(*a, **kw): return mock_sc
-        mock_create.side_effect = _async_return
+        _override_auth()
         response = client.post(
             "/api/create-order",
             json={"amount": 2499.0, "credits": 1000, "plan_type": "starter"},
             headers={"Authorization": "Bearer fake.jwt.token"},
         )
-        assert response.status_code in (200, 401)
+        assert response.status_code == 200
+        assert "order_id" in response.json()
 
-    @patch("payment_routes.create_async_client")
-    def test_create_order_response_has_required_fields(self, mock_create):
+    def test_create_order_response_has_required_fields(self):
         """200 response must contain order_id, amount, currency, key_id."""
-        mock_sc = _make_supabase_mock()
-        async def _async_return(*a, **kw): return mock_sc
-        mock_create.side_effect = _async_return
+        _override_auth()
         response = client.post(
             "/api/create-order",
             json={"amount": 2499.0, "credits": 1000, "plan_type": "starter"},
             headers={"Authorization": "Bearer fake.jwt.token"},
         )
-        if response.status_code == 200:
-            data = response.json()
-            assert "order_id" in data
-            assert "amount" in data
-            assert "currency" in data
-            assert "key_id" in data
+        assert response.status_code == 200
+        data = response.json()
+        assert "order_id" in data
+        assert "amount" in data
+        assert "currency" in data
+        assert "key_id" in data
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -141,11 +160,10 @@ class TestVerifyPayment:
         )
         assert response.status_code == 401
 
-    @patch("payment_routes.create_async_client")
-    def test_order_not_found_returns_404(self, mock_create):
+    def test_order_not_found_returns_404(self):
         """If order doesn't exist in DB, return 404."""
         mock_sc = build_supabase_mock(table_data={"payment_orders": []})
-        mock_create.side_effect = make_async_factory(mock_sc)
+        _override_auth(supabase_client=mock_sc)
 
         response = client.post(
             "/api/verify-payment",
@@ -156,10 +174,9 @@ class TestVerifyPayment:
             },
             headers={"Authorization": "Bearer fake.jwt.token"},
         )
-        assert response.status_code in (401, 404)
+        assert response.status_code == 404
 
-    @patch("payment_routes.create_async_client")
-    def test_wrong_user_order_returns_403(self, mock_create):
+    def test_wrong_user_order_returns_403(self):
         """Order belonging to a different user must return 403."""
         order = {
             "order_id": "order_abc",
@@ -170,7 +187,7 @@ class TestVerifyPayment:
             "status": "pending",
         }
         mock_sc = build_supabase_mock(user_id="user-123", table_data={"payment_orders": [order]})
-        mock_create.side_effect = make_async_factory(mock_sc)
+        _override_auth(user_id="user-123", supabase_client=mock_sc)
 
         response = client.post(
             "/api/verify-payment",
@@ -181,10 +198,9 @@ class TestVerifyPayment:
             },
             headers={"Authorization": "Bearer fake.jwt.token"},
         )
-        assert response.status_code in (401, 403)
+        assert response.status_code == 403
 
-    @patch("payment_routes.create_async_client")
-    def test_already_fulfilled_returns_success_idempotent(self, mock_create):
+    def test_already_fulfilled_returns_success_idempotent(self):
         """If order is already fulfilled, return success without re-processing."""
         order = {
             "order_id": "order_abc",
@@ -195,7 +211,7 @@ class TestVerifyPayment:
             "status": "fulfilled",
         }
         mock_sc = build_supabase_mock(user_id="user-123", table_data={"payment_orders": [order]})
-        mock_create.side_effect = make_async_factory(mock_sc)
+        _override_auth(user_id="user-123", supabase_client=mock_sc)
 
         response = client.post(
             "/api/verify-payment",
@@ -206,20 +222,20 @@ class TestVerifyPayment:
             },
             headers={"Authorization": "Bearer fake.jwt.token"},
         )
-        if response.status_code == 200:
-            assert "already verified" in response.json().get("message", "").lower()
+        assert response.status_code == 200
+        assert "already verified" in response.json().get("message", "").lower()
 
     def test_missing_order_id_returns_400(self):
+        _override_auth()
         response = client.post(
             "/api/verify-payment",
             json={"razorpay_payment_id": "pay_123"},  # missing order_id
             headers={"Authorization": "Bearer fake.jwt.token"},
         )
-        assert response.status_code in (400, 401, 422)
+        assert response.status_code == 400
 
     @patch("payment_routes.get_shared_client")
-    @patch("payment_routes.create_async_client")
-    def test_pending_order_calls_fulfill_rpc_with_server_amounts(self, mock_create, mock_shared):
+    def test_pending_order_calls_fulfill_rpc_with_server_amounts(self, mock_shared):
         """Happy path: mock Razorpay mode fulfills via idempotent RPC (ledger written in SQL)."""
         order = {
             "order_id": "order_mock_abc",
@@ -230,7 +246,7 @@ class TestVerifyPayment:
             "status": "pending",
         }
         mock_sc = build_supabase_mock(user_id="user-123", table_data={"payment_orders": [order]})
-        mock_create.side_effect = make_async_factory(mock_sc)
+        _override_auth(user_id="user-123", supabase_client=mock_sc)
         fake_http = _fake_fulfill_http({
             "success": True,
             "message": "Credits granted successfully",
@@ -259,8 +275,7 @@ class TestVerifyPayment:
         assert "fulfill_payment_order" in fake_http.posted[0]["url"]
 
     @patch("payment_routes.get_shared_client")
-    @patch("payment_routes.create_async_client")
-    def test_fulfill_rpc_failure_returns_400(self, mock_create, mock_shared):
+    def test_fulfill_rpc_failure_returns_400(self, mock_shared):
         order = {
             "order_id": "order_fail",
             "user_id": "user-123",
@@ -270,7 +285,7 @@ class TestVerifyPayment:
             "status": "pending",
         }
         mock_sc = build_supabase_mock(user_id="user-123", table_data={"payment_orders": [order]})
-        mock_create.side_effect = make_async_factory(mock_sc)
+        _override_auth(user_id="user-123", supabase_client=mock_sc)
         mock_shared.side_effect = _fake_fulfill_http({
             "success": False,
             "error": "Amount mismatch",

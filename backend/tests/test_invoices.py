@@ -2,13 +2,10 @@
 Tests for POST /api/scan-invoice.
 
 Strategy:
-  - scan_invoice uses get_shared_client (httpx) for all Supabase REST calls
-    (user auth, profile, org credits, credit deduction, refund).
-  - We patch http_client.get_shared_client with a fake async context manager
-    that returns controlled responses per URL.
-  - We patch main.run_ai_extraction directly to avoid real LLM calls.
+  - Auth uses Depends(get_current_user); tests override the dependency.
+  - Profile / org credits / credit deduction still use get_shared_client (httpx).
+  - We patch scan_routes.run_ai_extraction to avoid real LLM calls.
   - We patch gstin_service.verify_gstin to avoid external GSTIN API.
-  - We do NOT patch main.create_async_client (it doesn't exist at module level).
 """
 import io
 import json
@@ -21,6 +18,7 @@ import sys, os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from main import app
+from utils import get_current_user
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -65,7 +63,8 @@ def _make_resp(status: int, body):
 
 @pytest.fixture()
 def test_client():
-    return TestClient(app)
+    yield TestClient(app)
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 class _FakeHTTPClient:
@@ -107,6 +106,16 @@ class _FakeHTTPClient:
     async def __aexit__(self, *a): pass
 
 
+def _auth_override(user_id: str = "user-abc-123", token: str = "valid.token"):
+    async def _fake():
+        return {
+            "user_id": user_id,
+            "supabase_client": AsyncMock(),
+            "token": token,
+        }
+    return _fake
+
+
 def _make_patched_scan(
     overrides: dict | None = None,
     ai_result=None,
@@ -117,7 +126,7 @@ def _make_patched_scan(
     of scan_invoice with controlled fakes.
     """
     import http_client as hc_mod
-    import main as main_mod
+    import scan_routes as scan_mod
 
     if ai_result is None:
         ai_result = (GOOD_EXTRACTED.copy(), 350)
@@ -130,40 +139,29 @@ def _make_patched_scan(
 
     class _Ctx:
         def __enter__(self_inner):
+            app.dependency_overrides[get_current_user] = _auth_override()
             self_inner._p1 = patch.object(hc_mod, "get_shared_client", fake_shared)
-            self_inner._p2 = patch.object(main_mod, "get_shared_client", fake_shared)
-            self_inner._p3 = patch("main.run_ai_extraction", new_callable=AsyncMock)
+            self_inner._p2 = patch.object(scan_mod, "get_shared_client", fake_shared)
+            self_inner._p3 = patch.object(scan_mod, "run_ai_extraction", new_callable=AsyncMock)
             self_inner._p4 = patch("gstin_service.verify_gstin", new_callable=AsyncMock)
-            # patch supabase.create_async_client used inside scan_invoice for GSTIN check
-            self_inner._p5 = patch("main.create_async_client", create=True, new_callable=AsyncMock)
 
             self_inner._p1.start()
             self_inner._p2.start()
             mock_ai = self_inner._p3.start()
             mock_gstin = self_inner._p4.start()
-            mock_sc_factory = self_inner._p5.start()
 
             mock_ai.return_value = ai_result
             mock_gstin.return_value = gstin_status
-
-            # create_async_client returns a client whose table chain returns empty data
-            mock_sc = AsyncMock()
-            mock_sc.postgrest.auth = MagicMock()
-            dup_resp = MagicMock()
-            dup_resp.data = []
-            mock_sc.table.return_value.select.return_value.eq.return_value \
-                .eq.return_value.eq.return_value.execute = AsyncMock(return_value=dup_resp)
-            mock_sc_factory.return_value = mock_sc
 
             self_inner.mock_ai = mock_ai
             return self_inner
 
         def __exit__(self_inner, *a):
-            self_inner._p5.stop()
             self_inner._p4.stop()
             self_inner._p3.stop()
             self_inner._p2.stop()
             self_inner._p1.stop()
+            app.dependency_overrides.pop(get_current_user, None)
 
     return _Ctx()
 
@@ -191,20 +189,11 @@ class TestScanInvoiceAuth:
 
     def test_bearer_prefix_without_token_is_rejected(self, test_client):
         """'Bearer ' with only whitespace after must be rejected."""
-        import http_client as hc_mod, main as main_mod
-        bad_user = _make_resp(401, {"error": "invalid"})
-
-        @asynccontextmanager
-        async def fake_shared(*a, **kw):
-            yield _FakeHTTPClient({"/auth/v1/user": bad_user})
-
-        with patch.object(hc_mod, "get_shared_client", fake_shared), \
-             patch.object(main_mod, "get_shared_client", fake_shared):
-            r = test_client.post(
-                "/api/scan-invoice",
-                files={"file": ("t.jpg", io.BytesIO(MINIMAL_JPEG), "image/jpeg")},
-                headers={"Authorization": "Bearer invalid"},
-            )
+        r = test_client.post(
+            "/api/scan-invoice",
+            files={"file": ("t.jpg", io.BytesIO(MINIMAL_JPEG), "image/jpeg")},
+            headers={"Authorization": "Bearer "},
+        )
         assert r.status_code == 401
 
 
@@ -214,7 +203,7 @@ class TestScanInvoiceAuth:
 
 class TestScanInvoiceFileValidation:
     def test_text_file_returns_400(self, test_client):
-        """A .txt file fails magic-byte validation before any auth check."""
+        """A .txt file fails magic-byte validation after auth."""
         with _make_patched_scan():
             r = test_client.post(
                 "/api/scan-invoice",
@@ -291,21 +280,21 @@ class TestScanInvoiceCredits:
             )
         assert r.status_code == 402
 
-    def test_supabase_returns_401_on_token_validates_to_401(self, test_client):
-        bad_user = _make_resp(401, {"error": "invalid_token"})
-        import http_client as hc_mod, main as main_mod
+    def test_invalid_session_returns_401(self, test_client):
+        from fastapi import HTTPException
 
-        @asynccontextmanager
-        async def fake_shared(*a, **kw):
-            yield _FakeHTTPClient({"/auth/v1/user": bad_user})
+        async def reject():
+            raise HTTPException(status_code=401, detail="Unauthorized: Invalid session token")
 
-        with patch.object(hc_mod, "get_shared_client", fake_shared), \
-             patch.object(main_mod, "get_shared_client", fake_shared):
+        app.dependency_overrides[get_current_user] = reject
+        try:
             r = test_client.post(
                 "/api/scan-invoice",
                 files={"file": ("inv.jpg", io.BytesIO(MINIMAL_JPEG), "image/jpeg")},
                 headers={"Authorization": "Bearer expired.token"},
             )
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
         assert r.status_code == 401
 
 
