@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, memo  } from "react";
 import { useClient } from '../lib/ClientContext';
 import { supabase } from '../lib/supabase';
+import { getApiUrl } from '../lib/api';
 import { Play, CheckCircle, XCircle, RotateCcw, Building2, Loader2, Network, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -130,7 +131,7 @@ export default function BankReconcilePage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
       
-      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/bank-reconcile/suggestions/${activeClientId}`, {
         headers: { 'Authorization': `Bearer ${session.access_token}` }
       });
@@ -152,7 +153,7 @@ export default function BankReconcilePage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
       
-      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/bank-reconcile/history/${activeClientId}`, {
         headers: { 'Authorization': `Bearer ${session.access_token}` }
       });
@@ -182,7 +183,7 @@ export default function BankReconcilePage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
-      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/bank-reconcile/run`, {
         method: 'POST',
         headers: { 
@@ -209,7 +210,7 @@ export default function BankReconcilePage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
-      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/bank-reconcile/${action}`, {
         method: 'POST',
         headers: { 

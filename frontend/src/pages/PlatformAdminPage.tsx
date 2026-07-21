@@ -1,6 +1,7 @@
 import { useEffect, useState  } from "react";
 import { ShieldAlert, Activity, Users, FileText, IndianRupee, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { getApiUrl } from '../lib/api';
 
 
 const PlatformAdminPage: React.FC = () => {
@@ -23,7 +24,7 @@ const PlatformAdminPage: React.FC = () => {
 
   const fetchMetrics = async (token: string) => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const apiUrl = getApiUrl();
       const [metricsRes, tenantsRes] = await Promise.all([
         fetch(`${apiUrl}/api/admin/metrics`, { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch(`${apiUrl}/api/admin/tenants`, { headers: { 'Authorization': `Bearer ${token}` } })
@@ -43,7 +44,7 @@ const PlatformAdminPage: React.FC = () => {
     }
   };
   const handleAction = async (action: string, t: any) => {
-    const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+    const apiUrl = getApiUrl();
     if (action === 'quota') {
       const newQuota = prompt(`Enter new quota for ${t.company_name}:`, t.credits);
       if (newQuota && !isNaN(Number(newQuota))) {

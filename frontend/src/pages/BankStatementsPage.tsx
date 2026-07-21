@@ -6,6 +6,8 @@ import { UploadCloud, FileText, Loader2, CheckCircle2, AlertTriangle, Eye, Refre
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 
+import { getApiUrl } from '../lib/api';
+
 export default function BankStatementsPage() {
   const { activeClientId } = useClient();
   const [statements, setStatements] = useState<any[]>([]);
@@ -22,7 +24,7 @@ export default function BankStatementsPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
       
-      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/bank-statements/list/${activeClientId}`, {
         headers: { 'Authorization': `Bearer ${session.access_token}` }
       });
@@ -87,7 +89,7 @@ export default function BankStatementsPage() {
         formData.append('pdf_password', pdfPassword);
       }
 
-      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/bank-statements/upload`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${session.access_token}` },
@@ -128,7 +130,7 @@ export default function BankStatementsPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
-      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/bank-statements/${stmtId}/transactions`, {
         headers: { 'Authorization': `Bearer ${session.access_token}` }
       });
@@ -148,7 +150,7 @@ export default function BankStatementsPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
       
-      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/bank-statements/${stmtId}/cancel`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${session.access_token}` }

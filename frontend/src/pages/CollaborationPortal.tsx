@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import { supabase } from '../lib/supabase';
+import { getApiUrl } from '../lib/api';
 import { UploadCloud, CheckCircle2, Loader2, X, Building2, FileText, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -83,7 +84,7 @@ export default function CollaborationPortal() {
         formData.append('files', f.file);
       });
 
-      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/public/upload`, {
         method: 'POST',
         body: formData,

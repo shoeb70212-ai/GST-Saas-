@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useClient } from '../lib/ClientContext';
+import { getApiUrl } from '../lib/api';
 import { UploadCloud, CheckCircle2, AlertTriangle, AlertCircle, Loader2, FileSearch } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ErrorState } from '../components/ui/ErrorState';
@@ -78,7 +79,7 @@ export default function ReconciliationPage() {
     setIsUploading(true);
     toast.loading("Reconciling with GSTR-2B...", { id: 'recon' });
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const apiUrl = getApiUrl();
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Authentication required.");
 
@@ -194,7 +195,7 @@ export default function ReconciliationPage() {
       formData.append('period', period);
       formData.append('tolerance', tolerance.toString());
       
-      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const apiUrl = getApiUrl();
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Authentication required.");
 
@@ -265,7 +266,7 @@ export default function ReconciliationPage() {
             className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white rounded-lg text-sm font-medium transition-all shadow-md shadow-purple-500/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isDeepMatching ? <Loader2 className="w-4 h-4 animate-spin" /> : <span className="text-base leading-none">✨</span>}
-            AI Deep Match (1 Credit)
+            AI Deep Match (from 5 credits)
           </button>
         </div>
       </div>

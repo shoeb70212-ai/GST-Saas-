@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { Loader2, CreditCard, ShieldCheck, Zap, History } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
+import { ErrorState } from '../components/ui/ErrorState';
 
 declare global {
   interface Window {
@@ -20,29 +21,34 @@ export default function WalletPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<number | null>(null);
 
-  const { data: profile, isLoading } = useQuery({
+  const { isLoading, isError: isProfileError, refetch: refetchProfile } = useQuery({
     queryKey: ['profile'],
     queryFn: async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("No session");
-      const { data, error } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+      const { data, error } = await supabase.from('profiles').select('id, tier, active_org_id').eq('id', session.user.id).single();
       if (error) throw error;
       return data;
     }
   });
   
-  const { data: transactions } = useQuery({
+  const { data: transactions, isError: isTxError, refetch: refetchTx } = useQuery({
     queryKey: ['transactions'],
     queryFn: async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("No session");
-      const { data, error } = await supabase.from('transactions').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false });
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
       if (error && error.code !== '42P01') throw error; // Ignore relation doesn't exist yet
       return data || [];
     }
   });
 
-  const { data: usageLogs = [] } = useQuery({
+  const { data: usageLogs = [], isError: isUsageError, refetch: refetchUsage } = useQuery({
     queryKey: ['usageLogs'],
     queryFn: async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -93,8 +99,6 @@ export default function WalletPage() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          amount: plan.price,
-          credits: plan.credits,
           plan_type: plan.type
         }),
       });
@@ -128,9 +132,6 @@ export default function WalletPage() {
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_signature: response.razorpay_signature,
-                credits: plan.credits,
-                amount: plan.price,
-                plan_type: plan.type
               }),
             });
             
@@ -139,6 +140,7 @@ export default function WalletPage() {
             toast.success(`Successfully added ${plan.credits} credits!`, { id: 'payment' });
             queryClient.invalidateQueries({ queryKey: ['profile'] });
             queryClient.invalidateQueries({ queryKey: ['transactions'] });
+            queryClient.invalidateQueries({ queryKey: ['usageLogs'] });
             refreshCredits();
           } catch (e: any) {
             toast.error(e.message || "Payment verification failed", { id: 'payment' });
@@ -170,6 +172,16 @@ export default function WalletPage() {
     return <div className="p-8 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>;
   }
 
+  if (isProfileError) {
+    return (
+      <ErrorState
+        title="Could not load wallet"
+        message="We couldn't load your profile. Check your connection and try again."
+        onRetry={() => { void refetchProfile(); }}
+      />
+    );
+  }
+
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-8 pb-20">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
@@ -179,6 +191,17 @@ export default function WalletPage() {
         </div>
       </div>
 
+      {(isTxError || isUsageError) && (
+        <ErrorState
+          title="Some wallet data failed to load"
+          message="Transaction history or usage logs could not be fetched."
+          onRetry={() => {
+            if (isTxError) void refetchTx();
+            if (isUsageError) void refetchUsage();
+          }}
+        />
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="col-span-1 md:col-span-1">
           <div className="card bg-gradient-to-br from-accent/10 to-accent/20 border-accent/20 p-6 flex flex-col items-center text-center h-full justify-center">
@@ -186,7 +209,7 @@ export default function WalletPage() {
               <Zap className="w-8 h-8 text-accent" />
             </div>
             <h2 className="text-text-secondary font-medium mb-2">Available Credits</h2>
-            <div className="text-5xl font-bold text-text-primary mb-2">{credits !== null ? credits : (profile?.credits || 0)}</div>
+            <div className="text-5xl font-bold text-text-primary mb-2">{credits !== null ? credits : 0}</div>
             <div className="text-sm font-bold text-accent uppercase tracking-wider mb-4 border border-accent/30 bg-accent/10 px-3 py-1 rounded-full">
               Pay-as-you-go
             </div>

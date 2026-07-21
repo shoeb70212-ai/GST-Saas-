@@ -1,6 +1,7 @@
 import { useState, useRef  } from "react";
 import { useParams } from 'react-router-dom';
 import { Upload, CheckCircle, AlertCircle, Loader2, Camera } from 'lucide-react';
+import { getApiUrl } from '../lib/api';
 
 const SnapPage: React.FC = () => {
   const { clientId } = useParams<{ clientId: string }>();
@@ -34,7 +35,7 @@ const SnapPage: React.FC = () => {
     formData.append('client_id', clientId);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/public/upload`, {
         method: 'POST',
         body: formData,

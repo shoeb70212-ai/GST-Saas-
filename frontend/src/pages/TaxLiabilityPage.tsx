@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useClient } from '../lib/ClientContext';
+import { getApiUrl } from '../lib/api';
 import { formatCurrency } from '../utils/format';
 import { UploadCloud, TrendingUp, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -21,7 +22,7 @@ export default function TaxLiabilityPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Auth required");
 
-      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/sales/prediction?client_id=${activeClientId}&period=${period}`, {
         headers: { 'Authorization': `Bearer ${session.access_token}` }
       });
@@ -50,7 +51,7 @@ export default function TaxLiabilityPage() {
     setIsUploading(true);
     toast.loading("Parsing GSTR-1 Sales Data...", { id: 'sales_upload' });
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const apiUrl = getApiUrl();
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Authentication required.");
 

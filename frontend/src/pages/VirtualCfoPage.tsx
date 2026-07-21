@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useClient } from '../lib/ClientContext';
 import { TrendingUp, AlertTriangle, Package, Activity, DollarSign } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { ErrorState } from '../components/ui/ErrorState';
 import {
   BarChart,
   Bar,
@@ -18,7 +19,7 @@ export default function VirtualCfoPage() {
   const { activeClientId } = useClient();
 
   // Query Itemized Spend
-  const { data: itemizedSpend, isLoading: isLoadingSpend } = useQuery({
+  const { data: itemizedSpend, isLoading: isLoadingSpend, isError: isSpendError, refetch: refetchSpend } = useQuery({
     queryKey: ['cfo', 'spend', activeClientId],
     queryFn: async () => {
       if (!activeClientId) return [];
@@ -36,7 +37,7 @@ export default function VirtualCfoPage() {
   });
 
   // Query Price Variance Alerts
-  const { data: priceAlerts, isLoading: isLoadingAlerts } = useQuery({
+  const { data: priceAlerts, isLoading: isLoadingAlerts, isError: isAlertsError, refetch: refetchAlerts } = useQuery({
     queryKey: ['cfo', 'alerts', activeClientId],
     queryFn: async () => {
       if (!activeClientId) return [];
@@ -59,6 +60,19 @@ export default function VirtualCfoPage() {
         <Activity className="w-16 h-16 mb-4 opacity-20" />
         <p>Please select a client to view Virtual CFO Insights</p>
       </div>
+    );
+  }
+
+  if (isSpendError || isAlertsError) {
+    return (
+      <ErrorState
+        title="Could not load CFO insights"
+        message="Spend or price-alert data failed to load. Check your connection and try again."
+        onRetry={() => {
+          if (isSpendError) void refetchSpend();
+          if (isAlertsError) void refetchAlerts();
+        }}
+      />
     );
   }
 
