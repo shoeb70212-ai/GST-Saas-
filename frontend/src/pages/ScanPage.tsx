@@ -7,6 +7,7 @@ import { UploadCloud, CheckCircle2, FileText, Loader2, Sparkles, Settings, X, Fi
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { supabase } from '../lib/supabase';
+import { getApiUrl } from '../lib/api';
 import toast from 'react-hot-toast';
 // Session import removed
 
@@ -292,6 +293,20 @@ export default function ScanPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [uploadMode, setUploadMode] = useState<'single' | 'zip'>('single');
   const settingsRef = useRef<HTMLDivElement>(null);
+  const activeClientIdRef = useRef<string | null>(activeClientId);
+  const prevClientIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    activeClientIdRef.current = activeClientId;
+  }, [activeClientId]);
+
+  // Clear scan queue when switching clients so saves don't target the wrong client
+  useEffect(() => {
+    if (prevClientIdRef.current !== null && prevClientIdRef.current !== activeClientId) {
+      setFileStates([]);
+    }
+    prevClientIdRef.current = activeClientId;
+  }, [activeClientId, setFileStates]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -420,7 +435,7 @@ export default function ScanPage() {
     formData.append('client_id', activeClientId);
     
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const apiUrl = getApiUrl();
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Authentication required.");
       
@@ -496,7 +511,17 @@ export default function ScanPage() {
     });
   };
 
-  const scanFile = async (item: FileState) => {
+  const autoSaveInvoiceRef = useRef<(fileId: string, fs: FileState, data: any, clientId: string) => Promise<void>>(async () => {});
+
+  const scanFile = useCallback(async (item: FileState) => {
+    const clientId = item.clientId ?? activeClientIdRef.current;
+    if (!clientId) {
+      setFileStates(prev => prev.map(f =>
+        f.id === item.id ? { ...f, error: 'No client selected', isScanning: false } : f
+      ));
+      return;
+    }
+
     try {
       const processedFile = await compressImage(item.file, 1536, 1536);
       const formData = new FormData();
@@ -505,7 +530,7 @@ export default function ScanPage() {
         formData.append('password', pdfPassword);
       }
 
-      const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const apiUrl = getApiUrl();
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Authentication required.");
 
@@ -526,19 +551,30 @@ export default function ScanPage() {
       }
       
       const result = await response.json();
-      setFileStates(prev => prev.map(f => 
-        f.id === item.id ? { ...f, extractedData: result.data, isScanning: false } : f
+      const updatedItem: FileState = {
+        ...item,
+        extractedData: result.data,
+        isScanning: false,
+        clientId,
+        error: null,
+      };
+      setFileStates(prev => prev.map(f =>
+        f.id === item.id ? updatedItem : f
       ));
       
       refreshCredits();
       
-      await autoSaveInvoice(item.id, result.data);
+      // Pass file state directly — never look it up from a stale React closure
+      await autoSaveInvoiceRef.current(item.id, updatedItem, result.data, clientId);
     } catch (err: any) {
+      const message = err?.message?.includes('Failed to fetch')
+        ? 'Could not reach scan server. Check your connection and try again.'
+        : (err.message || 'An error occurred.');
       setFileStates(prev => prev.map(f => 
-        f.id === item.id ? { ...f, error: err.message || 'An error occurred.', isScanning: false } : f
+        f.id === item.id ? { ...f, error: message, isScanning: false } : f
       ));
     }
-  };
+  }, [pdfPassword, refreshCredits, setFileStates]);
 
   const onDrop = useCallback((acceptedFiles: File[], fileRejections: any[]) => {
     if (!activeClientId) {
@@ -572,16 +608,17 @@ export default function ScanPage() {
         extractedData: null,
         error: null,
         savedToCloud: false,
+        clientId: activeClientId,
       };
     });
     setFileStates(prev => [...prev, ...newFiles]);
     
-    // Auto-trigger extraction
-    newFiles.forEach(fs => {
-      scanFile(fs);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleZipUpload, setFileStates, scanFile]);
+    void (async () => {
+      for (const fs of newFiles) {
+        await scanFile(fs);
+      }
+    })();
+  }, [activeClientId, handleZipUpload, setFileStates, scanFile]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -609,10 +646,16 @@ export default function ScanPage() {
     setFileStates(prev => prev.map(f => f.id === id ? { ...f, extractedData: data, savedToCloud: false } : f));
   }, [setFileStates]);
 
-  const saveSingleInvoiceToDb = async (_fileId: string, fs: FileState, data: any, userId: string) => {
+  const saveSingleInvoiceToDb = async (
+    _fileId: string,
+    fs: FileState,
+    data: any,
+    userId: string,
+    clientId: string,
+  ) => {
     const invoiceData = {
       user_id: userId,
-      client_id: activeClientId,
+      client_id: clientId,
       file_name: fs.file.name || 'Unknown',
       supplier_name: data.Supplier_Name,
       supplier_address: data.Supplier_Address,
@@ -682,33 +725,37 @@ export default function ScanPage() {
     return rpcData;
   };
 
-  const autoSaveInvoice = async (fileId: string, data: any) => {
+  const autoSaveInvoice = useCallback(async (fileId: string, fs: FileState, data: any, clientId: string) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      const fs = fileStates.find(f => f.id === fileId);
-      if (!fs) return;
-
-      if (!activeClientId) {
-        toast.error('No active client selected. Please select a client before scanning.');
+      if (!session) {
+        toast.error('Please log in again to save invoices.');
         return;
       }
 
-      await saveSingleInvoiceToDb(fileId, fs, data, session.user.id);
-      setFileStates(prev => prev.map(f => f.id === fileId ? { ...f, savedToCloud: true } : f));
-      // Invalidate the invoices list cache so SavedInvoicesPage reflects new data immediately
+      if (!clientId) {
+        toast.error('No client linked to this scan. Please re-upload with a client selected.');
+        return;
+      }
+
+      await saveSingleInvoiceToDb(fileId, fs, data, session.user.id, clientId);
+      setFileStates(prev => prev.map(f => f.id === fileId ? { ...f, savedToCloud: true, clientId } : f));
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast.success('Invoice saved');
     } catch (err: any) {
       console.error("Auto-save failed:", err);
-      // Provide actionable error: if it's an auth/access error, guide the user
-      const msg = err.message || 'Unknown error';
+      const msg = err?.message || err?.details || err?.hint || 'Unknown error';
       if (msg.includes('Unauthorized') || msg.includes('access')) {
-        toast.error(`Save failed: You may not have access to this client. Go to Client Management and verify.`);
+        toast.error('Save failed: you may not have access to this client.');
       } else {
-        toast.error(`Auto-save failed: ${msg}`);
+        toast.error(`Auto-save failed: ${msg}`, { duration: 6000 });
       }
     }
-  };
+  }, [queryClient, setFileStates]);
+
+  useEffect(() => {
+    autoSaveInvoiceRef.current = autoSaveInvoice;
+  }, [autoSaveInvoice]);
 
   const handleScanAll = async () => {
     const toScan = fileStates.filter(f => !f.extractedData && !f.isScanning && !f.error);
@@ -747,18 +794,28 @@ export default function ScanPage() {
       if (!session) throw new Error("No active session found. Please log in.");
       const userId = session.user.id;
 
+      let saved = 0;
       for (const fs of toSave) {
         try {
-          await saveSingleInvoiceToDb(fs.id, fs, fs.extractedData, userId);
-          setFileStates(prev => prev.map(f => f.id === fs.id ? { ...f, savedToCloud: true } : f));
+          const clientId = fs.clientId ?? activeClientIdRef.current;
+          if (!clientId) {
+            toast.error(`No client selected for ${fs.file.name}`);
+            continue;
+          }
+          await saveSingleInvoiceToDb(fs.id, fs, fs.extractedData, userId, clientId);
+          setFileStates(prev => prev.map(f => f.id === fs.id ? { ...f, savedToCloud: true, clientId } : f));
+          saved += 1;
         } catch (err: any) {
           console.error("Failed to save manually:", err);
-          toast.error(`Failed to save ${fs.file.name}`);
+          const msg = err?.message || err?.details || 'Unknown error';
+          toast.error(`Failed to save ${fs.file.name}: ${msg}`, { duration: 6000 });
         }
       }
       
-      toast.success("Successfully saved pending invoices.");
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      if (saved > 0) {
+        toast.success(`Saved ${saved} invoice${saved > 1 ? 's' : ''}.`);
+        queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      }
     } catch (err: any) {
       toast.error(err.message || 'Failed to save to cloud.');
     } finally {

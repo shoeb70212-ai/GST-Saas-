@@ -69,6 +69,8 @@ export type FileState = {
   extractedData: InvoiceData | null;
   error: string | null;
   savedToCloud?: boolean;
+  /** Client active when the file was queued — used for save even if user switches client later */
+  clientId?: string | null;
 };
 
 
