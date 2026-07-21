@@ -1,12 +1,21 @@
 """
-Server-side credit cost constants and scaling helpers.
+Server-side credit cost constants, wallet packs, and scaling helpers.
 
 Keep these in sync with product pricing copy on the frontend
-(`PricingPage.tsx`, `CREDITS_DOCUMENTATION.md`). Prefer importing from here
-over scattering magic numbers in route handlers.
+(`frontend/src/lib/pricing.ts`, `CREDITS_DOCUMENTATION.md`). Prefer importing
+from here over scattering magic numbers in route handlers.
 """
 
 import math
+
+# ---------------------------------------------------------------------------
+# Wallet packs (Razorpay create-order / fulfillment catalog)
+# Frontend display: frontend/src/lib/pricing.ts — keep amounts aligned.
+# ---------------------------------------------------------------------------
+CREDIT_PACKS = {
+    "starter": {"credits": 1000, "amount_inr": 2499},
+    "pro": {"credits": 5000, "amount_inr": 7999},
+}
 
 # Single invoice scan (authenticated /api/scan-invoice)
 INVOICE_SCAN = 1

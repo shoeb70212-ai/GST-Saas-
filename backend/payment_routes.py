@@ -7,6 +7,7 @@ from pydantic import BaseModel
 import razorpay
 from supabase import create_async_client
 from utils import get_current_user
+from credits import CREDIT_PACKS
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +20,6 @@ router = APIRouter()
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "rzp_test_mock")
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "rzp_test_secret")
 RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", RAZORPAY_KEY_SECRET)
-
-# Server-side catalog — never trust client amount/credits for fulfillment
-CREDIT_PACKS = {
-    "starter": {"credits": 1000, "amount_inr": 2499},
-    "pro": {"credits": 5000, "amount_inr": 7999},
-}
 
 rzp_client = None
 if RAZORPAY_KEY_ID != "rzp_test_mock":

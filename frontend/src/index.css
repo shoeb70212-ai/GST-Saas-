@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/*
+  KhataLens design tokens (Tailwind v4 @theme)
+  ─────────────────────────────────────────────
+  Colors: change :root / .dark CSS vars below, then use utilities:
+    bg-bg-base, bg-bg-surface, text-text-primary, text-accent, border-border, etc.
+  Layout: max-w-content (~6xl), max-w-narrow (~5xl), max-w-prose (~2xl); also use stock max-w-4xl where needed.
+  Radius: rounded-card (xl), rounded-panel (3xl) for marketing surfaces.
+  Brand accent for JS SDKs (Razorpay): BRAND_ACCENT_HEX in src/lib/pricing.ts
+  — keep in sync with --accent (light).
+*/
+
 @theme {
   --color-bg-base: var(--bg-base);
   --color-bg-surface: var(--bg-surface);
@@ -34,6 +45,14 @@
   --font-mono: "JetBrains Mono", monospace;
   
   --font-sans: "Inter", sans-serif;
+
+  /* Layout width tokens → max-w-content / max-w-narrow / max-w-prose */
+  --max-width-content: 72rem; /* ~6xl */
+  --max-width-narrow: 64rem;  /* ~5xl */
+  --max-width-prose: 42rem;   /* ~2xl */
+
+  --radius-card: 0.75rem;   /* rounded-card */
+  --radius-panel: 1.5rem;   /* rounded-panel */
 
   --shadow-xs: 0 1px 2px rgba(0,0,0,0.04);
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);

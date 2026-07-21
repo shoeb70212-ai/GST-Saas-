@@ -11,7 +11,7 @@ By utilizing **Razorpay Orders** for Prepaid Passes, we guarantee a near 99% che
 
 ## 1. Product Packs
 
-Canonical amounts live in `backend/payment_routes.py` (`CREDIT_PACKS`) and the public Pricing page.
+Canonical amounts live in `backend/credits.py` (`CREDIT_PACKS`) and the public Pricing page (`frontend/src/lib/pricing.ts`).
 
 1. **Free / signup:** Org wallet seeded per signup/trigger policy (not a feature tier lock).
 2. **Starter Pass (₹2,499):** Grants **1,000** AI credits.

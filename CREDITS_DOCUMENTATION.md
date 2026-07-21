@@ -60,7 +60,7 @@ Certain tasks, like Bank Statements and Deep Matching, are not fixed cost. Helpe
 
 KhataLens does **not** hard-lock Virtual CFO, Tax Liability, GSTR-2B reconciliation, or client management behind a Pro subscription. Those surfaces stay available to authenticated users. You only spend credits when running AI-powered tasks (see Section 2). Soft role gates (e.g. `/admin`) may still apply; API authorization remains authoritative. Do not reintroduce `<ProGate>`-style feature locks without product sign-off (`da96538`).
 
-**Wallet packs (server catalog):** Starter **₹2,499 / 1,000 credits** · Pro **₹7,999 / 5,000 credits** (`payment_routes.CREDIT_PACKS` / Pricing page).
+**Wallet packs (server catalog):** Starter **₹2,499 / 1,000 credits** · Pro **₹7,999 / 5,000 credits** (`backend/credits.py` → `CREDIT_PACKS`; frontend display: `frontend/src/lib/pricing.ts`).
 
 ## 5. Frontend Integration
 

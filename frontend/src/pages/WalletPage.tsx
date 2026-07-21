@@ -14,6 +14,7 @@ declare global {
 
 import { getApiUrl } from '../lib/api';
 import { useClient } from '../lib/ClientContext';
+import { BRAND_ACCENT_HEX, CREDIT_PACKS, formatInr, type CreditPack } from '../lib/pricing';
 
 export default function WalletPage() {
   const { credits, refreshCredits } = useClient();
@@ -84,12 +85,9 @@ export default function WalletPage() {
     return () => { document.body.removeChild(script); }
   }, []);
 
-  const plans = [
-    { id: 1, name: "Starter Pass", credits: 1000, price: 2499, popular: false, type: "starter" },
-    { id: 2, name: "Pro Pass", credits: 5000, price: 7999, popular: true, type: "pro" }
-  ];
+  const plans = CREDIT_PACKS;
 
-  const handlePurchase = async (plan: any) => {
+  const handlePurchase = async (plan: CreditPack) => {
     setIsProcessing(true);
     setSelectedPlan(plan.id);
 
@@ -158,7 +156,7 @@ export default function WalletPage() {
           email: session.user.email,
         },
         theme: {
-          color: "#4f46e5"
+          color: BRAND_ACCENT_HEX,
         }
       };
 
@@ -177,7 +175,7 @@ export default function WalletPage() {
   };
 
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-8 pb-20">
+    <div className="p-4 md:p-8 max-w-narrow mx-auto space-y-8 pb-20">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text-primary mb-2">Wallet & Billing</h1>
@@ -235,7 +233,7 @@ export default function WalletPage() {
                   <div className="text-xs text-text-disabled mb-6">Credits</div>
                   
                   <div className="mt-auto">
-                    <div className="text-xl font-bold text-text-primary mb-4">₹{plan.price}</div>
+                    <div className="text-xl font-bold text-text-primary mb-4">{formatInr(plan.priceInr)}</div>
                     <button 
                       onClick={() => handlePurchase(plan)}
                       disabled={isProcessing}

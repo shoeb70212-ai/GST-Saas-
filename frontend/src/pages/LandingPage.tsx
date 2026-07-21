@@ -10,6 +10,10 @@ import {
 import HeroAnimation from '../components/HeroAnimation';
 import { BankStatementDemo, WhatsAppDemo, ReconciliationDemo } from '../components/LandingFeatures';
 import KhataLensIcon from '../components/KhataLensIcon';
+import { CREDIT_PACKS, formatInr } from '../lib/pricing';
+
+const starterPack = CREDIT_PACKS.find((p) => p.type === 'starter')!;
+const proPack = CREDIT_PACKS.find((p) => p.type === 'pro')!;
 
 // ─── Animation Variants ─────────────────────────────────────────────────────
 const fadeUp = {
@@ -823,14 +827,14 @@ export default function LandingPage() {
               <div className="mb-6">
                 <div className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-4">Starter</div>
                 <div className="flex items-end gap-1 mb-2">
-                  <span className="text-4xl lg:text-5xl font-display font-bold text-text-primary">₹2,499</span>
+                  <span className="text-4xl lg:text-5xl font-display font-bold text-text-primary">{formatInr(starterPack.priceInr)}</span>
                   <span className="text-text-secondary pb-1 font-light text-sm">/ month</span>
                 </div>
                 <p className="text-text-secondary font-light text-sm">Perfect for solo practitioners and small businesses.</p>
               </div>
               <ul className="space-y-3 mb-8 text-sm" aria-label="Starter plan features">
                 {[
-                  '1,000 invoice extractions',
+                  `${starterPack.credits.toLocaleString('en-IN')} invoice extractions`,
                   '10 bank statement pages',
                   'Unlimited workspaces',
                   'Excel + CSV export',
@@ -860,19 +864,19 @@ export default function LandingPage() {
                   </span>
                 </div>
                 <div className="flex items-end gap-1 mb-2">
-                  <span className="text-4xl lg:text-5xl font-display font-bold text-text-primary">₹7,999</span>
+                  <span className="text-4xl lg:text-5xl font-display font-bold text-text-primary">{formatInr(proPack.priceInr)}</span>
                   <span className="text-text-secondary pb-1 font-light text-sm">/ month</span>
                 </div>
                 <p className="text-text-secondary font-light text-sm mb-6">Everything in Starter, plus AI Reconciliation and WhatsApp.</p>
                 <ul className="space-y-3 mb-8 text-sm" aria-label="Pro plan features">
-                  {[
-                    '5,000 invoice extractions',
-                    'Unlimited bank statements',
-                    'AI Recon Engine (Auto-match)',
-                    'WhatsApp Receipt Engine',
-                    'Batch processing queue',
-                    'Dedicated CA support',
-                  ].map((f, i) => (
+                {[
+                  `${proPack.credits.toLocaleString('en-IN')} invoice extractions`,
+                  'Unlimited bank statements',
+                  'AI Recon Engine (Auto-match)',
+                  'WhatsApp Receipt Engine',
+                  'Batch processing queue',
+                  'Dedicated CA support',
+                ].map((f, i) => (
                     <li key={i} className="flex items-start gap-2 text-text-primary font-medium">
                       <CheckCircle2 className="w-4 h-4 text-accent shrink-0 mt-0.5" aria-hidden="true" /> <span>{f}</span>
                     </li>
