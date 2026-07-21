@@ -101,7 +101,7 @@ const PlatformAdminPage: React.FC = () => {
           <ShieldAlert className="w-16 h-16 text-red-500 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h1>
           <p className="text-gray-600 mb-6">{error || 'You do not have platform admin privileges.'}</p>
-          <a href="/dashboard" className="text-blue-600 font-medium hover:underline">Return to Dashboard</a>
+          <a href="/app/dashboard" className="text-blue-600 font-medium hover:underline">Return to Dashboard</a>
         </div>
       </div>
     );

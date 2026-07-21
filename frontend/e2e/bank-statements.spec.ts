@@ -18,7 +18,7 @@ test.beforeAll(async () => {
 test.describe('Bank Statements Page', () => {
   test.beforeEach(async ({ page }) => {
     await loginViaSessionInjection(page, sharedSession);
-    await page.goto('/bank-statements');
+    await page.goto('/app/bank-statements');
     await page.waitForLoadState('networkidle');
   });
 
@@ -168,7 +168,7 @@ test.describe('Bank Statements — Transaction Export', () => {
       });
     });
 
-    await page.goto('/bank-statements');
+    await page.goto('/app/bank-statements');
     await page.waitForLoadState('networkidle');
 
     // If there's an export button, clicking it should fail gracefully

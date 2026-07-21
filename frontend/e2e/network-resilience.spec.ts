@@ -31,7 +31,7 @@ test.describe('Network Resilience', () => {
       });
     });
 
-    await page.goto('/dashboard');
+    await page.goto('/app/dashboard');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(3000);
 
@@ -58,7 +58,7 @@ test.describe('Network Resilience', () => {
       });
     });
 
-    await page.goto('/invoices');
+    await page.goto('/app/invoices');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(3000);
 
@@ -82,7 +82,7 @@ test.describe('Network Resilience', () => {
       });
     });
 
-    await page.goto('/clients');
+    await page.goto('/app/clients');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(3000);
 
@@ -98,7 +98,7 @@ test.describe('Network Resilience', () => {
       await route.abort('failed');
     });
 
-    await page.goto('/scan');
+    await page.goto('/app/scan');
     await page.waitForLoadState('networkidle');
 
     const fileInput = page.locator('input[type="file"]').first();
@@ -132,7 +132,7 @@ test.describe('Network Resilience', () => {
       });
     });
 
-    await page.goto('/wallet');
+    await page.goto('/app/wallet');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
@@ -155,7 +155,7 @@ test.describe('Network Resilience', () => {
       });
     });
 
-    await page.goto('/settings');
+    await page.goto('/app/settings');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
@@ -169,7 +169,7 @@ test.describe('Navigation Resilience', () => {
     await loginViaSessionInjection(page, sharedSession);
 
     // Navigate rapidly between multiple pages
-    for (const route of ['/dashboard', '/invoices', '/scan', '/wallet', '/clients', '/dashboard']) {
+    for (const route of ['/app/dashboard', '/app/invoices', '/app/scan', '/app/wallet', '/app/clients', '/app/dashboard']) {
       await page.goto(route);
       await page.waitForLoadState('domcontentloaded');
     }
@@ -182,16 +182,16 @@ test.describe('Navigation Resilience', () => {
     expect(pageContent).not.toContain('ChunkLoadError');
 
     // Should be on dashboard
-    await expect(page).toHaveURL(/\/dashboard/);
+    await expect(page).toHaveURL(/\/app\/dashboard/);
   });
 
   test('browser back/forward does not crash the app', async ({ page }) => {
     await loginViaSessionInjection(page, sharedSession);
 
-    await page.goto('/dashboard');
+    await page.goto('/app/dashboard');
     await page.waitForLoadState('domcontentloaded');
 
-    await page.goto('/invoices');
+    await page.goto('/app/invoices');
     await page.waitForLoadState('domcontentloaded');
 
     await page.goBack();

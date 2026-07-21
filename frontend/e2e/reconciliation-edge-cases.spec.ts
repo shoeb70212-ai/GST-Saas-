@@ -42,7 +42,7 @@ function makeGSTR2BExcel(): Buffer {
 test.describe('Reconciliation Page', () => {
   test.beforeEach(async ({ page }) => {
     await loginViaSessionInjection(page, sharedSession);
-    await page.goto('/reconcile');
+    await page.goto('/app/reconcile');
     await page.waitForLoadState('networkidle');
   });
 
@@ -166,7 +166,7 @@ test.describe('Reconciliation — Network Resilience', () => {
       });
     });
 
-    await page.goto('/reconcile');
+    await page.goto('/app/reconcile');
     await page.waitForLoadState('networkidle');
 
     const fileInput = page.locator('input[type="file"]').first();

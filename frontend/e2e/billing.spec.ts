@@ -19,7 +19,7 @@ test.beforeAll(async () => {
 test.describe('Wallet Page', () => {
   test.beforeEach(async ({ page }) => {
     await loginViaSessionInjection(page, sharedSession);
-    await page.goto('/wallet');
+    await page.goto('/app/wallet');
     // Use domcontentloaded — Razorpay CDN keeps network busy indefinitely
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
@@ -128,7 +128,7 @@ test.describe('Payment Flow — Backend Integration', () => {
       });
     });
 
-    await page.goto('/wallet');
+    await page.goto('/app/wallet');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
@@ -165,7 +165,7 @@ test.describe('Payment Flow — Backend Integration', () => {
       });
     });
 
-    await page.goto('/wallet');
+    await page.goto('/app/wallet');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 

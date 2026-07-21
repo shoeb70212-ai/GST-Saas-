@@ -116,7 +116,7 @@ export async function loginViaSessionInjection(
     }
   );
 
-  await page.goto('/dashboard');
+  await page.goto('/app/dashboard');
   await page.waitForLoadState('networkidle');
 
   if (page.url().includes('/auth')) {

@@ -10,7 +10,7 @@ import { signUpTestUser, loginViaSessionInjection, clearSession } from './test-h
 test.describe('Auth Flows', () => {
   test('unauthenticated user visiting /dashboard is redirected to /auth', async ({ page }) => {
     await clearSession(page);
-    await page.goto('/dashboard');
+    await page.goto('/app/dashboard');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1500);
 
@@ -26,7 +26,7 @@ test.describe('Auth Flows', () => {
 
   test('unauthenticated user visiting /invoices is redirected to /auth', async ({ page }) => {
     await clearSession(page);
-    await page.goto('/invoices');
+    await page.goto('/app/invoices');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1500);
     await expect(page).toHaveURL(/\/auth/, { timeout: 10000 });
@@ -34,7 +34,7 @@ test.describe('Auth Flows', () => {
 
   test('unauthenticated user visiting /wallet is redirected to /auth', async ({ page }) => {
     await clearSession(page);
-    await page.goto('/wallet');
+    await page.goto('/app/wallet');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1500);
     await expect(page).toHaveURL(/\/auth/, { timeout: 10000 });
@@ -42,7 +42,7 @@ test.describe('Auth Flows', () => {
 
   test('unauthenticated user visiting /scan is redirected to /auth', async ({ page }) => {
     await clearSession(page);
-    await page.goto('/scan');
+    await page.goto('/app/scan');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1500);
     await expect(page).toHaveURL(/\/auth/, { timeout: 10000 });
@@ -50,7 +50,7 @@ test.describe('Auth Flows', () => {
 
   test('unauthenticated user visiting /settings is redirected to /auth', async ({ page }) => {
     await clearSession(page);
-    await page.goto('/settings');
+    await page.goto('/app/settings');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1500);
     await expect(page).toHaveURL(/\/auth/, { timeout: 10000 });
@@ -65,14 +65,14 @@ test.describe('Auth Flows', () => {
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
 
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 10000 });
+    await expect(page).toHaveURL(/\/app\/dashboard/, { timeout: 10000 });
   });
 
   test('authenticated user can reach dashboard without redirect', async ({ page }) => {
     const session = await signUpTestUser();
     await loginViaSessionInjection(page, session);
 
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 10000 });
+    await expect(page).toHaveURL(/\/app\/dashboard/, { timeout: 10000 });
 
     // Should NOT be on /auth
     expect(page.url()).not.toContain('/auth');
@@ -81,7 +81,7 @@ test.describe('Auth Flows', () => {
   test('sign out clears session and redirects away from protected routes', async ({ page }) => {
     const session = await signUpTestUser();
     await loginViaSessionInjection(page, session);
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 10000 });
+    await expect(page).toHaveURL(/\/app\/dashboard/, { timeout: 10000 });
 
     // Click Sign Out button
     const signOutBtn = page
@@ -105,7 +105,7 @@ test.describe('Auth Flows', () => {
     await page.waitForTimeout(1500);
 
     // After sign-out, going to /dashboard should redirect to /auth
-    await page.goto('/dashboard');
+    await page.goto('/app/dashboard');
     await page.waitForTimeout(2000);
     await expect(page).toHaveURL(/\/auth/, { timeout: 10000 });
   });

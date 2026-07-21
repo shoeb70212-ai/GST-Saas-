@@ -35,6 +35,23 @@ import { Toaster } from 'react-hot-toast';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
+/** Legacy bookmark / deep-link paths → `/app/*` shell */
+const LEGACY_APP_REDIRECTS: Array<{ from: string; to: string }> = [
+  { from: '/dashboard', to: '/app/dashboard' },
+  { from: '/scan', to: '/app/scan' },
+  { from: '/cfo', to: '/app/cfo' },
+  { from: '/tax-liability', to: '/app/tax-liability' },
+  { from: '/invoices', to: '/app/invoices' },
+  { from: '/bank-statements', to: '/app/bank-statements' },
+  { from: '/bank-reconcile', to: '/app/bank-reconcile' },
+  { from: '/reconcile', to: '/app/reconcile' },
+  { from: '/clients', to: '/app/clients' },
+  { from: '/audit-logs', to: '/app/audit-logs' },
+  { from: '/settings', to: '/app/settings' },
+  { from: '/wallet', to: '/app/wallet' },
+  { from: '/admin', to: '/app/admin' },
+];
+
 // ProtectedRoute — extracted outside component body to prevent recreation on every render (fixes L3)
 const ProtectedRoute = ({ children, session }: { children: React.ReactNode; session: Session | null }) => {
   if (!session) {
@@ -94,25 +111,47 @@ export default function App() {
       <BrowserRouter>
         <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
           <Routes>
-            {/* Public Routes */}
+            {/* Public marketing / auth / portal */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/pricing" element={<PricingPage />} />
             <Route path="/privacy" element={<PrivacyPage />} />
             <Route path="/security" element={<SecurityPage />} />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/portal/:clientId" element={<CollaborationPortal />} />
-            <Route path="/auth" element={session ? <Navigate to="/dashboard" replace /> : <AuthPage />} />
+            <Route path="/auth" element={session ? <Navigate to="/app/dashboard" replace /> : <AuthPage />} />
             <Route path="/register" element={<AuthPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/snap/:clientId" element={<SnapPage />} />
-            
-            {/* Protected Routes */}
 
-            <Route path="/admin" element={<ProtectedRoute session={session}><SuperAdminGate><PlatformAdminLayout /></SuperAdminGate></ProtectedRoute>}>
+            {/* Legacy deep-link redirects */}
+            {LEGACY_APP_REDIRECTS.map(({ from, to }) => (
+              <Route key={from} path={from} element={<Navigate to={to} replace />} />
+            ))}
+
+            {/* Platform admin (own layout; soft-gated) */}
+            <Route
+              path="/app/admin"
+              element={
+                <ProtectedRoute session={session}>
+                  <SuperAdminGate>
+                    <PlatformAdminLayout />
+                  </SuperAdminGate>
+                </ProtectedRoute>
+              }
+            >
               <Route index element={<PlatformAdminPage />} />
             </Route>
 
-            <Route path="/" element={<ProtectedRoute session={session}><Layout /></ProtectedRoute>}>
+            {/* Authenticated app shell */}
+            <Route
+              path="/app"
+              element={
+                <ProtectedRoute session={session}>
+                  <Layout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="scan" element={<ScanPage />} />
               <Route path="cfo" element={<OrgAdminGate><VirtualCfoPage /></OrgAdminGate>} />
@@ -126,8 +165,8 @@ export default function App() {
               <Route path="settings" element={<SettingsPage />} />
               <Route path="wallet" element={<WalletPage />} />
             </Route>
-            
-            {/* Catch-all 404 Route */}
+
+            {/* Catch-all 404 */}
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Suspense>

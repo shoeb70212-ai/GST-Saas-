@@ -76,7 +76,7 @@ export function RouteAccessGate({
         <ShieldAlert className="w-16 h-16 text-error opacity-50 mb-4" />
         <h1 className="text-2xl font-bold text-text-primary mb-2">{title}</h1>
         <p className="text-text-secondary mb-6">{message}</p>
-        <Link to="/dashboard" className="text-accent font-medium hover:underline">
+        <Link to="/app/dashboard" className="text-accent font-medium hover:underline">
           Return to Dashboard
         </Link>
       </>

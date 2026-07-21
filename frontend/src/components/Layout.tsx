@@ -66,21 +66,21 @@ export default function Layout() {
   const isBusiness = localStorage.getItem('accountType') === 'business';
   
   const navItems = [
-    { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'Scan', path: '/scan', icon: ScanLine },
-    { name: 'Invoices', path: '/invoices', icon: FileText },
+    { name: 'Dashboard', path: '/app/dashboard', icon: LayoutDashboard },
+    { name: 'Scan', path: '/app/scan', icon: ScanLine },
+    { name: 'Invoices', path: '/app/invoices', icon: FileText },
   ];
   
   const moreNavItems = [
-    { name: 'Tax Liability', path: '/tax-liability', icon: TrendingUp },
-    { name: 'Virtual CFO', path: '/cfo', icon: Sparkles },
-    { name: 'GSTR-2B', path: '/reconcile', icon: FileText },
-    { name: 'Bank Stmts', path: '/bank-statements', icon: Banknote },
-    { name: 'Bank Match', path: '/bank-reconcile', icon: Network },
-    { name: isBusiness ? 'Businesses' : 'Clients', path: '/clients', icon: Building2 },
-    { name: 'Audit Logs', path: '/audit-logs', icon: ShieldAlert },
-    { name: 'Wallet & Billing', path: '/wallet', icon: CreditCard },
-    { name: 'Settings', path: '/settings', icon: Settings },
+    { name: 'Tax Liability', path: '/app/tax-liability', icon: TrendingUp },
+    { name: 'Virtual CFO', path: '/app/cfo', icon: Sparkles },
+    { name: 'GSTR-2B', path: '/app/reconcile', icon: FileText },
+    { name: 'Bank Stmts', path: '/app/bank-statements', icon: Banknote },
+    { name: 'Bank Match', path: '/app/bank-reconcile', icon: Network },
+    { name: isBusiness ? 'Businesses' : 'Clients', path: '/app/clients', icon: Building2 },
+    { name: 'Audit Logs', path: '/app/audit-logs', icon: ShieldAlert },
+    { name: 'Wallet & Billing', path: '/app/wallet', icon: CreditCard },
+    { name: 'Settings', path: '/app/settings', icon: Settings },
   ];
 
   return (
@@ -185,7 +185,7 @@ export default function Layout() {
                 </div>
                 <div className="p-1.5 border-t border-border bg-bg-sunken/50">
                   <Link 
-                    to="/clients" 
+                    to="/app/clients" 
                     onClick={() => setClientMenuOpen(false)}
                     className="w-full text-left px-3 py-2 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-surface rounded-md transition-colors flex items-center gap-2"
                   >
@@ -248,7 +248,7 @@ export default function Layout() {
             {/* Removed capitalize for better aesthetics */}
           </div>
           <div className="flex items-center gap-4">
-            <Link to="/scan" className="btn-primary !h-8 !text-xs !rounded-full px-4 shadow-accent/20">
+            <Link to="/app/scan" className="btn-primary !h-8 !text-xs !rounded-full px-4 shadow-accent/20">
               <ScanLine className="w-3.5 h-3.5" /> Quick Scan
             </Link>
             {credits !== null && (
@@ -347,7 +347,7 @@ export default function Layout() {
                     ))
                   )}
                   <Link 
-                    to="/clients" 
+                    to="/app/clients" 
                     onClick={() => setClientMenuOpen(false)}
                     className="w-full mt-4 flex items-center justify-center gap-2 p-4 rounded-xl border border-dashed border-border text-text-secondary font-medium active:bg-bg-sunken"
                   >

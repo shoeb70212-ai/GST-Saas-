@@ -26,7 +26,7 @@ test.beforeAll(async () => {
 // 1. Auth Guard
 // ══════════════════════════════════════════════
 test.describe('1 · Auth Guard', () => {
-  const protectedRoutes = ['/dashboard', '/scan', '/invoices', '/reconcile', '/clients', '/settings', '/wallet', '/cfo'];
+  const protectedRoutes = ['/app/dashboard', '/app/scan', '/app/invoices', '/app/reconcile', '/app/clients', '/app/settings', '/app/wallet', '/app/cfo'];
 
   for (const route of protectedRoutes) {
     test(`${route} redirects unauthenticated user to /auth`, async ({ page }) => {
@@ -79,7 +79,7 @@ test.describe('2 · Core Scan Flow', () => {
       });
     });
 
-    await page.goto('/scan');
+    await page.goto('/app/scan');
     await page.waitForLoadState('networkidle');
 
     const fileInput = page.locator('input[type="file"]').first();
@@ -120,7 +120,7 @@ test.describe('2 · Core Scan Flow', () => {
       });
     });
 
-    await page.goto('/scan');
+    await page.goto('/app/scan');
     await page.waitForLoadState('networkidle');
 
     const fileInput = page.locator('input[type="file"]').first();
@@ -162,7 +162,7 @@ test.describe('3 · Zero Credit Guard', () => {
       });
     });
 
-    await page.goto('/scan');
+    await page.goto('/app/scan');
     await page.waitForLoadState('networkidle');
 
     const fileInput = page.locator('input[type="file"]').first();
@@ -195,7 +195,7 @@ test.describe('3 · Zero Credit Guard', () => {
 test.describe('4 · Saved Invoices Page', () => {
   test('saved invoices page renders table or empty state — no crash', async ({ page }) => {
     await loginViaSessionInjection(page, sharedSession);
-    await page.goto('/invoices');
+    await page.goto('/app/invoices');
     await page.waitForLoadState('networkidle');
 
     // Either a table or empty state must render
@@ -211,7 +211,7 @@ test.describe('4 · Saved Invoices Page', () => {
 
   test('export Excel button does not crash when invoices present', async ({ page }) => {
     await loginViaSessionInjection(page, sharedSession);
-    await page.goto('/invoices');
+    await page.goto('/app/invoices');
     await page.waitForLoadState('networkidle');
 
     const exportBtn = page
@@ -249,7 +249,7 @@ test.describe('5 · GSTR-2B Reconciliation', () => {
       });
     });
 
-    await page.goto('/reconcile');
+    await page.goto('/app/reconcile');
     await page.waitForLoadState('networkidle');
 
     const fileInput = page.locator('input[type="file"]').first();
@@ -293,7 +293,7 @@ test.describe('6 · Wallet Purchase Flow', () => {
       });
     });
 
-    await page.goto('/wallet');
+    await page.goto('/app/wallet');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 

@@ -18,7 +18,7 @@ test.beforeAll(async () => {
 test.describe('Scan Page — File Validation', () => {
   test.beforeEach(async ({ page }) => {
     await loginViaSessionInjection(page, sharedSession);
-    await page.goto('/scan');
+    await page.goto('/app/scan');
     await page.waitForLoadState('networkidle');
   });
 
@@ -169,7 +169,7 @@ test.describe('Scan Page — Save to Cloud', () => {
       });
     });
 
-    await page.goto('/scan');
+    await page.goto('/app/scan');
     await page.waitForLoadState('networkidle');
 
     const fileInput = page.locator('input[type="file"]').first();

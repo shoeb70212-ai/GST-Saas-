@@ -186,7 +186,7 @@ export default function DashboardPage() {
              <button
                onClick={() => {
                  localStorage.setItem('accountType', 'firm');
-                 window.location.href = '/clients'; // Redirect to clients setup
+                 window.location.href = '/app/clients'; // Redirect to clients setup
                }}
                className="card p-8 flex flex-col items-start text-left hover:border-accent hover:shadow-glow group transition-all"
              >
@@ -248,7 +248,7 @@ export default function DashboardPage() {
              <p className="text-text-secondary max-w-md mb-6">
                Please select a workspace from the sidebar dropdown to view its specific dashboard metrics and invoices.
              </p>
-             <Link to="/clients" className="btn-primary">Manage {localStorage.getItem('accountType') === 'business' ? 'Businesses' : 'Clients'}</Link>
+             <Link to="/app/clients" className="btn-primary">Manage {localStorage.getItem('accountType') === 'business' ? 'Businesses' : 'Clients'}</Link>
           </div>
         )}
       </div>
@@ -399,7 +399,7 @@ export default function DashboardPage() {
             <p className="text-sm text-text-secondary max-w-md mb-4">
               Upload your GSTR-1 Excel to instantly calculate your cash liability against eligible ITC with carry-forward support.
             </p>
-            <Link to="/tax-liability" className="btn-primary inline-flex items-center gap-2">
+            <Link to="/app/tax-liability" className="btn-primary inline-flex items-center gap-2">
               Open Predictor <TrendingUp className="w-4 h-4" />
             </Link>
           </div>
@@ -461,7 +461,7 @@ export default function DashboardPage() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold text-text-primary">Recent Invoices</h2>
-          <Link to="/invoices" className="text-sm text-accent hover:text-accent-hover transition-colors font-medium">View all →</Link>
+          <Link to="/app/invoices" className="text-sm text-accent hover:text-accent-hover transition-colors font-medium">View all →</Link>
         </div>
 
         <div className="card p-0 overflow-hidden">
@@ -502,7 +502,7 @@ export default function DashboardPage() {
                       <div className="flex flex-col items-center justify-center gap-2">
                         <FileText className="w-8 h-8 opacity-50" />
                         <p>No invoices processed for this client yet.</p>
-                        <Link to="/scan" className="text-accent hover:underline mt-2">Upload your first invoice</Link>
+                        <Link to="/app/scan" className="text-accent hover:underline mt-2">Upload your first invoice</Link>
                       </div>
                     </td>
                   </tr>

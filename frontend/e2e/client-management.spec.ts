@@ -16,7 +16,7 @@ test.beforeAll(async () => {
 test.describe('Client Management Page', () => {
   test.beforeEach(async ({ page }) => {
     await loginViaSessionInjection(page, sharedSession);
-    await page.goto('/clients');
+    await page.goto('/app/clients');
     await page.waitForLoadState('networkidle');
   });
 
@@ -134,7 +134,7 @@ test.describe('Client Management Page', () => {
 test.describe('Client Switcher — Data Isolation', () => {
   test('switching clients updates the active client badge in the sidebar', async ({ page }) => {
     await loginViaSessionInjection(page, sharedSession);
-    await page.goto('/dashboard');
+    await page.goto('/app/dashboard');
     await page.waitForLoadState('networkidle');
 
     // Find the client switcher button in the sidebar
@@ -183,7 +183,7 @@ test.describe('Client Switcher — Data Isolation', () => {
 
   test('invoices page shows empty state after switching to a new client with no invoices', async ({ page }) => {
     await loginViaSessionInjection(page, sharedSession);
-    await page.goto('/invoices');
+    await page.goto('/app/invoices');
     await page.waitForLoadState('networkidle');
 
     // No crash

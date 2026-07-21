@@ -18,7 +18,7 @@ test.beforeAll(async () => {
 test.describe('Bank Reconciliation Page', () => {
   test.beforeEach(async ({ page }) => {
     await loginViaSessionInjection(page, sharedSession);
-    await page.goto('/bank-reconcile');
+    await page.goto('/app/bank-reconcile');
     await page.waitForLoadState('networkidle');
   });
 
