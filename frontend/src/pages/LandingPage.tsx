@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import {
-  ArrowRight, ShieldCheck, Network, Banknote, CheckCircle2,
-  FileCheck, Layers, Upload, FileSpreadsheet, Lock, Menu, X,
-  Plus, Minus, Building2, Smartphone
+  ArrowRight, ShieldCheck, CheckCircle2,
+  FileCheck, Lock, Menu, X,
+  Plus, Minus, Building2
 } from 'lucide-react';
 import LandingHero from '../components/LandingHero';
-import HeroAnimation from '../components/HeroAnimation';
-import { BankStatementDemo, ReconciliationDemo } from '../components/LandingFeatures';
+import LandingStory from '../components/LandingStory';
 import KhataLensIcon from '../components/KhataLensIcon';
 import {
   CREDIT_COSTS,
@@ -25,6 +24,7 @@ const ease = [0.22, 1, 0.36, 1] as const;
 
 function FaqItem({ question, answer }: { question: string; answer: string }) {
   const [open, setOpen] = useState(false);
+  const reduceMotion = useReducedMotion();
   return (
     <div className="border border-border rounded-xl overflow-hidden">
       <button
@@ -40,10 +40,10 @@ function FaqItem({ question, answer }: { question: string; answer: string }) {
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
+            initial={reduceMotion ? false : { height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.28, ease }}
+            exit={reduceMotion ? undefined : { height: 0, opacity: 0 }}
+            transition={{ duration: reduceMotion ? 0 : 0.28, ease }}
             className="overflow-hidden"
           >
             <p className="px-5 pb-5 text-text-secondary leading-relaxed border-t border-border pt-4 text-sm">
@@ -71,7 +71,7 @@ const faqData = [
   },
   {
     question: "Can I manage multiple clients from one account?",
-    answer: "Yes. Create client workspaces, each with its own GSTIN and invoice history. Switch context in one click from the sidebar — nothing from one client bleeds into another."
+    answer: "Yes. Create client workspaces, each with its own GSTIN and invoice history. Switch context in one click from the sidebar — nothing from one client bleeds into another. Clients can also drop bills via the collaboration portal when you share a link."
   },
   {
     question: "Which accounting software can I export to?",
@@ -91,49 +91,10 @@ const faqData = [
   }
 ];
 
-const workflowSteps = [
-  { num: '01', icon: Upload, title: 'Upload', desc: 'PDFs, JPGs, PNGs — one file or a batch ZIP.' },
-  { num: '02', icon: FileCheck, title: 'Extract', desc: 'GSTIN, HSN, line items, and tax totals — flagged when unsure.' },
-  { num: '03', icon: Network, title: 'Reconcile', desc: 'Match against GSTR-2B and bank statements.' },
-  { num: '04', icon: FileSpreadsheet, title: 'Export', desc: 'Tally-ready Excel or XML when you are ready to file.' },
-];
-
-const capabilities = [
-  {
-    icon: FileCheck,
-    title: 'Invoice extraction',
-    body: 'Line items, HSN, CGST/SGST/IGST, and totals with confidence flags for review.',
-  },
-  {
-    icon: Layers,
-    title: 'Multi-client desk',
-    body: 'Isolated workspaces per GSTIN. Switch clients without mixing data.',
-  },
-  {
-    icon: Banknote,
-    title: 'Bank statements',
-    body: 'Pull transactions from PDF or spreadsheet statements for matching.',
-  },
-  {
-    icon: Network,
-    title: 'GSTR-2B & bank match',
-    body: 'Flag unmatched ITC and payment gaps before you file.',
-  },
-  {
-    icon: FileSpreadsheet,
-    title: 'Tally-ready export',
-    body: 'Excel and XML mapped to purchase voucher import formats.',
-  },
-  {
-    icon: Smartphone,
-    title: 'Client uploads',
-    body: 'Clients can send bills via portal upload; WhatsApp capture is available where configured.',
-  },
-];
-
 export default function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -202,8 +163,7 @@ export default function LandingPage() {
           </Link>
 
           <div className="hidden md:flex items-center gap-7">
-            <a href="#workflow" className="text-sm text-text-secondary hover:text-text-primary transition-colors font-medium">Workflow</a>
-            <a href="#features" className="text-sm text-text-secondary hover:text-text-primary transition-colors font-medium">Features</a>
+            <a href="#story" className="text-sm text-text-secondary hover:text-text-primary transition-colors font-medium">Story</a>
             <a href="#pricing" className="text-sm text-text-secondary hover:text-text-primary transition-colors font-medium">Pricing</a>
             <a href="#faq" className="text-sm text-text-secondary hover:text-text-primary transition-colors font-medium">FAQ</a>
             <Link to="/auth" className="text-sm font-medium text-text-primary hover:text-accent transition-colors">
@@ -227,15 +187,14 @@ export default function LandingPage() {
         <AnimatePresence>
           {mobileMenuOpen && (
             <motion.div
-              initial={{ opacity: 0, height: 0 }}
+              initial={reduceMotion ? false : { opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.25, ease }}
+              exit={reduceMotion ? undefined : { opacity: 0, height: 0 }}
+              transition={{ duration: reduceMotion ? 0 : 0.25, ease }}
               className="md:hidden bg-bg-surface border-b border-border overflow-hidden"
             >
               <div className="max-w-content mx-auto px-6 py-5 flex flex-col gap-3">
-                <a href="#workflow" onClick={() => setMobileMenuOpen(false)} className="text-text-primary font-medium py-2 border-b border-border">Workflow</a>
-                <a href="#features" onClick={() => setMobileMenuOpen(false)} className="text-text-primary font-medium py-2 border-b border-border">Features</a>
+                <a href="#story" onClick={() => setMobileMenuOpen(false)} className="text-text-primary font-medium py-2 border-b border-border">Story</a>
                 <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="text-text-primary font-medium py-2 border-b border-border">Pricing</a>
                 <a href="#faq" onClick={() => setMobileMenuOpen(false)} className="text-text-primary font-medium py-2 border-b border-border">FAQ</a>
                 <Link to="/auth" onClick={() => setMobileMenuOpen(false)} className="text-text-primary font-medium py-2 border-b border-border">Sign In</Link>
@@ -259,100 +218,11 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Workflow — Motion 3: stagger once on scroll */}
-      <section id="workflow" className="py-14 md:py-20 px-6" aria-labelledby="workflow-heading">
-        <div className="max-w-content mx-auto">
-          <div className="mb-8 max-w-xl">
-            <h2 id="workflow-heading" className="text-2xl md:text-3xl font-display font-semibold text-text-primary mb-2 tracking-tight">
-              Four steps on the desk
-            </h2>
-            <p className="text-text-secondary text-base md:text-lg">
-              From a photograph of a bill to a filing-ready export — without reformatting spreadsheets by hand.
-            </p>
-          </div>
-
-          <motion.ol
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: "-60px" }}
-            variants={{
-              hidden: {},
-              visible: { transition: { staggerChildren: 0.08 } }
-            }}
-            className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 list-none p-0 m-0"
-          >
-            {workflowSteps.map((step) => (
-              <motion.li
-                key={step.num}
-                variants={{
-                  hidden: { opacity: 0, y: 12 },
-                  visible: { opacity: 1, y: 0, transition: { duration: 0.45, ease } }
-                }}
-                className="border-t border-border pt-5"
-              >
-                <div className="text-xs font-mono text-text-disabled mb-3">{step.num}</div>
-                <step.icon className="w-5 h-5 text-text-secondary mb-3" aria-hidden="true" />
-                <h3 className="font-display text-xl font-semibold text-text-primary mb-2">{step.title}</h3>
-                <p className="text-sm text-text-secondary leading-relaxed">{step.desc}</p>
-              </motion.li>
-            ))}
-          </motion.ol>
-        </div>
-      </section>
-
-      {/* Features — list rhythm, not card spam */}
-      <section id="features" className="py-14 md:py-20 px-6 bg-bg-surface border-y border-border" aria-labelledby="features-heading">
-        <div className="max-w-content mx-auto">
-          <div className="mb-9 max-w-xl">
-            <h2 id="features-heading" className="text-2xl md:text-3xl font-display font-semibold text-text-primary mb-2 tracking-tight">
-              Built for CA practice work
-            </h2>
-            <p className="text-text-secondary text-base md:text-lg">
-              Core tools stay available. AI tasks spend org wallet credits.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-8 mb-14">
-            {capabilities.map((cap) => (
-              <div key={cap.title} className="border-t border-border pt-4">
-                <cap.icon className="w-4 h-4 text-text-secondary mb-2.5" aria-hidden="true" />
-                <h3 className="font-display text-base font-semibold text-text-primary mb-1.5">{cap.title}</h3>
-                <p className="text-sm text-text-secondary leading-relaxed">{cap.body}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Product demos — below fold; scan animation + match samples */}
-          <div className="space-y-8">
-            <div>
-              <h3 className="font-display text-lg font-semibold mb-1.5 text-text-primary">Scan desk</h3>
-              <p className="text-sm text-text-secondary mb-3 max-w-lg">
-                Bills in, structured fields out — flagged when extraction is unsure.
-              </p>
-              <div className="border border-border bg-bg-base overflow-hidden max-w-3xl">
-                <HeroAnimation />
-              </div>
-            </div>
-            <div className="grid lg:grid-cols-2 gap-8">
-              <div>
-                <h3 className="font-display text-lg font-semibold mb-3 text-text-primary">Bank statement extract</h3>
-                <div className="border border-border bg-bg-base p-4 overflow-hidden">
-                  <BankStatementDemo />
-                </div>
-              </div>
-              <div>
-                <h3 className="font-display text-lg font-semibold mb-3 text-text-primary">Invoice ↔ bank match</h3>
-                <div className="border border-border bg-bg-base p-4 overflow-hidden">
-                  <ReconciliationDemo />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* Full SaaS narrative — scan → 2B → bank → practice */}
+      <LandingStory />
 
       {/* Pricing — prepaid packs, honest enterprise */}
-      <section id="pricing" className="py-14 md:py-20 px-6" aria-labelledby="pricing-heading">
+      <section id="pricing" className="py-14 md:py-20 px-6 bg-bg-surface border-y border-border" aria-labelledby="pricing-heading">
         <div className="max-w-narrow mx-auto">
           <div className="text-center mb-9">
             <h2 id="pricing-heading" className="text-2xl md:text-3xl font-display font-semibold text-text-primary mb-2 tracking-tight">
@@ -365,7 +235,7 @@ export default function LandingPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {/* Starter */}
-            <div className="bg-bg-surface rounded-xl p-7 border border-border">
+            <div className="bg-bg-base rounded-xl p-7 border border-border">
               <div className="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-3">{starterPack.shortName}</div>
               <div className="flex items-baseline gap-2 mb-1">
                 <span className="text-3xl font-display font-semibold text-text-primary font-mono">{formatInr(starterPack.priceInr)}</span>
@@ -393,7 +263,7 @@ export default function LandingPage() {
             </div>
 
             {/* Pro — copper border / CTA only */}
-            <div className="relative bg-bg-surface rounded-xl p-7 border-2 border-accent">
+            <div className="relative bg-bg-base rounded-xl p-7 border-2 border-accent">
               <div className="flex items-center justify-between mb-3">
                 <div className="text-xs font-semibold uppercase tracking-wider text-accent">{proPack.shortName}</div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-accent bg-accent-subtle px-2 py-0.5 rounded-md">
@@ -426,7 +296,7 @@ export default function LandingPage() {
             </div>
 
             {/* Enterprise */}
-            <div className="bg-bg-surface rounded-xl p-7 border border-border">
+            <div className="bg-bg-base rounded-xl p-7 border border-border">
               <div className="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-3">Enterprise</div>
               <div className="mb-1">
                 <span className="text-3xl font-display font-semibold text-text-primary">Custom</span>
@@ -461,7 +331,7 @@ export default function LandingPage() {
       </section>
 
       {/* FAQ */}
-      <section id="faq" className="py-14 md:py-20 px-6 bg-bg-surface border-t border-border" aria-labelledby="faq-heading">
+      <section id="faq" className="py-14 md:py-20 px-6" aria-labelledby="faq-heading">
         <div className="max-w-prose mx-auto">
           <div className="mb-7">
             <h2 id="faq-heading" className="text-2xl md:text-3xl font-display font-semibold text-text-primary mb-2 tracking-tight">
@@ -482,7 +352,7 @@ export default function LandingPage() {
       </section>
 
       {/* Final CTA + footer */}
-      <footer className="bg-bg-base border-t border-border">
+      <footer className="bg-bg-surface border-t border-border">
         <div className="py-16 md:py-20 px-6 text-center">
           <div className="w-12 h-12 mx-auto rounded-xl bg-accent flex items-center justify-center mb-6">
             <KhataLensIcon size={24} className="text-white" />
@@ -512,7 +382,7 @@ export default function LandingPage() {
               <span className="font-display font-semibold text-text-primary">KhataLens</span>
             </div>
             <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-text-secondary">
-              <a href="#features" className="hover:text-text-primary transition-colors">Features</a>
+              <a href="#story" className="hover:text-text-primary transition-colors">Story</a>
               <a href="#pricing" className="hover:text-text-primary transition-colors">Pricing</a>
               <Link to="/pricing" className="hover:text-text-primary transition-colors">Credit packs</Link>
               <a href="#faq" className="hover:text-text-primary transition-colors">FAQ</a>
@@ -525,16 +395,6 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
-
-      <style>{`
-        @media (prefers-reduced-motion: reduce) {
-          *, *::before, *::after {
-            animation-duration: 0.01ms !important;
-            animation-iteration-count: 1 !important;
-            transition-duration: 0.01ms !important;
-          }
-        }
-      `}</style>
     </div>
   );
 }

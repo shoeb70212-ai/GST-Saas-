@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 
@@ -10,6 +10,8 @@ const ease = [0.22, 1, 0.36, 1] as const;
  * Not a two-column “copy left / icon right” SaaS template.
  */
 export default function LandingHero() {
+  const reduceMotion = useReducedMotion();
+
   return (
     <section
       className="relative min-h-[100svh] flex flex-col justify-end sm:justify-center overflow-hidden"
@@ -29,9 +31,9 @@ export default function LandingHero() {
         {/* Ledger ruling — hairlines across the full plane */}
         <motion.div
           className="absolute inset-0"
-          initial={{ opacity: 0 }}
+          initial={reduceMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 1.2, ease, delay: 0.05 }}
+          transition={{ duration: reduceMotion ? 0 : 1.2, ease, delay: reduceMotion ? 0 : 0.05 }}
           style={{
             backgroundImage:
               'repeating-linear-gradient(to bottom, transparent 0, transparent 35px, rgba(20, 22, 20, 0.07) 35px, rgba(20, 22, 20, 0.07) 36px)',
@@ -43,9 +45,9 @@ export default function LandingHero() {
         <motion.div
           className="absolute top-0 bottom-0 origin-top"
           style={{ left: 'clamp(1.5rem, 9vw, 6.25rem)' }}
-          initial={{ scaleY: 0, opacity: 0 }}
+          initial={reduceMotion ? false : { scaleY: 0, opacity: 0 }}
           animate={{ scaleY: 1, opacity: 1 }}
-          transition={{ duration: 0.95, ease, delay: 0.18 }}
+          transition={{ duration: reduceMotion ? 0 : 0.95, ease, delay: reduceMotion ? 0 : 0.18 }}
         >
           <div className="absolute inset-y-0 left-0 w-px bg-[rgba(20,22,20,0.18)]" />
           <div className="absolute inset-y-0 left-[3px] w-px bg-accent/40" />
@@ -55,20 +57,20 @@ export default function LandingHero() {
         <motion.div
           className="absolute left-0 right-0 h-px bg-[rgba(20,22,20,0.1)] origin-left"
           style={{ top: '4.75rem' }}
-          initial={{ scaleX: 0 }}
+          initial={reduceMotion ? false : { scaleX: 0 }}
           animate={{ scaleX: 1 }}
-          transition={{ duration: 0.8, ease, delay: 0.25 }}
+          transition={{ duration: reduceMotion ? 0 : 0.8, ease, delay: reduceMotion ? 0 : 0.25 }}
         />
 
         {/* Register / crop marks — precision, not decoration spam */}
-        <RegisterMarks />
+        <RegisterMarks reduceMotion={!!reduceMotion} />
 
         {/* Folio mark */}
         <motion.p
           className="absolute top-[5.15rem] right-[clamp(1rem,4vw,2.5rem)] font-mono text-[10px] tracking-[0.28em] uppercase text-text-disabled"
-          initial={{ opacity: 0 }}
+          initial={reduceMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.7 }}
+          transition={{ duration: reduceMotion ? 0 : 0.5, delay: reduceMotion ? 0 : 0.7 }}
         >
           GST · LEDGER
         </motion.p>
@@ -76,9 +78,9 @@ export default function LandingHero() {
         {/* Oversized copper wax seal — bleeds off lower-right, fully visible */}
         <motion.div
           className="absolute -right-[12%] sm:-right-[6%] md:-right-[2%] bottom-[-8%] sm:bottom-[-4%] md:top-[38%] md:bottom-auto md:-translate-y-1/2 w-[min(88vw,26rem)] sm:w-[min(70vw,32rem)] md:w-[min(48vw,38rem)] lg:w-[40rem] aspect-square"
-          initial={{ opacity: 0, scale: 1.14, rotate: -8 }}
+          initial={reduceMotion ? false : { opacity: 0, scale: 1.14, rotate: -8 }}
           animate={{ opacity: 1, scale: 1, rotate: -3 }}
-          transition={{ duration: 1.15, ease, delay: 0.1 }}
+          transition={{ duration: reduceMotion ? 0 : 1.15, ease, delay: reduceMotion ? 0 : 0.1 }}
         >
           <CopperSeal />
         </motion.div>
@@ -110,9 +112,9 @@ export default function LandingHero() {
           <motion.p
             className="font-display font-semibold text-text-primary leading-[0.88] tracking-[-0.035em] mb-7 sm:mb-8"
             style={{ fontSize: 'clamp(3.75rem, 13.5vw, 8.25rem)' }}
-            initial={{ opacity: 0, y: 22 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 22 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.75, ease, delay: 0.22 }}
+            transition={{ duration: reduceMotion ? 0 : 0.75, ease, delay: reduceMotion ? 0 : 0.22 }}
           >
             KhataLens
           </motion.p>
@@ -120,27 +122,27 @@ export default function LandingHero() {
           <motion.h1
             id="hero-heading"
             className="font-display text-[clamp(1.25rem,2.8vw,1.85rem)] font-medium text-text-primary tracking-[-0.02em] leading-[1.25] mb-4 max-w-lg"
-            initial={{ opacity: 0, y: 14 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease, delay: 0.34 }}
+            transition={{ duration: reduceMotion ? 0 : 0.6, ease, delay: reduceMotion ? 0 : 0.34 }}
           >
             Invoice scan to GST reconciliation — for Indian CA desks.
           </motion.h1>
 
           <motion.p
             className="text-[0.95rem] sm:text-lg text-text-secondary mb-8 leading-relaxed max-w-md"
-            initial={{ opacity: 0, y: 10 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.55, ease, delay: 0.42 }}
+            transition={{ duration: reduceMotion ? 0 : 0.55, ease, delay: reduceMotion ? 0 : 0.42 }}
           >
             Extract bill data, match GSTR-2B and bank lines, export to Tally. Pay with prepaid credits — only when you run AI work.
           </motion.p>
 
           <motion.div
             className="flex flex-col sm:flex-row gap-3 mb-5"
-            initial={{ opacity: 0, y: 8 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease, delay: 0.5 }}
+            transition={{ duration: reduceMotion ? 0 : 0.5, ease, delay: reduceMotion ? 0 : 0.5 }}
           >
             <Link
               to="/auth"
@@ -150,18 +152,18 @@ export default function LandingHero() {
               Start free <ArrowRight className="w-4 h-4" aria-hidden="true" />
             </Link>
             <a
-              href="#workflow"
+              href="#story"
               className="btn-secondary !h-12 !px-7 !text-base !rounded-lg"
             >
-              See the workflow
+              Read the month-end story
             </a>
           </motion.div>
 
           <motion.p
             className="font-mono text-[10px] sm:text-[11px] tracking-[0.18em] text-text-disabled uppercase"
-            initial={{ opacity: 0 }}
+            initial={reduceMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.62 }}
+            transition={{ duration: reduceMotion ? 0 : 0.5, delay: reduceMotion ? 0 : 0.62 }}
           >
             Starter credits on signup · No card · Credits never expire
           </motion.p>
@@ -171,7 +173,7 @@ export default function LandingHero() {
   );
 }
 
-function RegisterMarks() {
+function RegisterMarks({ reduceMotion }: { reduceMotion: boolean }) {
   const arm = 'w-3 h-px bg-[rgba(20,22,20,0.35)]';
   const stem = 'h-3 w-px bg-[rgba(20,22,20,0.35)]';
   const corners = [
@@ -183,9 +185,9 @@ function RegisterMarks() {
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
+      initial={reduceMotion ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.6, delay: 0.55 }}
+      transition={{ duration: reduceMotion ? 0 : 0.6, delay: reduceMotion ? 0 : 0.55 }}
     >
       {corners.map(({ pos, rot }) => (
         <div key={pos} className={`absolute ${pos} ${rot}`}>
