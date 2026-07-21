@@ -19,7 +19,7 @@ The highest remaining risks are **wallet integrity and monetization trust bounda
 4. Batch ZIP charged **before** zip-bomb validation.
 5. Signup trigger still inserted dropped `profiles.credits` (phase 54).
 
-**This audit sprint implemented fixes for those P0/P1 items** (see §8). Remaining work is RBAC product decisions, public-upload hardening, page modularization, and recon grid virtualization.
+**This audit sprint implemented fixes for those P0/P1 items** (see §8). Remaining work is RBAC product decisions, public-upload hardening, recon grid virtualization, and leftover P2 docs/graph/`/app/*` shell.
 
 Knowledge graph was empty at audit start (`build_or_update_graph` hit a DB lock); findings are evidence-based from migrations + source via parallel domain audits.
 
@@ -172,7 +172,7 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 | F4 | P1 | Unbounded clients invoice id fetch | `ClientsPage.tsx` | Aggregate RPC / count |
 | F5 | P1 | Recon period `select('*')` + dual map, no virtualization | `ReconciliationPage.tsx` | Column project + virtualize |
 | F6 | P1 | `/admin` UI has no client role gate | `App.tsx` | Soft gate + API enforce |
-| F7 | P2 | Mega-pages Scan (~1055), Settings (~858) | pages | Split modules |
+| F7 | P2 | Mega-pages Scan (~1055), Settings (~858) | pages | **Done:** `pages/scan/*` + `pages/settings/*` (hooks + section components); thin re-exports |
 | F8 | P2 | Docs still describe ProGate | monetization docs | Update docs |
 
 ### 4.5 Security & RLS
@@ -216,8 +216,8 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 
 ### P2 (later)
 
-1. ~~Extract scan routes; env CORS.~~ **Partial** (`scan_routes.py`, `CORS_ORIGINS`, `credits.INVOICE_SCAN`) — ScanPage/Settings split still open.
-2. Split ScanPage / SettingsPage.
+1. ~~Extract scan routes; env CORS.~~ **Done** (`scan_routes.py`, `CORS_ORIGINS`, `credits.INVOICE_SCAN`).
+2. ~~Split ScanPage / SettingsPage.~~ **Done** — `frontend/src/pages/scan/` (`useScanWorkflow`, upload/grid panels, InvoiceRow, save helpers) and `frontend/src/pages/settings/` (`useSettings`, nav + per-tab components); auto-save `clientId` binding preserved.
 3. ~~Centralize remaining costs in `backend/credits.py`.~~ **Done** this pass — bank/deep-match/batch helpers + `Depends(get_current_user)` on batch/bank/reconcile/sales/usage-logs/bank_reconcile.
 4. Update stale monetization / ProGate docs (partial: CREDITS_DOCUMENTATION points at `credits.py`).
 5. Rebuild code-review-graph DB (was locked/empty during audit) — deferred.
@@ -266,6 +266,7 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 | Wallet ErrorState + limit + no profile.credits fallback | `frontend/src/pages/WalletPage.tsx` |
 | Virtual CFO ErrorState | `frontend/src/pages/VirtualCfoPage.tsx` |
 | Deep Match cost copy | `frontend/src/pages/ReconciliationPage.tsx` |
+| ScanPage / SettingsPage modularization | `frontend/src/pages/scan/*`, `frontend/src/pages/settings/*` |
 
 **Not committed/pushed by auditor** — parent/user should review, run tests, apply migration, then commit.
 
