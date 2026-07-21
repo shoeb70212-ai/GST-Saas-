@@ -1,5 +1,6 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { supabase } from '../lib/supabase';
 import { useClient } from '../lib/ClientContext';
 import { getApiUrl } from '../lib/api';
@@ -36,7 +37,7 @@ export default function ReconciliationPage() {
       if (!activeClientId) return [];
       const { data, error } = await supabase
         .from('invoices')
-        .select('*')
+        .select('id, supplier_gstin, invoice_number, invoice_date, taxable_amount, recon_status, error_message')
         .eq('client_id', activeClientId)
         .eq('recon_period', period);
       if (error) throw error;
@@ -51,7 +52,7 @@ export default function ReconciliationPage() {
       if (!activeClientId) return [];
       const { data, error } = await supabase
         .from('gstr2b_records')
-        .select('*')
+        .select('id, supplier_gstin, invoice_number, invoice_date, taxable_value')
         .eq('client_id', activeClientId)
         .eq('period', period);
       if (error) throw error;
@@ -141,6 +142,40 @@ export default function ReconciliationPage() {
   const [isDeepMatching, setIsDeepMatching] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ supplier_gstin: '', invoice_number: '' });
+  const [isNarrow, setIsNarrow] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)').matches : false
+  );
+
+  const mobileScrollRef = useRef<HTMLDivElement>(null);
+  const desktopScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const onChange = () => setIsNarrow(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  const mobileVirtualizer = useVirtualizer({
+    count: isNarrow ? tableData.length : 0,
+    getScrollElement: () => mobileScrollRef.current,
+    estimateSize: () => 120,
+    overscan: 8,
+  });
+
+  const desktopVirtualizer = useVirtualizer({
+    count: !isNarrow ? tableData.length : 0,
+    getScrollElement: () => desktopScrollRef.current,
+    estimateSize: () => 56,
+    overscan: 12,
+  });
+
+  const desktopVirtualRows = desktopVirtualizer.getVirtualItems();
+  const desktopPaddingTop = desktopVirtualRows.length > 0 ? desktopVirtualRows[0].start : 0;
+  const desktopPaddingBottom =
+    desktopVirtualRows.length > 0
+      ? desktopVirtualizer.getTotalSize() - desktopVirtualRows[desktopVirtualRows.length - 1].end
+      : 0;
 
   const handleEditClick = (row: any) => {
     setEditingId(row.id);
@@ -335,158 +370,200 @@ export default function ReconciliationPage() {
       {tableData.length > 0 && (
         <div className="card p-0 overflow-hidden shadow-sm">
           
-          {/* Mobile Card View */}
-          <div className="md:hidden flex flex-col p-4 gap-3 max-h-[65vh] overflow-y-auto custom-scrollbar">
-            {tableData.map(row => (
-              <div key={row.id} className="bg-bg-surface border border-border rounded-xl p-4 flex flex-col gap-3 shadow-sm">
-                <div className="flex justify-between items-start gap-2">
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <h3 className="font-semibold text-text-primary text-sm truncate">
-                      {row.supplier_gstin || 'No GSTIN'}
-                    </h3>
-                    <p className="text-xs text-text-secondary truncate mt-0.5">
-                      {row.invoice_number || 'No Inv#'} • {row.invoice_date || '-'}
-                    </p>
-                  </div>
-                  <div className="flex flex-col items-end shrink-0">
-                    <span className="font-mono font-bold text-text-primary text-sm">
-                      ₹{row.taxable_amount?.toFixed(2) || '0.00'}
-                    </span>
-                  </div>
-                </div>
-                
-                <div className="flex items-center justify-between pt-3 border-t border-border mt-1">
-                  <div>
-                    {row.status === 'matched' ? (
-                      <span className="badge bg-success-subtle text-success border border-success/20 text-[10px]">Matched</span>
-                    ) : row.status === 'mismatch' ? (
-                      <span className="badge bg-warning-subtle text-warning border border-warning/20 text-[10px]" title={row.error_message || "Mismatch"}>
-                        {row.error_message?.includes('Consolidation') ? 'Consolidation' : 'Mismatch'}
-                      </span>
-                    ) : row.status === 'missing_in_pr' ? (
-                      <span className="badge bg-accent/10 text-accent border border-accent/20 text-[10px]">Missing in PR</span>
-                    ) : (
-                      <span className="badge bg-error-subtle text-error border border-error/20 text-[10px]">Missing in 2B</span>
-                    )}
-                  </div>
-                  {row.status !== 'missing_in_pr' && row.status !== 'matched' && (
-                    <div className="flex gap-2">
-                      <button onClick={() => handleEditClick(row)} className="text-xs text-accent hover:underline flex items-center gap-1"><Edit2 className="w-3 h-3"/> Edit</button>
-                      <button onClick={() => handleAcknowledge(row.id)} className="text-xs text-success hover:underline flex items-center gap-1"><Check className="w-3 h-3"/> Acknowledge</button>
-                    </div>
-                  )}
-                </div>
-                {editingId === row.id && (
-                  <div className="mt-2 p-3 bg-bg-sunken rounded border border-border flex flex-col gap-2">
-                    <input 
-                      type="text" 
-                      placeholder="GSTIN"
-                      value={editForm.supplier_gstin}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, supplier_gstin: e.target.value }))}
-                      className="w-full px-2 py-1 bg-bg-surface border border-border rounded text-xs focus:border-accent outline-none"
-                    />
-                    <input 
-                      type="text" 
-                      placeholder="Invoice #"
-                      value={editForm.invoice_number}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, invoice_number: e.target.value }))}
-                      className="w-full px-2 py-1 bg-bg-surface border border-border rounded text-xs focus:border-accent outline-none"
-                    />
-                    <div className="flex justify-end gap-2 mt-1">
-                      <button onClick={() => setEditingId(null)} className="px-2 py-1 text-xs text-text-secondary hover:text-text-primary"><X className="w-4 h-4"/></button>
-                      <button onClick={handleSaveEdit} className="px-2 py-1 text-xs bg-accent text-white rounded"><Check className="w-4 h-4"/></button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Desktop Table View */}
-          <div className="hidden md:block overflow-x-auto" tabIndex={0} aria-label="Reconciliation data table" role="region">
-            <table className="w-full text-sm text-left">
-              <thead className="table-header">
-                <tr>
-                  <th scope="col" className="p-4">Vendor GSTIN</th>
-                  <th scope="col" className="p-4">Invoice #</th>
-                  <th scope="col" className="p-4">Date</th>
-                  <th scope="col" className="p-4 text-right">Taxable Amount</th>
-                  <th scope="col" className="p-4 text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {tableData.map((row) => (
-                  <tr key={row.id} className="hover:bg-bg-subtle transition-colors group">
-                    <td className="p-4 font-medium text-text-primary">
-                      {editingId === row.id ? (
-                        <input 
-                          type="text" 
-                          value={editForm.supplier_gstin}
-                          onChange={(e) => setEditForm(prev => ({ ...prev, supplier_gstin: e.target.value }))}
-                          className="w-full px-2 py-1 bg-bg-surface border border-border rounded text-xs focus:border-accent outline-none"
-                        />
-                      ) : (
-                        row.supplier_gstin || 'N/A'
-                      )}
-                    </td>
-                    <td className="p-4 font-mono text-text-secondary">
-                      {editingId === row.id ? (
-                        <input 
-                          type="text" 
-                          value={editForm.invoice_number}
-                          onChange={(e) => setEditForm(prev => ({ ...prev, invoice_number: e.target.value }))}
-                          className="w-full px-2 py-1 bg-bg-surface border border-border rounded text-xs focus:border-accent outline-none"
-                        />
-                      ) : (
-                        row.invoice_number || 'N/A'
-                      )}
-                    </td>
-                    <td className="p-4 font-mono text-text-secondary">{row.invoice_date || 'N/A'}</td>
-                    <td className="p-4 font-mono text-right font-medium">₹{row.taxable_amount?.toFixed(2) || '0.00'}</td>
-                    <td className="p-4 text-center relative">
-                      {editingId === row.id ? (
-                        <div className="flex items-center justify-center gap-2">
-                          <button onClick={handleSaveEdit} className="text-success hover:bg-success-subtle p-1 rounded transition-colors" title="Save">
-                            <Check className="w-4 h-4"/>
-                          </button>
-                          <button onClick={() => setEditingId(null)} className="text-error hover:bg-error-subtle p-1 rounded transition-colors" title="Cancel">
-                            <X className="w-4 h-4"/>
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-center gap-2">
-                          {row.status === 'matched' ? (
-                            <span className="badge bg-success-subtle text-success border border-success/20">Matched</span>
-                          ) : row.status === 'mismatch' ? (
-                            <span className="badge bg-warning-subtle text-warning border border-warning/20" title={row.error_message || "Mismatch"}>
-                              {row.error_message?.includes('Consolidation') ? (
-                                <span className="flex items-center gap-1 cursor-help"><AlertTriangle className="w-3 h-3"/> Grouped</span>
-                              ) : 'Mismatch'}
+          {/* Mobile Card View — windowed for 1k+ rows */}
+          {isNarrow && (
+            <div
+              ref={mobileScrollRef}
+              className="flex flex-col p-4 max-h-[65vh] overflow-y-auto custom-scrollbar"
+            >
+              <div
+                className="relative w-full"
+                style={{ height: `${mobileVirtualizer.getTotalSize()}px` }}
+              >
+                {mobileVirtualizer.getVirtualItems().map((virtualRow) => {
+                  const row = tableData[virtualRow.index];
+                  return (
+                    <div
+                      key={row.id}
+                      data-index={virtualRow.index}
+                      ref={mobileVirtualizer.measureElement}
+                      className="absolute left-0 top-0 w-full pb-3"
+                      style={{ transform: `translateY(${virtualRow.start}px)` }}
+                    >
+                      <div className="bg-bg-surface border border-border rounded-xl p-4 flex flex-col gap-3 shadow-sm">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <h3 className="font-semibold text-text-primary text-sm truncate">
+                              {row.supplier_gstin || 'No GSTIN'}
+                            </h3>
+                            <p className="text-xs text-text-secondary truncate mt-0.5">
+                              {row.invoice_number || 'No Inv#'} • {row.invoice_date || '-'}
+                            </p>
+                          </div>
+                          <div className="flex flex-col items-end shrink-0">
+                            <span className="font-mono font-bold text-text-primary text-sm">
+                              ₹{row.taxable_amount?.toFixed(2) || '0.00'}
                             </span>
-                          ) : row.status === 'missing_in_pr' ? (
-                            <span className="badge bg-accent/10 text-accent border border-accent/20">Missing in PR</span>
-                          ) : (
-                            <span className="badge bg-error-subtle text-error border border-error/20">Missing in 2B</span>
-                          )}
-                          
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center justify-between pt-3 border-t border-border mt-1">
+                          <div>
+                            {row.status === 'matched' ? (
+                              <span className="badge bg-success-subtle text-success border border-success/20 text-[10px]">Matched</span>
+                            ) : row.status === 'mismatch' ? (
+                              <span className="badge bg-warning-subtle text-warning border border-warning/20 text-[10px]" title={row.error_message || "Mismatch"}>
+                                {row.error_message?.includes('Consolidation') ? 'Consolidation' : 'Mismatch'}
+                              </span>
+                            ) : row.status === 'missing_in_pr' ? (
+                              <span className="badge bg-accent/10 text-accent border border-accent/20 text-[10px]">Missing in PR</span>
+                            ) : (
+                              <span className="badge bg-error-subtle text-error border border-error/20 text-[10px]">Missing in 2B</span>
+                            )}
+                          </div>
                           {row.status !== 'missing_in_pr' && row.status !== 'matched' && (
-                            <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 bg-bg-surface border border-border rounded shadow-sm p-1">
-                              <button onClick={() => handleEditClick(row)} className="text-accent hover:bg-accent/10 p-1 rounded" title="Edit PR Invoice">
-                                <Edit2 className="w-3 h-3"/>
-                              </button>
-                              <button onClick={() => handleAcknowledge(row.id)} className="text-success hover:bg-success-subtle p-1 rounded" title="Acknowledge & Force Match">
-                                <Check className="w-3 h-3"/>
-                              </button>
+                            <div className="flex gap-2">
+                              <button onClick={() => handleEditClick(row)} className="text-xs text-accent hover:underline flex items-center gap-1"><Edit2 className="w-3 h-3"/> Edit</button>
+                              <button onClick={() => handleAcknowledge(row.id)} className="text-xs text-success hover:underline flex items-center gap-1"><Check className="w-3 h-3"/> Acknowledge</button>
                             </div>
                           )}
                         </div>
-                      )}
-                    </td>
+                        {editingId === row.id && (
+                          <div className="mt-2 p-3 bg-bg-sunken rounded border border-border flex flex-col gap-2">
+                            <input 
+                              type="text" 
+                              placeholder="GSTIN"
+                              value={editForm.supplier_gstin}
+                              onChange={(e) => setEditForm(prev => ({ ...prev, supplier_gstin: e.target.value }))}
+                              className="w-full px-2 py-1 bg-bg-surface border border-border rounded text-xs focus:border-accent outline-none"
+                            />
+                            <input 
+                              type="text" 
+                              placeholder="Invoice #"
+                              value={editForm.invoice_number}
+                              onChange={(e) => setEditForm(prev => ({ ...prev, invoice_number: e.target.value }))}
+                              className="w-full px-2 py-1 bg-bg-surface border border-border rounded text-xs focus:border-accent outline-none"
+                            />
+                            <div className="flex justify-end gap-2 mt-1">
+                              <button onClick={() => setEditingId(null)} className="px-2 py-1 text-xs text-text-secondary hover:text-text-primary"><X className="w-4 h-4"/></button>
+                              <button onClick={handleSaveEdit} className="px-2 py-1 text-xs bg-accent text-white rounded"><Check className="w-4 h-4"/></button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Desktop Table View — windowed for 1k+ rows */}
+          {!isNarrow && (
+            <div
+              ref={desktopScrollRef}
+              className="overflow-auto max-h-[65vh] custom-scrollbar"
+              tabIndex={0}
+              aria-label="Reconciliation data table"
+              role="region"
+            >
+              <table className="w-full text-sm text-left">
+                <thead className="table-header sticky top-0 z-10 bg-bg-surface">
+                  <tr>
+                    <th scope="col" className="p-4">Vendor GSTIN</th>
+                    <th scope="col" className="p-4">Invoice #</th>
+                    <th scope="col" className="p-4">Date</th>
+                    <th scope="col" className="p-4 text-right">Taxable Amount</th>
+                    <th scope="col" className="p-4 text-center">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {desktopPaddingTop > 0 && (
+                    <tr aria-hidden="true">
+                      <td colSpan={5} style={{ height: desktopPaddingTop, padding: 0, border: 'none' }} />
+                    </tr>
+                  )}
+                  {desktopVirtualRows.map((virtualRow) => {
+                    const row = tableData[virtualRow.index];
+                    return (
+                      <tr key={row.id} className="hover:bg-bg-subtle transition-colors group">
+                        <td className="p-4 font-medium text-text-primary">
+                          {editingId === row.id ? (
+                            <input 
+                              type="text" 
+                              value={editForm.supplier_gstin}
+                              onChange={(e) => setEditForm(prev => ({ ...prev, supplier_gstin: e.target.value }))}
+                              className="w-full px-2 py-1 bg-bg-surface border border-border rounded text-xs focus:border-accent outline-none"
+                            />
+                          ) : (
+                            row.supplier_gstin || 'N/A'
+                          )}
+                        </td>
+                        <td className="p-4 font-mono text-text-secondary">
+                          {editingId === row.id ? (
+                            <input 
+                              type="text" 
+                              value={editForm.invoice_number}
+                              onChange={(e) => setEditForm(prev => ({ ...prev, invoice_number: e.target.value }))}
+                              className="w-full px-2 py-1 bg-bg-surface border border-border rounded text-xs focus:border-accent outline-none"
+                            />
+                          ) : (
+                            row.invoice_number || 'N/A'
+                          )}
+                        </td>
+                        <td className="p-4 font-mono text-text-secondary">{row.invoice_date || 'N/A'}</td>
+                        <td className="p-4 font-mono text-right font-medium">₹{row.taxable_amount?.toFixed(2) || '0.00'}</td>
+                        <td className="p-4 text-center relative">
+                          {editingId === row.id ? (
+                            <div className="flex items-center justify-center gap-2">
+                              <button onClick={handleSaveEdit} className="text-success hover:bg-success-subtle p-1 rounded transition-colors" title="Save">
+                                <Check className="w-4 h-4"/>
+                              </button>
+                              <button onClick={() => setEditingId(null)} className="text-error hover:bg-error-subtle p-1 rounded transition-colors" title="Cancel">
+                                <X className="w-4 h-4"/>
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center gap-2">
+                              {row.status === 'matched' ? (
+                                <span className="badge bg-success-subtle text-success border border-success/20">Matched</span>
+                              ) : row.status === 'mismatch' ? (
+                                <span className="badge bg-warning-subtle text-warning border border-warning/20" title={row.error_message || "Mismatch"}>
+                                  {row.error_message?.includes('Consolidation') ? (
+                                    <span className="flex items-center gap-1 cursor-help"><AlertTriangle className="w-3 h-3"/> Grouped</span>
+                                  ) : 'Mismatch'}
+                                </span>
+                              ) : row.status === 'missing_in_pr' ? (
+                                <span className="badge bg-accent/10 text-accent border border-accent/20">Missing in PR</span>
+                              ) : (
+                                <span className="badge bg-error-subtle text-error border border-error/20">Missing in 2B</span>
+                              )}
+                              
+                              {row.status !== 'missing_in_pr' && row.status !== 'matched' && (
+                                <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 bg-bg-surface border border-border rounded shadow-sm p-1">
+                                  <button onClick={() => handleEditClick(row)} className="text-accent hover:bg-accent/10 p-1 rounded" title="Edit PR Invoice">
+                                    <Edit2 className="w-3 h-3"/>
+                                  </button>
+                                  <button onClick={() => handleAcknowledge(row.id)} className="text-success hover:bg-success-subtle p-1 rounded" title="Acknowledge & Force Match">
+                                    <Check className="w-3 h-3"/>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {desktopPaddingBottom > 0 && (
+                    <tr aria-hidden="true">
+                      <td colSpan={5} style={{ height: desktopPaddingBottom, padding: 0, border: 'none' }} />
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -25,10 +25,25 @@ export default function ClientsPage() {
 
   React.useEffect(() => {
     const fetchCounts = async () => {
-      const { data } = await supabase.from('invoices').select('client_id');
+      const clientIds = clients.map((c) => c.id).filter(Boolean);
+      if (clientIds.length === 0) {
+        setInvoiceCounts({});
+        return;
+      }
+      // Prefer denormalized aggregates over downloading every invoice id
+      const { data, error } = await supabase
+        .from('client_dashboard_stats')
+        .select('client_id, invoice_count')
+        .in('client_id', clientIds);
+      if (error) {
+        console.error('Failed to load invoice counts:', error.message);
+        return;
+      }
       if (data) {
-        const counts = data.reduce((acc: any, curr: any) => {
-          acc[curr.client_id] = (acc[curr.client_id] || 0) + 1;
+        const counts = data.reduce((acc: Record<string, number>, curr) => {
+          if (curr.client_id) {
+            acc[curr.client_id] = Number(curr.invoice_count) || 0;
+          }
           return acc;
         }, {});
         setInvoiceCounts(counts);
