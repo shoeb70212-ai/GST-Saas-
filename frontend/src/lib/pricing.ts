@@ -59,7 +59,7 @@ export const CREDIT_PACKS: CreditPack[] = [
 ];
 
 /** Brand accent for third-party SDKs (Razorpay theme) — match `--accent` light. */
-export const BRAND_ACCENT_HEX = '#990000';
+export const BRAND_ACCENT_HEX = '#B56A3A';
 
 export function formatInr(amount: number): string {
   return `₹${amount.toLocaleString('en-IN')}`;

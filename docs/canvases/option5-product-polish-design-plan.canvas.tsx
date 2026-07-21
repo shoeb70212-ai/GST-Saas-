@@ -207,22 +207,22 @@ const MOTION_BUDGET = [
 
 const PHASES = [
   {
-    phase: "A — Trust & tokens",
-    effort: "2–4 days",
+    phase: "A — Trust & tokens + layout ✅",
+    effort: "Shipped 2026-07-21",
     risk: "Low",
-    work: "Fix false claims; prepaid copy; Fog & Copper tokens; Newsreader + Public Sans + Plex Mono; sync BRAND_ACCENT_HEX #B56A3A.",
+    work: "False claims fixed; Fog & Copper tokens; fonts; BRAND_ACCENT_HEX; brand-first landing; Today strip; grouped sidebar.",
   },
   {
-    phase: "B — Dashboard IA",
+    phase: "B — Dashboard IA (remaining)",
     effort: "1–2 weeks",
     risk: "Medium",
-    work: "Group sidebar; Today strip; Continue-work rows; empty states; optional Cmd+K; copper only on action KPIs/CTAs.",
+    work: "Live unmatched 2B/bank KPI RPCs; optional Cmd+K; richer empty states.",
   },
   {
-    phase: "C — Landing redesign",
-    effort: "1–2 weeks",
-    risk: "Medium",
-    work: "Full-bleed brand-first hero; honest sections; real screenshots; 2–3 motions; remove fake social proof.",
+    phase: "C — Landing polish",
+    effort: "Optional",
+    risk: "Low",
+    work: "More product shots / motion refinement if needed (core layout in A).",
   },
 ];
 
@@ -262,8 +262,8 @@ export default function Option5ProductPolishDesignPlan() {
         <Row gap={8} style={{ alignItems: "center" }}>
           <Pill tone="info">Option 5</Pill>
           <Pill tone="success">Fog & Copper Seal</Pill>
-          <Pill tone="neutral">Plan only</Pill>
-          <Pill tone="warning">No React redesign yet</Pill>
+          <Pill tone="success">Phase A shipped</Pill>
+          <Pill tone="neutral">Phase B leftovers</Pill>
         </Row>
         <H1>KhataLens — locked brand & polish plan</H1>
         <Text tone="secondary">
@@ -274,11 +274,11 @@ export default function Option5ProductPolishDesignPlan() {
         </Text>
       </Stack>
 
-      <Callout tone="warning" title="Landing truth debt (ship Phase A first)">
-        Current LandingPage shows packs as /month, FAQ still mentions ₹999/mo,
-        JSON-LD invents 4.9★ / 120 reviews, and testimonials headline implies
-        real switchers while bodies say Example Scenario. Fix copy before visual
-        redesign.
+      <Callout tone="success" title="Phase A shipped (2026-07-21)">
+        Landing truth fixed (prepaid packs, no fake ratings/JSON-LD stars).
+        Fog & Copper tokens + fonts live. Brand-first hero, Today strip, and
+        grouped sidebar landed. Phase B: live unmatched 2B/bank KPIs, Cmd+K,
+        richer empty states.
       </Callout>
 
       <Grid columns={4} gap={12}>

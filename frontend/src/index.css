@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
-  KhataLens design tokens (Tailwind v4 @theme)
+  KhataLens design tokens — Fog & Copper Seal (Tailwind v4 @theme)
   ─────────────────────────────────────────────
   Colors: change :root / .dark CSS vars below, then use utilities:
     bg-bg-base, bg-bg-surface, text-text-primary, text-accent, border-border, etc.
@@ -40,11 +40,11 @@
   --color-gst-sgst: var(--gst-sgst);
   --color-gst-igst: var(--gst-igst);
 
-  --font-display: "Playfair Display", serif;
-  --font-body: "Inter", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
-  
-  --font-sans: "Inter", sans-serif;
+  --font-display: "Newsreader", "Source Serif 4", Georgia, serif;
+  --font-body: "Public Sans", "Source Sans 3", ui-sans-serif, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --font-sans: var(--font-body);
 
   /* Layout width tokens → max-w-content / max-w-narrow / max-w-prose */
   --max-width-content: 72rem; /* ~6xl */
@@ -58,87 +58,83 @@
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
   --shadow-md: 0 4px 6px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.04);
   --shadow-lg: 0 10px 15px rgba(0,0,0,0.05), 0 4px 6px rgba(0,0,0,0.03);
-  --shadow-glow: 0 0 20px rgba(122, 40, 45, 0.15);
+  --shadow-glow: 0 0 20px rgba(181, 106, 58, 0.18);
 }
 
 @layer base {
   :root {
-    --bg-base: #F5F1EA;
-    --bg-surface: rgba(255, 255, 255, 0.75);
-    --bg-sunken: rgba(245, 241, 234, 0.6);
-    --bg-overlay: rgba(41, 37, 36, 0.5);
+    --bg-base: #F3F4F2;
+    --bg-surface: #FFFFFF;
+    --bg-sunken: #E6E8E4;
+    --bg-overlay: rgba(18, 20, 18, 0.45);
 
-    --border: rgba(168, 162, 158, 0.3);
-    --border-focus: #A8A29E;
+    --border: #CDD2CD;
+    --border-focus: #B56A3A;
 
-    --text-primary: #292524;
-    --text-secondary: #78716C;
-    --text-disabled: #A8A29E;
-    --text-inverse: #F5F1EA;
+    --text-primary: #141614;
+    --text-secondary: #5A615C;
+    --text-disabled: #9AA19B;
+    --text-inverse: #F3F4F2;
 
-    --accent: #990000;
-    --accent-subtle: rgba(153, 0, 0, 0.1);
-    --accent-hover: #CC0000;
+    --accent: #B56A3A;
+    --accent-subtle: rgba(181, 106, 58, 0.10);
+    --accent-hover: #964F2A;
 
-    --success: #16A34A;
-    --success-subtle: rgba(22, 163, 74, 0.1);
-    --warning: #C97B63;
-    --warning-subtle: rgba(201, 123, 99, 0.1);
-    --error: #DC2626;
-    --error-subtle: rgba(220, 38, 38, 0.1);
+    --success: #1B6B45;
+    --success-subtle: rgba(27, 107, 69, 0.10);
+    --warning: #A65D12;
+    --warning-subtle: rgba(166, 93, 18, 0.10);
+    --error: #B42318;
+    --error-subtle: rgba(180, 35, 24, 0.10);
 
-    --gst-cgst: #C97B63;
-    --gst-sgst: #7A282D;
-    --gst-igst: #A8A29E;
+    --gst-cgst: #2F6F8F;
+    --gst-sgst: #3D6B55;
+    --gst-igst: #5C5A8A;
   }
 
   .dark {
-    --bg-base: #1C1917;
-    --bg-surface: rgba(41, 37, 36, 0.6);
-    --bg-sunken: rgba(28, 25, 23, 0.4);
+    --bg-base: #121412;
+    --bg-surface: #1A1C1A;
+    --bg-sunken: #0E100E;
     --bg-overlay: rgba(0, 0, 0, 0.7);
 
-    --border: rgba(168, 162, 158, 0.2);
-    --border-focus: #A8A29E;
+    --border: #2E322E;
+    --border-focus: #B56A3A;
 
-    --text-primary: #F5F1EA;
-    --text-secondary: #A8A29E;
-    --text-disabled: #57534E;
-    --text-inverse: #1C1917;
+    --text-primary: #F3F4F2;
+    --text-secondary: #9AA19B;
+    --text-disabled: #5A615C;
+    --text-inverse: #141614;
 
-    --accent: #7A282D;
-    --accent-subtle: rgba(122, 40, 45, 0.2);
-    --accent-hover: #9B3439;
+    --accent: #C67A4A;
+    --accent-subtle: rgba(198, 122, 74, 0.18);
+    --accent-hover: #D49268;
 
-    --success: #22C55E;
-    --success-subtle: rgba(34, 197, 94, 0.15);
-    --warning: #C97B63;
-    --warning-subtle: rgba(201, 123, 99, 0.15);
-    --error: #EF4444;
-    --error-subtle: rgba(239, 68, 68, 0.15);
+    --success: #2F9B64;
+    --success-subtle: rgba(47, 155, 100, 0.15);
+    --warning: #C4782A;
+    --warning-subtle: rgba(196, 120, 42, 0.15);
+    --error: #E05A4F;
+    --error-subtle: rgba(224, 90, 79, 0.15);
 
-    --gst-cgst: #C97B63;
-    --gst-sgst: #7A282D;
-    --gst-igst: #A8A29E;
+    --gst-cgst: #4A8BAD;
+    --gst-sgst: #5A8B72;
+    --gst-igst: #7A78A8;
   }
 
   body {
     @apply bg-bg-base text-text-primary font-body antialiased selection:bg-accent-subtle selection:text-accent transition-colors duration-300;
-    /* Ambient Mesh Gradient Background */
-    background-image: 
-      radial-gradient(at 0% 0%, rgba(122, 40, 45, 0.05) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, rgba(201, 123, 99, 0.05) 0px, transparent 50%),
-      radial-gradient(at 100% 100%, rgba(168, 162, 158, 0.05) 0px, transparent 50%),
-      radial-gradient(at 0% 100%, rgba(122, 40, 45, 0.05) 0px, transparent 50%);
+    /* Subtle fog wash — cool mineral, not cream mesh */
+    background-image:
+      radial-gradient(at 0% 0%, rgba(181, 106, 58, 0.03) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(90, 97, 92, 0.04) 0px, transparent 55%);
     background-attachment: fixed;
   }
-  
+
   .dark body {
-    background-image: 
-      radial-gradient(at 0% 0%, rgba(122, 40, 45, 0.08) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, rgba(201, 123, 99, 0.08) 0px, transparent 50%),
-      radial-gradient(at 100% 100%, rgba(168, 162, 158, 0.08) 0px, transparent 50%),
-      radial-gradient(at 0% 100%, rgba(122, 40, 45, 0.08) 0px, transparent 50%);
+    background-image:
+      radial-gradient(at 0% 0%, rgba(198, 122, 74, 0.06) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(154, 161, 155, 0.04) 0px, transparent 55%);
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -148,77 +144,75 @@
 
 @layer utilities {
   .card {
-    @apply bg-bg-surface border border-border shadow-sm rounded-xl p-6 backdrop-blur-xl transition-all duration-300 hover:shadow-md hover:border-border-focus/50 relative overflow-hidden;
+    @apply bg-bg-surface border border-border shadow-sm rounded-xl p-6 transition-all duration-200 hover:shadow-md hover:border-border-focus/40 relative overflow-hidden;
   }
-  
-  /* Adds a subtle inner light effect to cards in dark mode */
+
   .dark .card::before {
     content: '';
-    @apply absolute inset-0 rounded-xl pointer-events-none border border-white/[0.05] z-0;
+    @apply absolute inset-0 rounded-xl pointer-events-none border border-white/[0.04] z-0;
   }
 
   .input-field {
-    @apply h-10 bg-bg-sunken border border-border rounded-lg px-3 text-sm focus:border-accent focus:ring-1 focus:ring-accent/30 outline-none transition-all placeholder:text-text-disabled text-text-primary backdrop-blur-md;
+    @apply h-10 bg-bg-sunken border border-border rounded-lg px-3 text-sm focus:border-accent focus:ring-1 focus:ring-accent/30 outline-none transition-all placeholder:text-text-disabled text-text-primary;
   }
-  
+
   .btn-primary {
-    @apply h-10 bg-accent hover:bg-accent-hover active:scale-[0.98] text-white font-medium text-sm rounded-lg px-5 transition-all inline-flex items-center justify-center gap-2 shadow-sm hover:shadow-glow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2;
+    @apply h-10 bg-accent hover:bg-accent-hover active:scale-[0.98] text-text-inverse font-medium text-sm rounded-lg px-5 transition-all inline-flex items-center justify-center gap-2 shadow-sm hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2;
   }
-  
+
   .btn-secondary {
-    @apply h-10 bg-bg-surface border border-border hover:border-accent/50 text-text-primary hover:text-accent active:scale-[0.98] font-medium text-sm rounded-lg px-5 transition-all inline-flex items-center justify-center gap-2 shadow-sm backdrop-blur-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2;
+    @apply h-10 bg-bg-surface border border-border hover:border-accent/50 text-text-primary hover:text-accent active:scale-[0.98] font-medium text-sm rounded-lg px-5 transition-all inline-flex items-center justify-center gap-2 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2;
   }
 
   .btn-ghost {
     @apply h-10 bg-transparent text-text-primary hover:bg-bg-sunken active:scale-[0.98] font-medium text-sm rounded-lg px-4 transition-all inline-flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2;
   }
-  
+
   .btn-destructive {
     @apply h-10 bg-error hover:bg-error/90 active:scale-[0.98] text-white font-medium text-sm rounded-lg px-5 transition-all inline-flex items-center justify-center gap-2 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/50 focus-visible:ring-offset-2;
   }
-  
+
   .badge {
-    @apply h-6 rounded-full px-2.5 text-[11px] font-semibold tracking-wide inline-flex items-center justify-center uppercase;
+    @apply h-6 rounded-md px-2.5 text-[11px] font-semibold tracking-wide inline-flex items-center justify-center uppercase;
   }
-  
+
   .table-header {
-    @apply sticky top-0 z-10 bg-bg-surface/80 backdrop-blur-md text-[11px] uppercase tracking-wider text-text-secondary py-3.5 px-4 text-left font-semibold border-b border-border;
+    @apply sticky top-0 z-10 bg-bg-surface text-[11px] uppercase tracking-wider text-text-secondary py-3.5 px-4 text-left font-semibold border-b border-border;
   }
-  
+
   .table-row {
     @apply border-b border-border hover:bg-bg-sunken/50 transition-colors bg-transparent;
   }
-  
+
   .table-cell-custom {
     @apply py-3.5 px-4 text-[14px] text-text-primary;
   }
-  
-  /* Modern Mobile UI Utilities */
+
   .bottom-nav {
-    @apply fixed bottom-0 left-0 right-0 bg-bg-surface/80 backdrop-blur-xl border-t border-border z-50 px-2 py-2 flex items-center justify-around md:hidden shadow-[0_-4px_20px_rgba(0,0,0,0.05)];
+    @apply fixed bottom-0 left-0 right-0 bg-bg-surface border-t border-border z-50 px-2 py-2 flex items-center justify-around md:hidden shadow-[0_-4px_20px_rgba(0,0,0,0.05)];
     padding-bottom: env(safe-area-inset-bottom, 16px);
   }
-  
+
   .bottom-nav-item {
     @apply flex flex-col items-center justify-center gap-1 p-2 w-16 text-text-secondary hover:text-text-primary transition-all active:scale-[0.95];
   }
-  
+
   .bottom-nav-item.active {
     @apply text-accent font-medium;
   }
-  
+
   .glass-header {
-    @apply sticky top-0 z-40 bg-bg-surface/70 backdrop-blur-xl border-b border-border shadow-sm;
+    @apply sticky top-0 z-40 bg-bg-surface border-b border-border shadow-sm;
   }
-  
+
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom, 16px);
   }
-  
+
   .pt-safe {
     padding-top: env(safe-area-inset-top, 16px);
   }
-  
+
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -235,15 +229,14 @@
     background: rgba(255, 255, 255, 0.2);
   }
 
-  /* Micro-interactions & Animations */
   .animate-fade-in {
     animation: fadeIn 0.4s ease-out forwards;
   }
-  
+
   .animate-slide-up {
     animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
-  
+
   .hover-lift {
     @apply transition-transform duration-300 hover:-translate-y-1 hover:shadow-md;
   }

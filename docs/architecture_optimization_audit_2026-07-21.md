@@ -323,14 +323,27 @@ Follow-up doc/graph pass committed separately from the original audit code fixes
 
 ---
 
-## 11. Sprint Option 5 — Design plan (2026-07-21)
+## 11. Sprint Option 5 — Fog & Copper Seal (2026-07-21)
 
-**Scope:** Research + plan only (no UI redesign implementation in this sprint).
+**Locked direction:** Fog `#F3F4F2` + Copper `#B56A3A` + Newsreader / Public Sans / IBM Plex Mono  
+**Docs:** `docs/option5_brand_direction.md` · canvas `option5-product-polish-design-plan.canvas.tsx`
 
-**Deliverable:** Cursor canvas  
-`C:\Users\Junaid\.cursor\projects\d-GST-SAAS\canvases\option5-product-polish-design-plan.canvas.tsx`
+### Phase A — shipped
 
-Covers brand direction (exit cream/Playfair cliché → cool teal ledger), dashboard IA for CA workflow, truthful landing copy constraints, and phased rollout A→B→C. Proceed with **Phase A** first: fix landing false claims + token swap.
+| Change | Notes |
+|--------|--------|
+| Theme tokens + dark variants | `frontend/src/index.css` |
+| Fonts (Google) | `frontend/index.html` |
+| `BRAND_ACCENT_HEX` → `#B56A3A` | `frontend/src/lib/pricing.ts` |
+| Landing truth + brand-first layout | `LandingPage.tsx` — prepaid packs, no fake ratings/JSON-LD stars |
+| Dashboard Today strip + Continue work | `DashboardPage.tsx` |
+| Sidebar IA groups (Today / Reconcile / Practice / Account) | `Layout.tsx` |
+
+### Phase B leftovers
+
+- Cmd+K command palette
+- Live unmatched GSTR-2B / bank KPI counts via dedicated RPC (Today strip currently links to Match + review count)
+- Deeper empty-state patterns across scan/wallet/bank
 
 ---
 

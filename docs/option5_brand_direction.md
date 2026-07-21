@@ -1,9 +1,23 @@
 # Option 5 — Locked brand direction (KhataLens)
 
-**Status:** Research / plan only — not implemented in React yet.  
+**Status:** Phase A shipped (2026-07-21) — Fog & Copper Seal tokens, fonts, landing truth/layout, dashboard Today strip + grouped sidebar. Phase B leftovers: Cmd+K, live unmatched 2B/bank KPI RPCs, deeper empty-state polish.  
 **Locked system:** **Fog & Copper Seal**  
 **Supersedes:** prior “Cool ledger” deep-teal proposal (`#0B5F6B` + Source Serif 4 + IBM Plex Sans).  
 **Canvas:** [`docs/canvases/option5-product-polish-design-plan.canvas.tsx`](./canvases/option5-product-polish-design-plan.canvas.tsx) (also mirrored under Cursor canvases).
+
+---
+
+## Phase A ship checklist (done)
+
+- [x] Truth fixes on Landing + JSON-LD (no `/month`, no ₹999 FAQ, no fake 4.9★ / 500+ CAs / testimonials)
+- [x] Prepaid packs from `pricing.ts` / `credits.py`; Enterprise = Contact Sales only
+- [x] Theme tokens → Fog `#F3F4F2` + Copper `#B56A3A`; dark graphite/copper variants
+- [x] Fonts: Newsreader / Public Sans / IBM Plex Mono
+- [x] `BRAND_ACCENT_HEX` synced to `#B56A3A`
+- [x] Landing brand-first hero + honest sections (layout, not tokens-only)
+- [x] Dashboard Today strip + Continue work; Layout sidebar IA groups
+- [ ] Phase B: Cmd+K; unmatched 2B/bank counts via dedicated RPC; richer empty states
+- [ ] Phase C polish: more product photography / motion refinement if needed
 
 ---
 
@@ -104,9 +118,9 @@ Aligned with user design prefs + 2025–26 high-craft B2B patterns (purposeful m
 
 | Phase | Scope |
 |-------|--------|
-| **A — Trust & tokens** | Fix false landing claims; prepaid pricing copy; swap tokens to Fog & Copper + Newsreader/Public Sans/Plex Mono; sync Razorpay accent hex. |
-| **B — Dashboard IA** | Grouped sidebar; Today strip; Continue-work; empty states; optional Cmd+K; copper only on action KPIs/CTAs. |
-| **C — Landing redesign** | Full-bleed brand-first hero; honest sections; real product shots; 2–3 motions; remove fake social proof/schema. |
+| **A — Trust & tokens + layout** | ✅ Shipped 2026-07-21: false claims fixed; Fog & Copper + Newsreader/Public Sans/Plex Mono; Razorpay accent; landing brand-first hero; dashboard Today strip; grouped sidebar. |
+| **B — Dashboard IA (remaining)** | Live unmatched 2B/bank KPI RPCs; optional Cmd+K; richer empty states. |
+| **C — Landing polish** | More product shots / motion refinement if needed (core layout already in A). |
 
 ---
 

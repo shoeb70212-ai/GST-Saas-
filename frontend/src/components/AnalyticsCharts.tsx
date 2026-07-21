@@ -18,7 +18,7 @@ import { Skeleton } from './ui/Skeleton';
 import { BarChart3, PieChart as PieChartIcon } from 'lucide-react';
 import { formatCurrency } from '../utils/format';
 
-const COLORS = ['#990000', '#C84B31', '#D9A05B', '#7B9070', '#2D4263', '#A84C46', '#876445', '#4C5D70', '#B07D62', '#4A5D23'];
+const COLORS = ['#B56A3A', '#2F6F8F', '#3D6B55', '#5C5A8A', '#A65D12', '#1B6B45', '#5A615C', '#964F2A', '#4A5D70', '#141614'];
 const RECON_COLORS = {
   matched: '#10b981',
   mismatch: '#f59e0b',

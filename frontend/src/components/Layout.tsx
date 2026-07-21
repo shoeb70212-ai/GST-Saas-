@@ -7,16 +7,12 @@ import { useClient } from '../lib/ClientContext';
 import { cn } from '../lib/utils';
 import KhataLensIcon from './KhataLensIcon';
 
+type NavItem = { name: string; path: string; icon: typeof LayoutDashboard };
+
 /**
- * Layout Component
- * 
- * This is the root structural component for all authenticated pages.
- * 
- * Responsibilities:
- * 1. Responsive Navigation: Renders the Desktop Sidebar and the Mobile Bottom Navigation bar.
- * 2. Theming: Manages Light/Dark mode via localStorage and Tailwind's `dark` class.
- * 3. Client Context: Allows the user to switch between different "Clients/Businesses" they manage.
- *    Changing the active client globally affects what invoices/reconciliations are shown in the `<Outlet />`.
+ * Layout — authenticated app shell.
+ * Solid fog surfaces + copper active state (Fog & Copper Seal).
+ * Grouped IA for CA desk work.
  */
 export default function Layout() {
   const location = useLocation();
@@ -31,17 +27,16 @@ export default function Layout() {
 
   const filteredClients = useMemo(() => {
     if (!clientSearch) return clients;
-    return clients.filter((c: any) => 
-      c.client_name.toLowerCase().includes(clientSearch.toLowerCase()) || 
+    return clients.filter((c: { client_name: string; gstin?: string | null }) =>
+      c.client_name.toLowerCase().includes(clientSearch.toLowerCase()) ||
       (c.gstin && c.gstin.toLowerCase().includes(clientSearch.toLowerCase()))
     );
   }, [clients, clientSearch]);
 
   useEffect(() => {
-    // Check initial theme from localStorage or system preference
     const savedTheme = localStorage.getItem('theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    
+
     if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
       setIsDarkMode(true);
       document.documentElement.classList.add('dark');
@@ -67,294 +62,332 @@ export default function Layout() {
   };
 
   const isBusiness = localStorage.getItem('accountType') === 'business';
-  
-  const navItems = [
+
+  const mobilePrimary: NavItem[] = [
     { name: 'Dashboard', path: '/app/dashboard', icon: LayoutDashboard },
     { name: 'Scan', path: '/app/scan', icon: ScanLine },
     { name: 'Invoices', path: '/app/invoices', icon: FileText },
   ];
-  
-  const moreNavItems = [
-    { name: 'Tax Liability', path: '/app/tax-liability', icon: TrendingUp },
-    { name: 'Virtual CFO', path: '/app/cfo', icon: Sparkles },
-    { name: 'GSTR-2B', path: '/app/reconcile', icon: FileText },
-    { name: 'Bank Stmts', path: '/app/bank-statements', icon: Banknote },
-    { name: 'Bank Match', path: '/app/bank-reconcile', icon: Network },
-    { name: isBusiness ? 'Businesses' : 'Clients', path: '/app/clients', icon: Building2 },
-    { name: 'Audit Logs', path: '/app/audit-logs', icon: ShieldAlert },
-    { name: 'Wallet & Billing', path: '/app/wallet', icon: CreditCard },
-    { name: 'Settings', path: '/app/settings', icon: Settings },
+
+  const navGroups: { label: string; items: NavItem[] }[] = [
+    {
+      label: 'Today',
+      items: [
+        { name: 'Dashboard', path: '/app/dashboard', icon: LayoutDashboard },
+        { name: 'Scan', path: '/app/scan', icon: ScanLine },
+        { name: 'Invoices', path: '/app/invoices', icon: FileText },
+      ],
+    },
+    {
+      label: 'Reconcile',
+      items: [
+        { name: 'GSTR-2B', path: '/app/reconcile', icon: FileText },
+        { name: 'Bank Stmts', path: '/app/bank-statements', icon: Banknote },
+        { name: 'Bank Match', path: '/app/bank-reconcile', icon: Network },
+        { name: 'Tax Liability', path: '/app/tax-liability', icon: TrendingUp },
+      ],
+    },
+    {
+      label: 'Practice',
+      items: [
+        { name: isBusiness ? 'Businesses' : 'Clients', path: '/app/clients', icon: Building2 },
+        { name: 'Virtual CFO', path: '/app/cfo', icon: Sparkles },
+        { name: 'Audit Logs', path: '/app/audit-logs', icon: ShieldAlert },
+      ],
+    },
+    {
+      label: 'Account',
+      items: [
+        { name: 'Wallet', path: '/app/wallet', icon: CreditCard },
+        { name: 'Settings', path: '/app/settings', icon: Settings },
+      ],
+    },
   ];
+
+  const moreNavItems = navGroups.slice(1).flatMap((g) => g.items);
+
+  const renderNavLink = (item: NavItem) => {
+    const Icon = item.icon;
+    const isActive = location.pathname === item.path;
+    return (
+      <Link
+        key={item.path}
+        to={item.path}
+        className={cn(
+          'relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors group outline-none',
+          isActive ? 'text-accent' : 'text-text-secondary hover:text-text-primary hover:bg-bg-sunken/60'
+        )}
+      >
+        {isActive && (
+          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r bg-accent" aria-hidden="true" />
+        )}
+        {isActive && (
+          <motion.div
+            layoutId="active-sidebar-nav"
+            className="absolute inset-0 bg-accent-subtle rounded-lg"
+            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+          />
+        )}
+        <Icon className={cn('w-[17px] h-[17px] relative z-10', isActive ? 'text-accent' : 'text-text-secondary group-hover:text-text-primary')} />
+        <span className="relative z-10">{item.name}</span>
+      </Link>
+    );
+  };
 
   return (
     <div className="flex h-[100dvh] bg-bg-base overflow-hidden flex-col md:flex-row pb-safe md:pb-0">
-      
-      {/* Mobile Top Header (Sticky) */}
+
+      {/* Mobile Top Header */}
       <div className="md:hidden glass-header flex items-center justify-between p-3 z-50 pt-safe">
         <div className="flex items-center gap-2">
           <KhataLensIcon size={28} />
-          <span className="text-lg font-bold text-text-primary tracking-tight">KhataLens</span>
+          <span className="text-lg font-display font-semibold text-text-primary tracking-tight">KhataLens</span>
         </div>
-        
+
         <div className="flex items-center gap-2">
           {credits !== null && (
-            <div className="flex px-2 py-1 bg-accent-subtle text-accent text-xs font-medium rounded-full border border-accent/20 items-center gap-1">
+            <Link to="/app/wallet" className="flex px-2 py-1 bg-accent-subtle text-accent text-xs font-medium rounded-md border border-accent/20 items-center gap-1">
               <Sparkles className="w-3 h-3" />
               {credits}
-            </div>
+            </Link>
           )}
-          <button onClick={toggleTheme} className="p-1.5 text-text-secondary hover:text-text-primary bg-bg-sunken rounded-full">
+          <button onClick={toggleTheme} className="p-1.5 text-text-secondary hover:text-text-primary bg-bg-sunken rounded-md">
             {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
         </div>
       </div>
 
-      {/* Desktop Sidebar (Floating Glass) */}
-      <div className="hidden md:flex inset-y-0 left-0 z-50 w-[280px] flex-col p-4">
-        <div className="flex-1 bg-bg-surface/60 backdrop-blur-2xl border border-white/10 shadow-xl rounded-2xl flex flex-col overflow-hidden relative">
-          <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent pointer-events-none" />
-          <div className="p-5 flex items-center gap-3 h-[70px] relative z-10">
-          <KhataLensIcon size={32} />
-          <span className="text-xl font-bold text-text-primary tracking-tight">KhataLens</span>
-        </div>
-        
-        {/* Firm + Client Switchers (Desktop) */}
-        <div className="px-4 pb-4 relative z-10 space-y-2">
-          {showOrgSwitcher && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => {
-                  setOrgMenuOpen(!orgMenuOpen);
-                  setClientMenuOpen(false);
-                }}
-                className="w-full flex items-center justify-between p-2 rounded-lg bg-bg-sunken/70 border border-border text-left"
-              >
-                <div className="flex items-center gap-2 overflow-hidden min-w-0">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary shrink-0">Firm</span>
-                  <span className="text-xs font-semibold text-text-primary truncate">
-                    {activeOrg?.name || 'Select firm'}
-                  </span>
+      {/* Desktop Sidebar — solid white on fog, no glass */}
+      <div className="hidden md:flex inset-y-0 left-0 z-50 w-[260px] flex-col p-3">
+        <div className="flex-1 bg-bg-surface border border-border shadow-sm rounded-xl flex flex-col overflow-hidden">
+          <div className="px-4 py-4 flex items-center gap-2.5 border-b border-border">
+            <KhataLensIcon size={28} />
+            <span className="text-lg font-display font-semibold text-text-primary tracking-tight">KhataLens</span>
+          </div>
+
+          <div className="px-3 py-3 relative space-y-2 border-b border-border">
+            {showOrgSwitcher && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOrgMenuOpen(!orgMenuOpen);
+                    setClientMenuOpen(false);
+                  }}
+                  className="w-full flex items-center justify-between p-2 rounded-lg bg-bg-sunken border border-border text-left"
+                >
+                  <div className="flex items-center gap-2 overflow-hidden min-w-0">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary shrink-0">Firm</span>
+                    <span className="text-xs font-semibold text-text-primary truncate">
+                      {activeOrg?.name || 'Select firm'}
+                    </span>
+                  </div>
+                  <ChevronDown className="w-3.5 h-3.5 text-text-secondary shrink-0" />
+                </button>
+                <AnimatePresence>
+                  {orgMenuOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      className="absolute left-0 right-0 top-[calc(100%+4px)] bg-bg-surface border border-border rounded-xl shadow-lg z-[70] overflow-hidden"
+                    >
+                      <div className="max-h-40 overflow-y-auto p-1.5 space-y-0.5">
+                        {orgs.map((org) => (
+                          <button
+                            key={org.org_id}
+                            type="button"
+                            onClick={() => {
+                              void setActiveOrgId(org.org_id);
+                              setOrgMenuOpen(false);
+                            }}
+                            className={cn(
+                              'w-full text-left px-3 py-2 text-sm rounded-md transition-colors',
+                              activeOrgId === org.org_id
+                                ? 'bg-accent-subtle text-accent font-semibold'
+                                : 'text-text-primary hover:bg-bg-sunken font-medium'
+                            )}
+                          >
+                            <span className="block truncate">{org.name}</span>
+                            <span className="text-[10px] text-text-secondary capitalize">{org.role}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setClientSearch('');
+                setOrgMenuOpen(false);
+                setClientMenuOpen(!clientMenuOpen);
+              }}
+              className="w-full flex items-center justify-between p-2.5 rounded-lg bg-bg-sunken border border-border hover:border-border-focus transition-colors"
+            >
+              <div className="flex items-center gap-2 overflow-hidden">
+                <div className="w-6 h-6 rounded-md bg-accent-subtle text-accent flex items-center justify-center shrink-0">
+                  <Building2 className="w-3.5 h-3.5" />
                 </div>
-                <ChevronDown className="w-3.5 h-3.5 text-text-secondary shrink-0" />
-              </button>
-              <AnimatePresence>
-                {orgMenuOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    className="absolute left-0 right-0 top-[calc(100%+4px)] bg-bg-surface border border-border rounded-xl shadow-lg z-[70] overflow-hidden"
-                  >
-                    <div className="max-h-40 overflow-y-auto p-1.5 space-y-0.5">
-                      {orgs.map((org) => (
+                <span className="text-sm font-semibold text-text-primary truncate">
+                  {activeClientId
+                    ? clients.find((c: { id: string; client_name: string }) => c.id === activeClientId)?.client_name || `Select ${isBusiness ? 'Business' : 'Client'}`
+                    : `Select ${isBusiness ? 'Business' : 'Client'}`}
+                </span>
+              </div>
+              <ChevronDown className="w-4 h-4 text-text-secondary shrink-0" />
+            </button>
+
+            <AnimatePresence>
+              {clientMenuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -5 }}
+                  className="absolute left-3 right-3 top-[calc(100%+4px)] bg-bg-surface border border-border rounded-xl shadow-lg z-[60] overflow-hidden"
+                >
+                  <div className="p-2 border-b border-border">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-disabled" />
+                      <input
+                        type="text"
+                        placeholder={`Search ${isBusiness ? 'businesses' : 'clients'}...`}
+                        value={clientSearch}
+                        onChange={(e) => setClientSearch(e.target.value)}
+                        className="w-full h-8 pl-9 pr-3 text-sm bg-bg-sunken border border-border rounded-md outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all placeholder:text-text-disabled"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto custom-scrollbar p-1.5 space-y-0.5">
+                    {filteredClients.length === 0 ? (
+                      <div className="p-3 text-xs text-text-secondary text-center">No results found</div>
+                    ) : (
+                      filteredClients.map((client: { id: string; client_name: string }) => (
                         <button
-                          key={org.org_id}
+                          key={client.id}
                           type="button"
                           onClick={() => {
-                            void setActiveOrgId(org.org_id);
-                            setOrgMenuOpen(false);
+                            setActiveClientId(client.id);
+                            setClientMenuOpen(false);
                           }}
                           className={cn(
                             'w-full text-left px-3 py-2 text-sm rounded-md transition-colors',
-                            activeOrgId === org.org_id
+                            activeClientId === client.id
                               ? 'bg-accent-subtle text-accent font-semibold'
                               : 'text-text-primary hover:bg-bg-sunken font-medium'
                           )}
                         >
-                          <span className="block truncate">{org.name}</span>
-                          <span className="text-[10px] text-text-secondary capitalize">{org.role}</span>
+                          {client.client_name}
                         </button>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          )}
-
-          <motion.button 
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => {
-              setClientSearch('');
-              setOrgMenuOpen(false);
-              setClientMenuOpen(!clientMenuOpen);
-            }}
-            className="w-full flex items-center justify-between p-2.5 rounded-lg bg-bg-sunken border border-border hover:border-border-focus transition-colors shadow-sm"
-          >
-            <div className="flex items-center gap-2 overflow-hidden">
-              <div className="w-6 h-6 rounded-md bg-accent-subtle text-accent flex items-center justify-center shrink-0">
-                <Building2 className="w-3.5 h-3.5" />
-              </div>
-              <span className="text-sm font-semibold text-text-primary truncate">
-                {activeClientId 
-                  ? clients.find((c: any) => c.id === activeClientId)?.client_name || `Select ${isBusiness ? 'Business' : 'Client'}`
-                  : `Select ${isBusiness ? 'Business' : 'Client'}`}
-              </span>
-            </div>
-            <ChevronDown className="w-4 h-4 text-text-secondary shrink-0" />
-          </motion.button>
-
-          <AnimatePresence>
-            {clientMenuOpen && (
-              <motion.div 
-                initial={{ opacity: 0, y: -5 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -5 }}
-                className="absolute left-4 right-4 top-[calc(100%+4px)] bg-bg-surface border border-border rounded-xl shadow-lg z-[60] overflow-hidden"
-              >
-                <div className="p-2 border-b border-border">
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-disabled" />
-                    <input
-                      type="text"
-                      placeholder={`Search ${isBusiness ? 'businesses' : 'clients'}...`}
-                      value={clientSearch}
-                      onChange={(e) => setClientSearch(e.target.value)}
-                      className="w-full h-8 pl-9 pr-3 text-sm bg-bg-sunken border border-border rounded-md outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all placeholder:text-text-disabled"
-                      autoFocus
-                    />
+                      ))
+                    )}
                   </div>
-                </div>
-                <div className="max-h-48 overflow-y-auto custom-scrollbar p-1.5 space-y-0.5">
-                  {filteredClients.length === 0 ? (
-                    <div className="p-3 text-xs text-text-secondary text-center">No results found</div>
-                  ) : (
-                    filteredClients.map((client: any) => (
-                      <button
-                        key={client.id}
-                        onClick={() => {
-                          setActiveClientId(client.id);
-                          setClientMenuOpen(false);
-                        }}
-                        className={cn(
-                          "w-full text-left px-3 py-2 text-sm rounded-md transition-colors",
-                          activeClientId === client.id 
-                            ? "bg-accent-subtle text-accent font-semibold" 
-                            : "text-text-primary hover:bg-bg-sunken font-medium"
-                        )}
-                      >
-                        {client.client_name}
-                      </button>
-                    ))
-                  )}
-                </div>
-                <div className="p-1.5 border-t border-border bg-bg-sunken/50">
-                  <Link 
-                    to="/app/clients" 
-                    onClick={() => setClientMenuOpen(false)}
-                    className="w-full text-left px-3 py-2 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-surface rounded-md transition-colors flex items-center gap-2"
-                  >
-                    <Settings className="w-3 h-3" /> Manage {isBusiness ? 'Businesses' : 'Clients'}
-                  </Link>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        <div className="px-5 text-[11px] font-bold text-text-secondary uppercase tracking-widest mb-3 mt-4 relative z-10">Menu</div>
-        <nav className="flex-1 px-3 space-y-1 overflow-y-auto relative z-10">
-          {[...navItems, ...moreNavItems].map((item) => {
-            const Icon = item.icon;
-            const isActive = location.pathname === item.path;
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={cn(
-                  "relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors group outline-none",
-                  isActive ? "text-accent" : "text-text-secondary hover:text-text-primary"
-                )}
-              >
-                {isActive && (
-                  <motion.div
-                    layoutId="active-sidebar-nav"
-                    className="absolute inset-0 bg-accent-subtle rounded-xl"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                  />
-                )}
-                <Icon className={cn("w-[18px] h-[18px] relative z-10 transition-colors", isActive ? "text-accent" : "text-text-secondary group-hover:text-text-primary")} />
-                <span className="relative z-10">{item.name}</span>
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="p-4 border-t border-white/5 relative z-10">
-          <button 
-            onClick={handleSignOut}
-            className="flex w-full items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-text-secondary bg-bg-sunken border border-border hover:bg-bg-surface hover:text-text-primary transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-            Sign Out
-          </button>
-        </div>
-      </div>
-      </div>
-
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden relative w-full">
-        
-        {/* Desktop Topbar */}
-        <div className="hidden md:flex h-[56px] items-center justify-between px-8 bg-bg-surface/80 backdrop-blur-xl border-b border-border/50 z-40 sticky top-0">
-          <div className="flex items-center gap-4">
-            {/* Removed capitalize for better aesthetics */}
+                  <div className="p-1.5 border-t border-border bg-bg-sunken/50">
+                    <Link
+                      to="/app/clients"
+                      onClick={() => setClientMenuOpen(false)}
+                      className="w-full text-left px-3 py-2 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-surface rounded-md transition-colors flex items-center gap-2"
+                    >
+                      <Settings className="w-3 h-3" /> Manage {isBusiness ? 'Businesses' : 'Clients'}
+                    </Link>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
-          <div className="flex items-center gap-4">
-            <Link to="/app/scan" className="btn-primary !h-8 !text-xs !rounded-full px-4 shadow-accent/20">
+
+          <nav className="flex-1 px-2 py-3 space-y-4 overflow-y-auto custom-scrollbar">
+            {navGroups.map((group) => (
+              <div key={group.label}>
+                <div className="px-3 mb-1.5 text-[10px] font-bold text-text-disabled uppercase tracking-widest">
+                  {group.label}
+                </div>
+                <div className="space-y-0.5">
+                  {group.items.map(renderNavLink)}
+                </div>
+              </div>
+            ))}
+          </nav>
+
+          <div className="p-3 border-t border-border">
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="flex w-full items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-text-secondary bg-bg-sunken border border-border hover:bg-bg-base hover:text-text-primary transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden relative w-full">
+        <div className="hidden md:flex h-[52px] items-center justify-between px-6 bg-bg-surface border-b border-border z-40 sticky top-0">
+          <div />
+          <div className="flex items-center gap-3">
+            <Link to="/app/scan" className="btn-primary !h-8 !text-xs !rounded-lg px-3.5">
               <ScanLine className="w-3.5 h-3.5" /> Quick Scan
             </Link>
             {credits !== null && (
-              <div className="flex px-3 py-1.5 bg-accent-subtle text-accent text-sm font-semibold rounded-full border border-accent/20 items-center gap-1.5 shadow-sm">
-                <Sparkles className="w-4 h-4" />
-                {credits} Credits
-              </div>
+              <Link
+                to="/app/wallet"
+                className={cn(
+                  'flex px-3 py-1.5 text-sm font-semibold rounded-lg border items-center gap-1.5',
+                  credits < 50
+                    ? 'bg-accent-subtle text-accent border-accent/25'
+                    : 'bg-bg-sunken text-text-primary border-border'
+                )}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span className="font-mono">{credits}</span>
+                <span className="text-text-secondary font-normal text-xs">credits</span>
+              </Link>
             )}
             <button
+              type="button"
               onClick={toggleTheme}
-              className="p-2 text-text-secondary hover:text-text-primary hover:bg-bg-sunken rounded-full transition-colors border border-transparent hover:border-border"
+              className="p-2 text-text-secondary hover:text-text-primary hover:bg-bg-sunken rounded-lg transition-colors border border-transparent hover:border-border"
               title="Toggle Theme"
             >
-              {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
-            <div className="w-9 h-9 rounded-full bg-accent text-white flex items-center justify-center font-bold text-sm shadow-sm cursor-pointer hover:opacity-90 transition-opacity">
-              ME
-            </div>
           </div>
         </div>
 
         {/* Mobile Client Switcher */}
         <div className="md:hidden px-4 py-2 bg-bg-surface border-b border-border flex items-center justify-between z-40">
-           <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">{isBusiness ? 'Business' : 'Client'}</span>
-           <button 
+          <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">{isBusiness ? 'Business' : 'Client'}</span>
+          <button
+            type="button"
             onClick={() => {
               setClientSearch('');
               setClientMenuOpen(!clientMenuOpen);
             }}
             className="flex items-center gap-1 text-sm font-semibold text-accent active:opacity-70"
           >
-            {activeClientId 
-              ? clients.find((c: any) => c.id === activeClientId)?.client_name || 'Select'
+            {activeClientId
+              ? clients.find((c: { id: string; client_name: string }) => c.id === activeClientId)?.client_name || 'Select'
               : 'Select'}
             <ChevronDown className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Mobile Client Switcher Modal */}
         <AnimatePresence>
           {clientMenuOpen && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="md:hidden fixed inset-0 z-[100] bg-bg-overlay/60 backdrop-blur-sm flex items-end justify-center"
+              className="md:hidden fixed inset-0 z-[100] bg-bg-overlay flex items-end justify-center"
               onClick={() => setClientMenuOpen(false)}
             >
-              <motion.div 
+              <motion.div
                 initial={{ y: '100%' }}
                 animate={{ y: 0 }}
                 exit={{ y: '100%' }}
@@ -364,8 +397,8 @@ export default function Layout() {
               >
                 <div className="p-4 border-b border-border flex flex-col gap-3">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-lg">Select {isBusiness ? 'Business' : 'Client'}</h3>
-                    <button onClick={() => setClientMenuOpen(false)} className="p-2 rounded-full bg-bg-sunken text-text-secondary">
+                    <h3 className="font-display font-semibold text-lg">Select {isBusiness ? 'Business' : 'Client'}</h3>
+                    <button type="button" onClick={() => setClientMenuOpen(false)} className="p-2 rounded-full bg-bg-sunken text-text-secondary">
                       <ChevronDown className="w-5 h-5" />
                     </button>
                   </div>
@@ -384,18 +417,19 @@ export default function Layout() {
                   {filteredClients.length === 0 ? (
                     <div className="p-4 text-center text-text-secondary">No results found</div>
                   ) : (
-                    filteredClients.map((client: any) => (
+                    filteredClients.map((client: { id: string; client_name: string }) => (
                       <button
                         key={client.id}
+                        type="button"
                         onClick={() => {
                           setActiveClientId(client.id);
                           setClientMenuOpen(false);
                         }}
                         className={cn(
-                          "w-full text-left p-4 rounded-xl border transition-all flex items-center justify-between",
-                          activeClientId === client.id 
-                            ? "border-accent bg-accent-subtle text-accent shadow-sm" 
-                            : "border-border bg-bg-surface text-text-primary active:bg-bg-sunken"
+                          'w-full text-left p-4 rounded-xl border transition-all flex items-center justify-between',
+                          activeClientId === client.id
+                            ? 'border-accent bg-accent-subtle text-accent shadow-sm'
+                            : 'border-border bg-bg-surface text-text-primary active:bg-bg-sunken'
                         )}
                       >
                         <span className="font-semibold">{client.client_name}</span>
@@ -403,8 +437,8 @@ export default function Layout() {
                       </button>
                     ))
                   )}
-                  <Link 
-                    to="/app/clients" 
+                  <Link
+                    to="/app/clients"
                     onClick={() => setClientMenuOpen(false)}
                     className="w-full mt-4 flex items-center justify-center gap-2 p-4 rounded-xl border border-dashed border-border text-text-secondary font-medium active:bg-bg-sunken"
                   >
@@ -417,53 +451,42 @@ export default function Layout() {
         </AnimatePresence>
 
         <div className="flex-1 overflow-auto md:pb-0 pb-16 relative">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={location.pathname}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-              className="min-h-full"
-            >
-              <Outlet />
-            </motion.div>
-          </AnimatePresence>
+          <Outlet />
         </div>
       </div>
 
-      {/* Mobile Bottom Navigation Bar */}
+      {/* Mobile Bottom Nav */}
       <div className="bottom-nav">
-        {navItems.map(item => {
+        {mobilePrimary.map(item => {
           const Icon = item.icon;
           const isActive = location.pathname === item.path;
           return (
-            <Link key={item.path} to={item.path} className={cn("bottom-nav-item", isActive && "active")}>
-              <Icon className={cn("w-6 h-6", isActive ? "stroke-[2.5px]" : "stroke-[2px]")} />
+            <Link key={item.path} to={item.path} className={cn('bottom-nav-item', isActive && 'active')}>
+              <Icon className={cn('w-6 h-6', isActive ? 'stroke-[2.5px]' : 'stroke-[2px]')} />
               <span className="text-[10px] font-semibold">{item.name}</span>
             </Link>
           );
         })}
-        <button 
+        <button
+          type="button"
           onClick={() => setMobileMoreOpen(!mobileMoreOpen)}
-          className={cn("bottom-nav-item", mobileMoreOpen && "active")}
+          className={cn('bottom-nav-item', mobileMoreOpen && 'active')}
         >
           <MoreHorizontal className="w-6 h-6 stroke-[2.5px]" />
           <span className="text-[10px] font-semibold">More</span>
         </button>
       </div>
 
-      {/* Mobile 'More' Menu Drawer */}
       <AnimatePresence>
         {mobileMoreOpen && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="md:hidden fixed inset-0 z-[40] bg-bg-overlay/60 backdrop-blur-sm"
+            className="md:hidden fixed inset-0 z-[40] bg-bg-overlay"
             onClick={() => setMobileMoreOpen(false)}
           >
-            <motion.div 
+            <motion.div
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
@@ -471,7 +494,7 @@ export default function Layout() {
               className="absolute bottom-[calc(env(safe-area-inset-bottom,16px)+64px)] left-2 right-2 bg-bg-surface rounded-2xl shadow-2xl border border-border overflow-hidden"
               onClick={e => e.stopPropagation()}
             >
-              <div className="p-2 space-y-1">
+              <div className="p-2 space-y-1 max-h-[60vh] overflow-y-auto">
                 {moreNavItems.map(item => {
                   const Icon = item.icon;
                   return (
@@ -481,22 +504,23 @@ export default function Layout() {
                       onClick={() => setMobileMoreOpen(false)}
                       className="flex items-center gap-3 p-3 rounded-xl text-text-primary font-medium hover:bg-bg-sunken active:bg-bg-sunken transition-colors"
                     >
-                      <div className="w-8 h-8 rounded-full bg-accent-subtle text-accent flex items-center justify-center">
+                      <div className="w-8 h-8 rounded-lg bg-bg-sunken text-text-secondary flex items-center justify-center">
                         <Icon className="w-4 h-4" />
                       </div>
                       {item.name}
                     </Link>
                   );
                 })}
-                <div className="h-[1px] bg-border my-2 mx-2" />
+                <div className="h-px bg-border my-2 mx-2" />
                 <button
+                  type="button"
                   onClick={() => {
                     setMobileMoreOpen(false);
                     handleSignOut();
                   }}
                   className="w-full flex items-center gap-3 p-3 rounded-xl text-error font-medium hover:bg-error-subtle active:bg-error-subtle transition-colors"
                 >
-                  <div className="w-8 h-8 rounded-full bg-error-subtle text-error flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-lg bg-error-subtle text-error flex items-center justify-center">
                     <LogOut className="w-4 h-4" />
                   </div>
                   Sign Out
@@ -506,7 +530,6 @@ export default function Layout() {
           </motion.div>
         )}
       </AnimatePresence>
-
     </div>
   );
 }

@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { DollarSign, FileText, Settings, CheckCircle2, TrendingUp, Building2, Briefcase, AlertTriangle, ArrowUpRight, ArrowDownRight, ArrowRight } from 'lucide-react';
+import {
+  DollarSign, FileText, Settings, CheckCircle2, TrendingUp, Building2, Briefcase,
+  AlertTriangle, ArrowUpRight, ArrowDownRight, ArrowRight, ScanLine, Network, Banknote, Wallet
+} from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Link } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { useClient } from '../lib/ClientContext';
 import toast from 'react-hot-toast';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Skeleton } from '../components/ui/Skeleton';
 import AnalyticsCharts, { type AnalyticsData, AnalyticsSkeleton } from '../components/AnalyticsCharts';
 import { ErrorState } from '../components/ui/ErrorState';
@@ -25,42 +28,43 @@ const DEFAULT_WIDGETS = ['total_taxable', 'total_cgst', 'total_sgst', 'invoice_c
 
 const DEFAULT_METRICS = { totalTaxable: 0, totalCgst: 0, totalSgst: 0, totalIgst: 0, totalOutstanding: 0, invoiceCount: 0 };
 
+const CONTINUE_WORK = [
+  { to: '/app/scan', label: 'Scan invoices', hint: 'Extract GST fields from PDFs or photos', icon: ScanLine },
+  { to: '/app/invoices', label: 'Review invoices', hint: 'Check flagged fields before export', icon: FileText },
+  { to: '/app/reconcile', label: 'Run GSTR-2B match', hint: 'Find unmatched ITC vs purchase books', icon: Network },
+  { to: '/app/bank-statements', label: 'Upload bank statement', hint: 'Parse PDF/Excel for payment matching', icon: Banknote },
+] as const;
+
 export default function DashboardPage() {
-  const { activeClientId, clients, setActiveClientId } = useClient();
+  const { activeClientId, clients, setActiveClientId, credits } = useClient();
   const [showSettings, setShowSettings] = useState(false);
   const [visibleWidgets, setVisibleWidgets] = useState<string[]>(DEFAULT_WIDGETS);
-  
-  
-  
-  
-  
+
   const { data: dashboardData, isLoading, isError: isDashboardError, refetch: refetchDashboard } = useQuery({
     queryKey: ['invoices', 'dashboard', activeClientId],
     queryFn: async () => {
-      if (!activeClientId) return { metrics: null, recentInvoices: [] };
+      if (!activeClientId) return { metrics: null, recentInvoices: [], needsReview: 0 };
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return { metrics: null, recentInvoices: [] };
-      
-      // Fetch recent 5 invoices
+      if (!session) return { metrics: null, recentInvoices: [], needsReview: 0 };
+
       const { data: recent, error: recentError } = await supabase
         .from('invoices')
         .select('id, file_name, supplier_name, taxable_amount, cgst_amount, sgst_amount, igst_amount, total_amount, received_amount, recon_status, processing_status, invoice_date, created_at, confidence_score')
         .eq('client_id', activeClientId)
         .order('created_at', { ascending: false })
         .limit(5);
-        
+
       if (recentError) throw recentError;
 
-      // Fetch metrics via RPC (if RPC is missing, it will throw, so fallback to local calculation)
       const { data: metricsData, error: metricsError } = await supabase.rpc('get_dashboard_metrics', {
         client_id_param: activeClientId,
         user_id_param: session.user.id
       });
-      
+
       let metrics = { ...DEFAULT_METRICS };
-      
+
       if (metricsError) {
-        console.warn("RPC not found, falling back to client-side limit calculation");
+        console.warn('RPC not found, falling back to client-side limit calculation');
       } else if (metricsData && metricsData.length > 0) {
         const m = metricsData[0];
         metrics = {
@@ -72,11 +76,17 @@ export default function DashboardPage() {
           invoiceCount: m.invoice_count || 0
         };
       }
-      
-      // Fetch client details for estimated sales
+
+      // Lightweight review queue count — confidence filter only, no full table load
+      const { count: needsReview } = await supabase
+        .from('invoices')
+        .select('id', { count: 'exact', head: true })
+        .eq('client_id', activeClientId)
+        .lt('confidence_score', 80);
+
       const { data: clientData } = await supabase.from('clients').select('estimated_monthly_sales, estimated_sales_tax_rate').eq('id', activeClientId).single();
-      
-      return { metrics, recentInvoices: recent || [], clientData };
+
+      return { metrics, recentInvoices: recent || [], clientData, needsReview: needsReview ?? 0 };
     },
     enabled: !!activeClientId,
     staleTime: 5 * 60 * 1000,
@@ -96,7 +106,7 @@ export default function DashboardPage() {
       });
 
       if (error) {
-        console.error("Failed to fetch advanced analytics:", error);
+        console.error('Failed to fetch advanced analytics:', error);
         return null;
       }
       return data as AnalyticsData;
@@ -107,27 +117,14 @@ export default function DashboardPage() {
 
   const metrics = dashboardData?.metrics || DEFAULT_METRICS;
   const recentInvoices = dashboardData?.recentInvoices || [];
-  const clientData = dashboardData?.clientData;
-
-  useEffect(() => {
-    if (clientData) {
-      
-      
-    }
-  }, [clientData]);
-
-  
-  
-  
-  
-  
+  const needsReview = dashboardData?.needsReview ?? 0;
 
   useEffect(() => {
     const saved = localStorage.getItem('khatalens_widgets');
     if (saved) {
       try {
         setVisibleWidgets(JSON.parse(saved));
-      } catch (_e) {}
+      } catch (_e) { /* ignore */ }
     }
   }, []);
 
@@ -156,99 +153,87 @@ export default function DashboardPage() {
     const trends = analyticsData.trends;
     const current = trends[trends.length - 1];
     const previous = trends[trends.length - 2];
-    
-    // We only have total_taxable and total_spend in trends.
-    // For most financial metrics on the dashboard, total_taxable provides a good proxy trend.
-    if (key === 'invoice_count') return null; 
-
+    if (key === 'invoice_count') return null;
     if (previous.total_taxable === 0) return null;
-    
-    const diff = ((current.total_taxable - previous.total_taxable) / previous.total_taxable) * 100;
-    return diff;
+    return ((current.total_taxable - previous.total_taxable) / previous.total_taxable) * 100;
   };
-
-
 
   if (!activeClientId) {
     return (
-      <div className="p-4 md:p-8 max-w-7xl mx-auto h-[80vh] flex flex-col items-center justify-center text-center">
-        <div className="w-20 h-20 rounded-full bg-bg-sunken flex items-center justify-center mb-6">
-          <Building2 className="w-10 h-10 text-text-disabled" />
+      <div className="p-4 md:p-8 max-w-content mx-auto h-[80vh] flex flex-col items-center justify-center text-center">
+        <div className="w-16 h-16 rounded-xl bg-bg-sunken border border-border flex items-center justify-center mb-6">
+          <Building2 className="w-8 h-8 text-text-disabled" />
         </div>
-        <h2 className="text-3xl font-bold text-text-primary mb-2">Welcome to KhataLens</h2>
-        <p className="text-text-secondary max-w-md mb-8">
-          How will you be using KhataLens? Choose your account type to set up your workspace.
+        <h2 className="text-2xl font-display font-semibold text-text-primary mb-2">Welcome to KhataLens</h2>
+        <p className="text-text-secondary max-w-md mb-8 text-sm leading-relaxed">
+          Choose how you will use the desk — multi-client CA practice or a single business workspace.
         </p>
-        
+
         {clients.length === 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-3xl mx-auto">
-             
-             <button
-               onClick={() => {
-                 localStorage.setItem('accountType', 'firm');
-                 window.location.href = '/app/clients'; // Redirect to clients setup
-               }}
-               className="card p-8 flex flex-col items-start text-left hover:border-accent hover:shadow-glow group transition-all"
-             >
-               <div className="w-12 h-12 rounded-xl bg-accent-subtle flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                 <Building2 className="w-6 h-6 text-accent" />
-               </div>
-               <h3 className="text-xl font-bold text-text-primary mb-2">Accounting Firm (CA)</h3>
-               <p className="text-sm text-text-secondary mb-6 leading-relaxed">
-                 I manage invoices, bank statements, and GST reconciliation for multiple clients.
-               </p>
-               <div className="mt-auto text-accent text-sm font-semibold flex items-center gap-1 group-hover:gap-2 transition-all">
-                 Set up clients <ArrowRight className="w-4 h-4" />
-               </div>
-             </button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl mx-auto">
+            <button
+              type="button"
+              onClick={() => {
+                localStorage.setItem('accountType', 'firm');
+                window.location.href = '/app/clients';
+              }}
+              className="bg-bg-surface border border-border rounded-xl p-6 flex flex-col items-start text-left hover:border-accent transition-colors group"
+            >
+              <Building2 className="w-5 h-5 text-accent mb-3" />
+              <h3 className="text-lg font-display font-semibold text-text-primary mb-1">Accounting firm (CA)</h3>
+              <p className="text-sm text-text-secondary mb-5 leading-relaxed">
+                Manage invoices, bank statements, and GST recon for multiple clients.
+              </p>
+              <span className="mt-auto text-accent text-sm font-semibold flex items-center gap-1">
+                Set up clients <ArrowRight className="w-4 h-4" />
+              </span>
+            </button>
 
-             <button 
-               onClick={async () => {
-                 const { data: { session } } = await supabase.auth.getSession();
-                 if (session) {
-                    const { data: orgData } = await supabase.rpc('get_user_orgs');
-                    let currentOrgId = null;
-                    if (orgData && orgData.length > 0) {
-                      currentOrgId = orgData[0].org_id;
-                      // Ensure the profile's active_org_id is set before inserting
-                      await supabase.from('profiles').update({ active_org_id: currentOrgId }).eq('id', session.user.id);
-                    }
-
-                    const { data, error } = await supabase.from('clients').insert({
-                      user_id: session.user.id,
-                      org_id: currentOrgId,
-                      client_name: "My Company"
-                    }).select().single();
-                    if (error) {
-                      toast.error(`Failed to create workspace: ${error.message}`);
-                      console.error("Workspace creation error:", error);
-                    } else if (data) {
-                      setActiveClientId(data.id);
-                      localStorage.setItem('accountType', 'business');
-                    }
+            <button
+              type="button"
+              onClick={async () => {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session) {
+                  const { data: orgData } = await supabase.rpc('get_user_orgs');
+                  let currentOrgId = null;
+                  if (orgData && orgData.length > 0) {
+                    currentOrgId = orgData[0].org_id;
+                    await supabase.from('profiles').update({ active_org_id: currentOrgId }).eq('id', session.user.id);
                   }
-               }}
-               className="card p-8 flex flex-col items-start text-left border-border/50 hover:border-accent/50 opacity-90 hover:opacity-100 transition-all group"
-             >
-               <div className="w-12 h-12 rounded-xl bg-bg-sunken flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                 <Briefcase className="w-6 h-6 text-text-secondary group-hover:text-text-primary" />
-               </div>
-               <h3 className="text-lg font-bold text-text-primary mb-2">Single Business</h3>
-               <p className="text-sm text-text-secondary mb-6 leading-relaxed">
-                 I only need to manage invoices and reconciliation for my own company.
-               </p>
-               <div className="mt-auto text-text-secondary group-hover:text-text-primary text-sm font-semibold flex items-center gap-1 group-hover:gap-2 transition-all">
-                 Create workspace <ArrowRight className="w-4 h-4" />
-               </div>
-             </button>
-             
+
+                  const { data, error } = await supabase.from('clients').insert({
+                    user_id: session.user.id,
+                    org_id: currentOrgId,
+                    client_name: 'My Company'
+                  }).select().single();
+                  if (error) {
+                    toast.error(`Failed to create workspace: ${error.message}`);
+                  } else if (data) {
+                    setActiveClientId(data.id);
+                    localStorage.setItem('accountType', 'business');
+                  }
+                }
+              }}
+              className="bg-bg-surface border border-border rounded-xl p-6 flex flex-col items-start text-left hover:border-border-focus transition-colors group"
+            >
+              <Briefcase className="w-5 h-5 text-text-secondary mb-3" />
+              <h3 className="text-lg font-display font-semibold text-text-primary mb-1">Single business</h3>
+              <p className="text-sm text-text-secondary mb-5 leading-relaxed">
+                Manage invoices and reconciliation for your own company only.
+              </p>
+              <span className="mt-auto text-text-secondary group-hover:text-text-primary text-sm font-semibold flex items-center gap-1">
+                Create workspace <ArrowRight className="w-4 h-4" />
+              </span>
+            </button>
           </div>
         ) : (
           <div className="mt-4">
-             <p className="text-text-secondary max-w-md mb-6">
-               Please select a workspace from the sidebar dropdown to view its specific dashboard metrics and invoices.
-             </p>
-             <Link to="/app/clients" className="btn-primary">Manage {localStorage.getItem('accountType') === 'business' ? 'Businesses' : 'Clients'}</Link>
+            <p className="text-text-secondary max-w-md mb-6 text-sm">
+              Select a workspace from the sidebar to view metrics and invoices.
+            </p>
+            <Link to="/app/clients" className="btn-primary">
+              Manage {localStorage.getItem('accountType') === 'business' ? 'Businesses' : 'Clients'}
+            </Link>
           </div>
         )}
       </div>
@@ -257,9 +242,9 @@ export default function DashboardPage() {
 
   if (isDashboardError) {
     return (
-      <div className="p-4 md:p-8 max-w-7xl mx-auto h-[80vh] flex items-center justify-center">
-        <ErrorState 
-          title="Dashboard Failed to Load" 
+      <div className="p-4 md:p-8 max-w-content mx-auto h-[80vh] flex items-center justify-center">
+        <ErrorState
+          title="Dashboard Failed to Load"
           message="We couldn't retrieve your dashboard metrics. Please check your connection."
           onRetry={refetchDashboard}
         />
@@ -269,42 +254,35 @@ export default function DashboardPage() {
 
   if (isLoading) {
     return (
-      <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8 pb-20">
-        <div className="flex justify-between items-end mb-8">
-          <div>
-            <Skeleton className="h-8 w-48 mb-2" />
-            <Skeleton className="h-4 w-64" />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="p-4 md:p-6 max-w-content mx-auto space-y-6 pb-20">
+        <Skeleton className="h-8 w-48 mb-2" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[1, 2, 3, 4].map(i => (
-            <div key={i} className="card space-y-2 p-5">
-              <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-8 w-24" />
+            <div key={i} className="bg-bg-surface border border-border rounded-xl p-4 space-y-2">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-7 w-16" />
             </div>
           ))}
         </div>
-        
-        {/* Analytics Skeletons */}
         <AnalyticsSkeleton />
-
-        <div className="card h-48 w-full mt-8">
-          <Skeleton className="h-full w-full" />
-        </div>
       </div>
     );
   }
 
+  const lowCredits = credits !== null && credits < 50;
+  const hasReviewQueue = needsReview > 0;
+
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8 pb-20">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+    <div className="p-4 md:p-6 max-w-content mx-auto space-y-6 pb-20">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary mb-2">Dashboard</h1>
-          <p className="text-text-secondary">Overview of invoices for this client.</p>
+          <h1 className="text-xl md:text-2xl font-display font-semibold text-text-primary mb-1">Today</h1>
+          <p className="text-sm text-text-secondary">Desk overview for the active client.</p>
         </div>
-        
+
         <div className="relative">
-          <button 
+          <button
+            type="button"
             onClick={() => setShowSettings(!showSettings)}
             className="p-2 text-text-secondary hover:text-text-primary hover:bg-bg-sunken rounded-lg transition-colors border border-transparent hover:border-border flex items-center gap-2"
           >
@@ -313,14 +291,14 @@ export default function DashboardPage() {
 
           <AnimatePresence>
             {showSettings && (
-              <motion.div 
-                initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                className="absolute right-0 top-full mt-2 w-64 bg-bg-surface border border-border rounded-xl shadow-xl z-50 overflow-hidden"
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 8 }}
+                className="absolute right-0 top-full mt-2 w-64 bg-bg-surface border border-border rounded-xl shadow-lg z-50 overflow-hidden"
               >
                 <div className="p-3 border-b border-border bg-bg-sunken/50">
-                  <h3 className="font-semibold text-text-primary text-sm">Visible Widgets</h3>
+                  <h3 className="font-semibold text-text-primary text-sm">Visible metrics</h3>
                 </div>
                 <div className="max-h-64 overflow-y-auto p-2 space-y-1 custom-scrollbar">
                   {AVAILABLE_WIDGETS.map(widget => {
@@ -328,8 +306,12 @@ export default function DashboardPage() {
                     return (
                       <button
                         key={widget.key}
+                        type="button"
                         onClick={() => toggleWidget(widget.key)}
-                        className={`w-full flex items-center justify-between p-2 rounded-lg text-sm transition-colors ${isVisible ? 'bg-primary/10 text-primary' : 'text-text-secondary hover:bg-bg-sunken'}`}
+                        className={cn(
+                          'w-full flex items-center justify-between p-2 rounded-lg text-sm transition-colors',
+                          isVisible ? 'bg-accent-subtle text-accent' : 'text-text-secondary hover:bg-bg-sunken'
+                        )}
                       >
                         <div className="flex items-center gap-2">
                           <widget.icon className="w-4 h-4" />
@@ -346,111 +328,169 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Today strip — 4 KPIs max; copper only when action needed */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Link
+          to="/app/wallet"
+          className="bg-bg-surface border border-border rounded-xl p-4 hover:border-border-focus transition-colors"
+        >
+          <div className="flex items-center gap-1.5 text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2">
+            <Wallet className="w-3.5 h-3.5" /> Wallet
+          </div>
+          <p className={cn('text-2xl font-mono font-semibold tracking-tight', lowCredits ? 'text-accent' : 'text-text-primary')}>
+            {credits !== null ? credits.toLocaleString('en-IN') : '—'}
+          </p>
+          <p className="text-xs text-text-secondary mt-1">{lowCredits ? 'Low — top up credits' : 'Credits available'}</p>
+        </Link>
+
+        <div className="bg-bg-surface border border-border rounded-xl p-4">
+          <div className="flex items-center gap-1.5 text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2">
+            <FileText className="w-3.5 h-3.5" /> Invoices
+          </div>
+          <p className="text-2xl font-mono font-semibold text-text-primary tracking-tight">
+            {metrics.invoiceCount.toLocaleString('en-IN')}
+          </p>
+          <p className="text-xs text-text-secondary mt-1">Scanned for this client</p>
+        </div>
+
+        <Link
+          to="/app/invoices"
+          className="bg-bg-surface border border-border rounded-xl p-4 hover:border-border-focus transition-colors"
+        >
+          <div className="flex items-center gap-1.5 text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2">
+            <AlertTriangle className="w-3.5 h-3.5" /> Needs review
+          </div>
+          <p className={cn('text-2xl font-mono font-semibold tracking-tight', hasReviewQueue ? 'text-accent' : 'text-text-primary')}>
+            {needsReview}
+          </p>
+          <p className="text-xs text-text-secondary mt-1">{hasReviewQueue ? 'Low-confidence extractions' : 'All clear'}</p>
+        </Link>
+
+        <Link
+          to="/app/reconcile"
+          className="bg-bg-surface border border-border rounded-xl p-4 hover:border-border-focus transition-colors"
+        >
+          <div className="flex items-center gap-1.5 text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2">
+            <Network className="w-3.5 h-3.5" /> GSTR-2B
+          </div>
+          <p className="text-2xl font-display font-semibold text-text-primary tracking-tight">Match</p>
+          <p className="text-xs text-text-secondary mt-1">Open 2B reconciliation</p>
+        </Link>
+      </div>
+
+      {/* Continue work — text+button rows, not icon pastel grid */}
+      <section aria-labelledby="continue-heading">
+        <h2 id="continue-heading" className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">
+          Continue work
+        </h2>
+        <div className="bg-bg-surface border border-border rounded-xl divide-y divide-border">
+          {CONTINUE_WORK.map((row) => (
+            <Link
+              key={row.to}
+              to={row.to}
+              className="flex items-center gap-4 px-4 py-3.5 hover:bg-bg-sunken/50 transition-colors group"
+            >
+              <row.icon className="w-4 h-4 text-text-secondary shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-text-primary group-hover:text-accent transition-colors">{row.label}</div>
+                <div className="text-xs text-text-secondary truncate">{row.hint}</div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-text-disabled group-hover:text-accent shrink-0" />
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* Customizable financial widgets */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
         {AVAILABLE_WIDGETS.filter(w => visibleWidgets.includes(w.key)).map(widget => {
           const Icon = widget.icon;
           return (
-            <motion.div 
-              whileHover={{ y: -4 }}
-              transition={{ type: "spring", stiffness: 400, damping: 25 }}
-              key={widget.key} 
-              className="card space-y-3 p-6 hover:border-accent/50 hover:shadow-md transition-all cursor-default group"
+            <div
+              key={widget.key}
+              className="bg-bg-surface border border-border rounded-xl p-4 space-y-2"
             >
-              <div className="flex items-center gap-2 text-text-secondary group-hover:text-accent transition-colors">
-                <Icon className="w-5 h-5" />
-                <h3 className="font-semibold text-xs tracking-widest uppercase">{widget.label}</h3>
+              <div className="flex items-center gap-2 text-text-secondary">
+                <Icon className="w-4 h-4" />
+                <h3 className="font-semibold text-[11px] tracking-wider uppercase">{widget.label}</h3>
               </div>
-              <p className="text-3xl font-bold text-text-primary font-display tracking-tight">{getWidgetValue(widget.key)}</p>
+              <p className="text-xl font-mono font-semibold text-text-primary tracking-tight">{getWidgetValue(widget.key)}</p>
               {(() => {
                 const trend = getWidgetTrend(widget.key);
                 if (trend === null) return null;
                 const isPositive = trend >= 0;
                 return (
-                  <div className={cn("flex items-center gap-1 text-xs font-semibold mt-1", isPositive ? "text-emerald-500" : "text-error")}>
+                  <div className={cn('flex items-center gap-1 text-xs font-semibold', isPositive ? 'text-success' : 'text-error')}>
                     {isPositive ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
                     <span>{Math.abs(trend).toFixed(1)}%</span>
-                    <span className="text-text-disabled font-normal ml-1">vs last month</span>
+                    <span className="text-text-disabled font-normal ml-1">vs prior period</span>
                   </div>
                 );
               })()}
-            </motion.div>
+            </div>
           );
         })}
         {visibleWidgets.length === 0 && (
-          <div className="col-span-full card p-8 text-center text-text-secondary border-dashed border-2">
-            No widgets selected. Click Customize to add widgets to your dashboard.
+          <div className="col-span-full bg-bg-surface border border-dashed border-border rounded-xl p-6 text-center text-text-secondary text-sm">
+            No widgets selected. Click Customize to add metrics.
           </div>
         )}
       </div>
 
-      {/* Tax Liability Predictor Widget (Redirect Banner) */}
-      <motion.div 
-        whileHover={{ y: -2 }}
-        transition={{ type: "spring", stiffness: 400, damping: 25 }}
-        className="card bg-gradient-to-br from-bg-surface to-bg-sunken border-accent/20 relative overflow-hidden group hover:shadow-glow"
-      >
-        <div className="absolute inset-0 bg-gradient-to-r from-accent/0 via-accent/5 to-accent/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-        <div className="absolute top-0 right-0 w-64 h-64 bg-accent/5 rounded-full blur-[80px] pointer-events-none"></div>
-        <div className="flex flex-col md:flex-row gap-8 justify-between items-start md:items-center relative z-10">
-          <div className="flex-1">
-            <h2 className="text-xl font-bold text-text-primary mb-2 flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-accent" /> Tax Liability Predictor
-            </h2>
-            <p className="text-sm text-text-secondary max-w-md mb-4">
-              Upload your GSTR-1 Excel to instantly calculate your cash liability against eligible ITC with carry-forward support.
-            </p>
-            <Link to="/app/tax-liability" className="btn-primary inline-flex items-center gap-2">
-              Open Predictor <TrendingUp className="w-4 h-4" />
-            </Link>
-          </div>
+      {/* Tax liability link — quiet, not glow card */}
+      <div className="bg-bg-surface border border-border rounded-xl p-5 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+        <div>
+          <h2 className="text-base font-display font-semibold text-text-primary mb-1 flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-text-secondary" /> Tax liability predictor
+          </h2>
+          <p className="text-sm text-text-secondary max-w-md">
+            Upload GSTR-1 Excel to estimate cash liability against eligible ITC.
+          </p>
         </div>
-      </motion.div>
+        <Link to="/app/tax-liability" className="btn-secondary !h-9 shrink-0">
+          Open predictor
+        </Link>
+      </div>
 
-      {/* Vendor Health Widget */}
       {analyticsData?.vendor_health && analyticsData.vendor_health.length > 0 && (
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="card bg-error-subtle/30 border-error/20 relative overflow-hidden backdrop-blur-xl"
-        >
-          <div className="flex items-center gap-3 mb-4">
-             <AlertTriangle className="w-6 h-6 text-error" />
-             <h2 className="text-lg font-bold text-error">Vendor Compliance Alert</h2>
+        <div className="bg-bg-surface border border-error/30 rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle className="w-5 h-5 text-error" />
+            <h2 className="text-base font-display font-semibold text-error">Vendor compliance alert</h2>
           </div>
           <p className="text-sm text-text-secondary mb-4">
-            The following vendors have 'Cancelled' or 'Suspended' GSTINs. The Input Tax Credit (ITC) from these vendors is at risk. You should consider holding their payments.
+            Vendors with Cancelled or Suspended GSTINs — ITC may be at risk.
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead className="text-xs uppercase text-text-secondary border-b border-border">
                 <tr>
-                  <th className="pb-2 font-medium">Vendor Name</th>
+                  <th className="pb-2 font-medium">Vendor</th>
                   <th className="pb-2 font-medium">GSTIN</th>
                   <th className="pb-2 font-medium">Status</th>
-                  <th className="pb-2 font-medium text-right">ITC At Risk</th>
+                  <th className="pb-2 font-medium text-right">ITC at risk</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/50">
+              <tbody className="divide-y divide-border">
                 {analyticsData.vendor_health.map((v, i) => (
                   <tr key={i}>
-                    <td className="py-3 font-medium text-text-primary">{v.vendor_name}</td>
-                    <td className="py-3 font-mono text-text-secondary">{v.supplier_gstin}</td>
-                    <td className="py-3">
+                    <td className="py-2.5 font-medium text-text-primary">{v.vendor_name}</td>
+                    <td className="py-2.5 font-mono text-text-secondary text-xs">{v.supplier_gstin}</td>
+                    <td className="py-2.5">
                       <span className="badge bg-error-subtle text-error border border-error/20">{v.supplier_gstin_status}</span>
                     </td>
-                    <td className="py-3 font-mono font-bold text-error text-right">{formatCurrency(v.itc_at_risk)}</td>
+                    <td className="py-2.5 font-mono font-semibold text-error text-right">{formatCurrency(v.itc_at_risk)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </motion.div>
+        </div>
       )}
 
-      {/* Advanced Analytics Hub */}
       {isAnalyticsError ? (
-        <ErrorState 
-          title="Analytics Failed to Load" 
+        <ErrorState
+          title="Analytics Failed to Load"
           message="Could not load advanced analytics data."
           onRetry={refetchAnalytics}
         />
@@ -458,51 +498,46 @@ export default function DashboardPage() {
         <AnalyticsCharts data={analyticsData ?? null} />
       )}
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-text-primary">Recent Invoices</h2>
+          <h2 className="text-base font-display font-semibold text-text-primary">Recent invoices</h2>
           <Link to="/app/invoices" className="text-sm text-accent hover:text-accent-hover transition-colors font-medium">View all →</Link>
         </div>
 
-        <div className="card p-0 overflow-hidden">
+        <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead className="table-header">
                 <tr>
-                  <th className="p-4">Vendor</th>
-                  <th className="p-4">Date</th>
-                  <th className="p-4 text-right">Amount</th>
-                  <th className="p-4 text-center">Status</th>
+                  <th className="p-3.5">Vendor</th>
+                  <th className="p-3.5">Date</th>
+                  <th className="p-3.5 text-right">Amount</th>
+                  <th className="p-3.5 text-center">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {recentInvoices.map((inv) => (
                   <tr key={inv.id} className="table-row">
-                    <td className="p-4 font-medium text-text-primary">{inv.supplier_name || 'Unknown Vendor'}</td>
-                    <td className="p-4 font-mono text-text-secondary">{inv.invoice_date || 'N/A'}</td>
-                    <td className="p-4 font-mono font-medium text-text-primary text-right">{formatCurrency(inv.total_amount || 0)}</td>
-                    <td className="p-4 text-center">
+                    <td className="p-3.5 font-medium text-text-primary">{inv.supplier_name || 'Unknown Vendor'}</td>
+                    <td className="p-3.5 font-mono text-text-secondary text-xs">{inv.invoice_date || 'N/A'}</td>
+                    <td className="p-3.5 font-mono font-medium text-text-primary text-right">{formatCurrency(inv.total_amount || 0)}</td>
+                    <td className="p-3.5 text-center">
                       {(inv.confidence_score || 0) > 80 ? (
                         <span className="badge bg-success-subtle text-success border border-success/20">Processed</span>
                       ) : (
                         <span className="badge bg-warning-subtle text-warning border border-warning/20">Review</span>
                       )}
-                      {(inv as any).approval_status === 'pending_approval' && (
-                        <div className="mt-1">
-                          <span className="badge bg-warning-subtle text-warning border border-warning/20 text-[10px]">Pending Appr.</span>
-                        </div>
-                      )}
                     </td>
                   </tr>
                 ))}
-                
+
                 {recentInvoices.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-6 py-12 text-center text-text-secondary">
+                    <td colSpan={4} className="px-6 py-10 text-center text-text-secondary">
                       <div className="flex flex-col items-center justify-center gap-2">
-                        <FileText className="w-8 h-8 opacity-50" />
-                        <p>No invoices processed for this client yet.</p>
-                        <Link to="/app/scan" className="text-accent hover:underline mt-2">Upload your first invoice</Link>
+                        <FileText className="w-7 h-7 opacity-40" />
+                        <p className="text-sm">No invoices for this client yet.</p>
+                        <Link to="/app/scan" className="btn-primary !h-9 mt-2">Scan first invoice</Link>
                       </div>
                     </td>
                   </tr>
