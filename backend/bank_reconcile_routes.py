@@ -1,10 +1,8 @@
 import os
-import httpx
 from http_client import get_shared_client
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
-from supabase import create_async_client
-from utils import get_user_supabase_client
+from utils import get_user_supabase_client, verify_client_access
 from reconcile_service import run_ai_matching_engine
 
 router = APIRouter()
@@ -23,17 +21,6 @@ async def get_user_from_token(token: str):
         return resp.json().get("id")
 
 
-async def _verify_client_ownership_bank_recon(token: str, client_id: str, user_id: str):
-    """Verify that a client_id belongs to the authenticated user before bank reconciliation."""
-    async with get_shared_client() as http_client:
-        client_resp = await http_client.get(
-            f"{SUPABASE_URL}/rest/v1/clients?id=eq.{client_id}&user_id=eq.{user_id}&select=id",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if not client_resp.json():
-            raise HTTPException(status_code=403, detail="Access denied: client not found")
-
-
 class RunEngineRequest(BaseModel):
     client_id: str
 
@@ -43,10 +30,10 @@ async def run_reconciliation(req: RunEngineRequest, authorization: str = Header(
         raise HTTPException(status_code=401, detail="Unauthorized")
     token = authorization.split(" ")[1]
     user_id = await get_user_from_token(token)
-    
-    # Verify client ownership before invoking AI engine (fixes cross-tenant vulnerability)
-    await _verify_client_ownership_bank_recon(token, req.client_id, user_id)
-    
+
+    sc = await get_user_supabase_client(authorization)
+    await verify_client_access(sc, req.client_id)
+
     result = await run_ai_matching_engine(req.client_id, user_id)
     return result
 
@@ -54,15 +41,16 @@ async def run_reconciliation(req: RunEngineRequest, authorization: str = Header(
 async def get_suggestions(client_id: str, authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")
-        
+
     sc = await get_user_supabase_client(authorization)
-    
+    await verify_client_access(sc, client_id)
+
     resp = await sc.table("reconciliation_matches")\
         .select("*, invoices(*), bank_transactions(*)")\
         .eq("client_id", client_id)\
         .eq("status", "SUGGESTED")\
         .execute()
-        
+
     return {"status": "success", "data": resp.data}
 
 @router.get("/history/{client_id}")
@@ -72,6 +60,7 @@ async def get_history(client_id: str, authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     sc = await get_user_supabase_client(authorization)
+    await verify_client_access(sc, client_id)
 
     resp = await sc.table("reconciliation_matches")\
         .select("*, invoices(supplier_name, total_amount, invoice_number), bank_transactions(description, withdrawal, txn_date)")\

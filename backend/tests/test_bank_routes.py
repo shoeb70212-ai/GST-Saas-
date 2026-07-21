@@ -37,7 +37,7 @@ async def _fake_user_id(token: str):
     return "user-123"
 
 
-def _bank_mock(clients=None, statements=None, transactions=None):
+def _bank_mock(clients=None, statements=None, transactions=None, has_access=True):
     table_data = {}
     if clients is not None:
         table_data["clients"] = clients
@@ -45,7 +45,11 @@ def _bank_mock(clients=None, statements=None, transactions=None):
         table_data["bank_statements"] = statements
     if transactions is not None:
         table_data["bank_transactions"] = transactions
-    return build_supabase_mock(user_id="user-123", table_data=table_data)
+    return build_supabase_mock(
+        user_id="user-123",
+        table_data=table_data,
+        rpc_results={"has_client_access": has_access},
+    )
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -115,9 +119,9 @@ class TestBankStatementUpload:
     @patch("bank_routes.get_user_from_token", new_callable=AsyncMock)
     @patch("bank_routes.get_user_supabase_client")
     def test_accessing_other_users_client_returns_403(self, mock_sc_fn, mock_user):
-        """Client not owned by authenticated user → 403."""
+        """Outsider without has_client_access → 403."""
         mock_user.return_value = "user-123"
-        mock_sc = _bank_mock(clients=[])
+        mock_sc = _bank_mock(clients=[], has_access=False)
         mock_sc_fn.side_effect = make_async_factory(mock_sc)
 
         response = http_client.post(
@@ -127,6 +131,67 @@ class TestBankStatementUpload:
             headers={"Authorization": "Bearer fake.token"},
         )
         assert response.status_code == 403
+
+    @patch("bank_routes.process_bank_statement_bg")
+    @patch("bank_routes.ensure_sufficient_credits", new_callable=AsyncMock)
+    @patch("bank_routes._store_statement_file", new_callable=AsyncMock)
+    @patch("bank_routes._prepare_statement_content", new_callable=AsyncMock)
+    @patch("bank_routes.get_user_from_token", new_callable=AsyncMock)
+    @patch("bank_routes.get_user_supabase_client")
+    def test_org_teammate_with_has_client_access_can_upload(
+        self, mock_sc_fn, mock_user, mock_prepare, mock_store, mock_credits, _mock_bg
+    ):
+        """Org teammate (not clients.user_id owner) may upload when RPC allows."""
+        mock_user.return_value = "teammate-456"
+        mock_prepare.return_value = (MINIMAL_PDF, ".pdf", 2)
+        mock_store.return_value = "client-abc/bank_stmt.pdf"
+        mock_sc = _bank_mock(clients=[], has_access=True)
+        mock_sc_fn.side_effect = make_async_factory(mock_sc)
+
+        response = http_client.post(
+            "/api/bank-statements/upload",
+            files={"file": ("stmt.pdf", io.BytesIO(MINIMAL_PDF), "application/pdf")},
+            data={"client_id": "client-abc"},
+            headers={"Authorization": "Bearer fake.token"},
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "success"
+        assert any(
+            name == "has_client_access"
+            for name, _ in mock_sc.rpc_called_with
+        )
+
+    @patch("bank_routes.get_user_from_token", new_callable=AsyncMock)
+    @patch("bank_routes.get_user_supabase_client")
+    def test_list_denied_without_has_client_access(self, mock_sc_fn, mock_user):
+        mock_user.return_value = "outsider-789"
+        mock_sc = _bank_mock(has_access=False)
+        mock_sc_fn.side_effect = make_async_factory(mock_sc)
+
+        response = http_client.get(
+            "/api/bank-statements/list/client-abc",
+            headers={"Authorization": "Bearer fake.token"},
+        )
+        assert response.status_code == 403
+
+    @patch("bank_routes.get_user_from_token", new_callable=AsyncMock)
+    @patch("bank_routes.get_user_supabase_client")
+    def test_list_allowed_for_teammate_with_access(self, mock_sc_fn, mock_user):
+        mock_user.return_value = "teammate-456"
+        mock_sc = _bank_mock(
+            statements=[{"id": "stmt-1", "bank_name": "HDFC", "status": "completed",
+                         "account_number": None, "file_url": None, "created_at": "2024-01-01",
+                         "error_message": None}],
+            has_access=True,
+        )
+        mock_sc_fn.side_effect = make_async_factory(mock_sc)
+
+        response = http_client.get(
+            "/api/bank-statements/list/client-abc",
+            headers={"Authorization": "Bearer fake.token"},
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "success"
 
 
 # ═══════════════════════════════════════════════════════════════

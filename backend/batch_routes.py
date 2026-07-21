@@ -7,25 +7,12 @@ import os
 import re
 from supabase import create_async_client
 # To avoid circular import with main.py, import these where used
-from utils import validate_file_content, sanitize_filename
+from utils import validate_file_content, sanitize_filename, verify_client_access
 
 logger = logging.getLogger(__name__)
 
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
-
-import httpx
-from http_client import get_shared_client
-
-async def _verify_client_ownership_batch(token: str, client_id: str, user_id: str):
-    """Verify that a client_id belongs to the authenticated user."""
-    async with get_shared_client() as http_client:
-        client_resp = await http_client.get(
-            f"{SUPABASE_URL}/rest/v1/clients?id=eq.{client_id}&user_id=eq.{user_id}&select=id",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if not client_resp.json():
-            raise HTTPException(status_code=403, detail="Access denied: client not found")
 
 def format_date_to_iso(date_str):
     if not date_str: return None
@@ -148,8 +135,8 @@ async def upload_batch(
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid session token")
         
-    # Verify client ownership before any processing (Fixes Cross-Tenant IDOR Vulnerability)
-    await _verify_client_ownership_batch(token, client_id, user_id)
+    # Verify client access via has_client_access (org teammate or assignee)
+    await verify_client_access(supabase_client, client_id)
         
     # Process Zip as stream
     try:

@@ -150,6 +150,27 @@ async def ensure_sufficient_credits(sc, user_id: str, cost: int) -> None:
         )
 
 
+async def verify_client_access(sc, client_id: str) -> None:
+    """
+    Require org/assignment access via has_client_access RPC.
+
+    Never trusts client_id alone — caller must already be authenticated
+    (JWT-backed supabase client). Raises 403 when the RPC denies access
+    or fails (fail closed).
+    """
+    if not client_id:
+        raise HTTPException(status_code=403, detail="Access denied: client not found")
+    try:
+        access = await sc.rpc("has_client_access", {"check_client_id": client_id}).execute()
+        if access.data is True:
+            return
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"has_client_access RPC failed for client {client_id}: {e}")
+    raise HTTPException(status_code=403, detail="Access denied: client not found")
+
+
 import io
 
 

@@ -33,6 +33,7 @@ def build_supabase_mock(
     table_data: dict | None = None,
     table_counts: dict | None = None,
     rpc_result: int = 1,
+    rpc_results: dict | None = None,
 ) -> MagicMock:
     """
     Build a fully-configured Supabase async mock that handles the
@@ -42,6 +43,9 @@ def build_supabase_mock(
       .table(name).select(cols).eq(col,val).[eq].[execute]() -> data
       .table(name).insert(data).[execute]() -> inserted row
       .rpc(name, params).[execute]() -> rpc result
+
+    Prefer `rpc_results` (name → data) when a route calls multiple RPCs
+    (e.g. has_client_access + decrement_credits).
     """
     sc = MagicMock()
 
@@ -53,6 +57,7 @@ def build_supabase_mock(
 
     table_data = table_data or {}
     table_counts = table_counts or {}
+    rpc_by_name = dict(rpc_results or {})
 
     class _ChainResult:
         """Captures which table was accessed for execute() to return."""
@@ -91,14 +96,22 @@ def build_supabase_mock(
             return result
 
     sc.insert_called_with = []
+    sc.rpc_called_with = []
     sc.table = lambda name: _ChainResult(name)
 
-    # rpc mock
-    async def _rpc_execute():
-        return MagicMock(data=rpc_result)
-    rpc_chain = MagicMock()
-    rpc_chain.execute = _rpc_execute
-    sc.rpc = MagicMock(return_value=rpc_chain)
+    def _rpc(func_name: str, params=None):
+        sc.rpc_called_with.append((func_name, params))
+        rpc_chain = MagicMock()
+
+        async def _rpc_execute():
+            if func_name in rpc_by_name:
+                return MagicMock(data=rpc_by_name[func_name])
+            return MagicMock(data=rpc_result)
+
+        rpc_chain.execute = _rpc_execute
+        return rpc_chain
+
+    sc.rpc = MagicMock(side_effect=_rpc)
 
     # storage mock (bank statement uploads)
     storage_bucket = MagicMock()

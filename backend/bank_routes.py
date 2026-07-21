@@ -9,7 +9,7 @@ from fastapi import APIRouter, File, UploadFile, HTTPException, Header, Backgrou
 from fastapi.responses import StreamingResponse
 from supabase import create_async_client
 from bank_service import process_bank_statement_bg
-from utils import get_user_supabase_client, ensure_sufficient_credits
+from utils import get_user_supabase_client, ensure_sufficient_credits, verify_client_access
 
 logger = logging.getLogger(__name__)
 
@@ -114,18 +114,18 @@ async def get_user_from_token(token: str):
         return resp.json().get("id")
 
 
-async def _verify_client_ownership(sc, client_id: str, user_id: str):
-    """Verify the authenticated user can access this client (org member or owner)."""
-    try:
-        access = await sc.rpc("has_client_access", {"check_client_id": client_id}).execute()
-        if access.data is True:
-            return
-    except Exception as e:
-        logger.warning(f"has_client_access RPC failed, falling back to user_id check: {e}")
-
-    client_resp = await sc.table("clients").select("id").eq("id", client_id).eq("user_id", user_id).execute()
-    if not client_resp.data:
-        raise HTTPException(status_code=403, detail="Access denied: client not found")
+async def _verify_statement_access(sc, statement_id: str) -> str:
+    """
+    Ensure the caller can see this statement (RLS) and has client access.
+    Returns client_id for further checks.
+    """
+    resp = await sc.table("bank_statements").select("id, client_id").eq("id", statement_id).execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Statement not found or access denied")
+    client_id = resp.data[0].get("client_id")
+    if client_id:
+        await verify_client_access(sc, client_id)
+    return client_id
 
 
 def _read_excel_workbook(content: bytes, ext: str):
@@ -136,13 +136,6 @@ def _read_excel_workbook(content: bytes, ext: str):
     return pd.read_excel(bio, sheet_name=None, engine="openpyxl")
 
 
-async def _verify_statement_ownership(sc, statement_id: str):
-    """Verify that a statement belongs to the authenticated user (via RLS)."""
-    resp = await sc.table("bank_statements").select("id").eq("id", statement_id).execute()
-    if not resp.data:
-        raise HTTPException(status_code=404, detail="Statement not found or access denied")
-
-
 @router.get("/list/{client_id}")
 async def list_bank_statements(client_id: str, authorization: str = Header(None)):
     """Returns all bank statements for a client, ordered newest first."""
@@ -150,12 +143,11 @@ async def list_bank_statements(client_id: str, authorization: str = Header(None)
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     token = authorization.split(" ")[1]
-    user_id = await get_user_from_token(token)
+    await get_user_from_token(token)
 
     sc = await get_user_supabase_client(authorization)
 
-    # Ownership check: verify client belongs to user
-    await _verify_client_ownership(sc, client_id, user_id)
+    await verify_client_access(sc, client_id)
 
     resp = await sc.table("bank_statements")\
         .select("id, bank_name, account_number, status, file_url, created_at, error_message")\
@@ -184,7 +176,7 @@ async def upload_bank_statement(
         raise HTTPException(status_code=400, detail="File too large. Max 25MB.")
 
     sc = await get_user_supabase_client(authorization)
-    await _verify_client_ownership(sc, client_id, user_id)
+    await verify_client_access(sc, client_id)
 
     content, ext, cost = await _prepare_statement_content(content, file.filename, pdf_password)
 
@@ -254,7 +246,7 @@ async def retry_bank_statement(
     user_id = await get_user_from_token(token)
 
     sc = await get_user_supabase_client(authorization)
-    await _verify_statement_ownership(sc, statement_id)
+    await _verify_statement_access(sc, statement_id)
 
     existing = await sc.table("bank_statements").select("id, client_id, status").eq("id", statement_id).execute()
     if not existing.data:
@@ -265,7 +257,6 @@ async def retry_bank_statement(
         raise HTTPException(status_code=400, detail="Only failed or cancelled statements can be retried.")
 
     client_id = row["client_id"]
-    await _verify_client_ownership(sc, client_id, user_id)
 
     content = await file.read()
     content, ext, cost = await _prepare_statement_content(content, file.filename, pdf_password)
@@ -322,7 +313,7 @@ async def get_statement_status(statement_id: str, authorization: str = Header(No
     sc = await get_user_supabase_client(authorization)
 
     # Ownership check (RLS enforces this, but explicit check gives better error)
-    await _verify_statement_ownership(sc, statement_id)
+    await _verify_statement_access(sc, statement_id)
 
     resp = await sc.table("bank_statements").select("status, bank_name, account_number, file_url").eq("id", statement_id).execute()
     if not resp.data:
@@ -354,7 +345,7 @@ async def cancel_statement(statement_id: str, authorization: str = Header(None))
     sc = await get_user_supabase_client(authorization)
 
     # Ownership check
-    await _verify_statement_ownership(sc, statement_id)
+    await _verify_statement_access(sc, statement_id)
 
     resp = await sc.table("bank_statements").select("status").eq("id", statement_id).execute()
     if not resp.data:
@@ -378,7 +369,7 @@ async def get_transactions(statement_id: str, authorization: str = Header(None))
     sc = await get_user_supabase_client(authorization)
 
     # Ownership check
-    await _verify_statement_ownership(sc, statement_id)
+    await _verify_statement_access(sc, statement_id)
 
     resp = await sc.table("bank_transactions").select("*").eq("statement_id", statement_id).order("txn_date").execute()
     return {"status": "success", "data": resp.data}
@@ -392,7 +383,7 @@ async def export_excel(statement_id: str, authorization: str = Header(None)):
     sc = await get_user_supabase_client(authorization)
 
     # Ownership check
-    await _verify_statement_ownership(sc, statement_id)
+    await _verify_statement_access(sc, statement_id)
 
     # 1. Hard UI Block Enforced on Backend
     txns_resp = await sc.table("bank_transactions").select("*").eq("statement_id", statement_id).order("txn_date").execute()

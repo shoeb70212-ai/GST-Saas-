@@ -186,44 +186,55 @@ class TestBatchZipValidation:
 
 
 # ═══════════════════════════════════════════════════════════════
-# Client Ownership (IDOR Prevention)
+# Client Access (has_client_access / IDOR Prevention)
 # ═══════════════════════════════════════════════════════════════
 
 class TestBatchOwnership:
     @patch("batch_routes.create_async_client")
     def test_accessing_another_users_client_returns_403(self, mock_create):
-        """Client not owned by the authenticated user → 403."""
+        """Outsider without has_client_access → 403."""
         mock_sc = build_supabase_mock(
             table_data={"profiles": [{"tally_ledgers": None}]},
+            rpc_results={"has_client_access": False},
         )
-
-        from contextlib import asynccontextmanager
-
-        class FakeHTTPClientNotOwned:
-            async def get(self, url, **kw):
-                resp = MagicMock()
-                resp.status_code = 200
-                resp.json = lambda: []
-                return resp
-            async def __aenter__(self): return self
-            async def __aexit__(self, *a): pass
-
-        @asynccontextmanager
-        async def fake_shared(*a, **kw):
-            yield FakeHTTPClientNotOwned()
-
         mock_create.side_effect = make_async_factory(mock_sc)
 
-        import batch_routes
-        with patch.object(batch_routes, "get_shared_client", fake_shared):
-            zip_bytes = _make_zip()
-            response = client.post(
-                "/api/upload-batch",
-                files={"file": ("batch.zip", io.BytesIO(zip_bytes), "application/zip")},
-                data={"client_id": "other-users-client"},
-                headers={"Authorization": "Bearer fake.token"},
-            )
+        zip_bytes = _make_zip()
+        response = client.post(
+            "/api/upload-batch",
+            files={"file": ("batch.zip", io.BytesIO(zip_bytes), "application/zip")},
+            data={"client_id": "other-users-client"},
+            headers={"Authorization": "Bearer fake.token"},
+        )
         assert response.status_code == 403
+        assert any(name == "has_client_access" for name, _ in mock_sc.rpc_called_with)
+
+    @patch("batch_routes.process_batch_worker")
+    @patch("batch_routes.create_async_client")
+    def test_org_teammate_with_has_client_access_can_upload(self, mock_create, _mock_worker):
+        """Teammate (not clients.user_id) may batch-upload when RPC allows."""
+        mock_sc = build_supabase_mock(
+            user_id="teammate-456",
+            table_data={"profiles": [{"tally_ledgers": None}]},
+            rpc_results={
+                "has_client_access": True,
+                "decrement_credits": 8,
+            },
+        )
+        mock_create.side_effect = make_async_factory(mock_sc)
+
+        zip_bytes = _make_zip()
+        response = client.post(
+            "/api/upload-batch",
+            files={"file": ("batch.zip", io.BytesIO(zip_bytes), "application/zip")},
+            data={"client_id": "client-abc"},
+            headers={"Authorization": "Bearer fake.token"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "success"
+        assert len(body["queued_ids"]) >= 1
+        assert any(name == "has_client_access" for name, _ in mock_sc.rpc_called_with)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -236,32 +247,18 @@ class TestBatchCredits:
         """decrement_credits returning -1 → 402."""
         mock_sc = build_supabase_mock(
             table_data={"profiles": [{"tally_ledgers": None}]},
-            rpc_result=-1,
+            rpc_results={
+                "has_client_access": True,
+                "decrement_credits": -1,
+            },
         )
         mock_create.side_effect = make_async_factory(mock_sc)
 
-        from contextlib import asynccontextmanager
-        import batch_routes
-
-        class FakeHTTP:
-            async def get(self, url, **kw):
-                resp = MagicMock()
-                resp.status_code = 200
-                resp.json = lambda: [{"id": "client-abc"}]
-                return resp
-            async def __aenter__(self): return self
-            async def __aexit__(self, *a): pass
-
-        @asynccontextmanager
-        async def fake_shared(*a, **kw):
-            yield FakeHTTP()
-
-        with patch.object(batch_routes, "get_shared_client", fake_shared):
-            zip_bytes = _make_zip()
-            response = client.post(
-                "/api/upload-batch",
-                files={"file": ("batch.zip", io.BytesIO(zip_bytes), "application/zip")},
-                data={"client_id": "client-abc"},
-                headers={"Authorization": "Bearer fake.token"},
-            )
+        zip_bytes = _make_zip()
+        response = client.post(
+            "/api/upload-batch",
+            files={"file": ("batch.zip", io.BytesIO(zip_bytes), "application/zip")},
+            data={"client_id": "client-abc"},
+            headers={"Authorization": "Bearer fake.token"},
+        )
         assert response.status_code == 402
