@@ -155,7 +155,7 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 | Scan / save | Good post-incident | Do not regress clientId binding / `save_invoice_atomic` |
 | Clients | Good | Phase 58 `create_client_secure`; multi-org `LIMIT 1` still P2 |
 | GSTR-2B recon | Good | Strong memoization; large grids need virtualization |
-| Bank | Improved | Refund + ownership vs `has_client_access` still diverge |
+| Bank | Good | Ownership aligned with `has_client_access` (firm-wide) |
 | Tax liability | OK | Uses ErrorState |
 | Virtual CFO | Improved | ErrorState added; routes ungated post-ProGate |
 | Audit logs | OK | Phase 59 triggers; UI mapping fixed recently |
@@ -179,9 +179,9 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 
 | ID | Sev | Finding | Evidence | Recommendation |
 |----|-----|---------|----------|----------------|
-| S1 | P1 | Phase 57 `has_client_access` = any org member | phase57 | Product decision: restore assignments or document |
+| S1 | P1 | Phase 57 `has_client_access` = any org member | phase57 | **Decided:** firm-wide org membership is the product default. `client_assignments` remains for optional cross-org assignees only — do not restore assignment-required RLS. |
 | S2 | P1 | Public upload by UUID | `public_routes.py` | Signed tokens + budgets |
-| S3 | P1 | Batch/bank ownership = `clients.user_id` only | batch/bank routes | Align with `has_client_access` |
+| S3 | P1 | Batch/bank/GSTR ownership = `clients.user_id` only | batch/bank/reconcile/sales | **Done:** all use `utils.verify_client_access` → `has_client_access` |
 | S4 | P2 | Phase 58 `set_default_org_id` allows client-supplied org | phase58 | Prefer force `active_org_id` |
 | S5 | — | CORS not `*`; security headers present | `main.py` | Keep |
 
@@ -207,12 +207,12 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 ### P1 (next 1–2 weeks)
 
 1. Public upload: deduct/reserve before AI; signed upload tokens; tighter rate limits.
-2. Align bank/batch ownership with `has_client_access`.
-3. Decide RBAC: restore `client_assignments` vs firm-wide access; document.
+2. ~~Align bank/batch ownership with `has_client_access`.~~ **Done** (`5f7c6a8`); GSTR reconcile + sales aligned to same helper.
+3. ~~Decide RBAC: restore `client_assignments` vs firm-wide access; document.~~ **Decided: firm-wide** (S1). Assignments table kept for cross-org edge cases only.
 4. Clients page aggregate counts; recon column projection + virtualization.
-5. Soft-gate `/admin` + `/cfo` if monetization requires it (API still authoritative).
-6. Restore `transactions` ledger writes in `upgrade_user_tier`.
-7. Refund policy for failed batch workers / deep-match AI exceptions.
+5. Soft-gate `/admin` + `/cfo` if monetization requires it (API still authoritative). ~~Done soft-gate~~ (`e91a525`).
+6. Restore `transactions` ledger writes in `upgrade_user_tier`. ~~Done~~ (`ae53718`).
+7. Refund policy for failed batch workers / deep-match AI exceptions. ~~Done~~ (`f0e06cf`).
 
 ### P2 (later)
 
@@ -243,8 +243,8 @@ Severity: **P0** ship-blocker / money-security · **P1** high · **P2** hygiene.
 |-----|-------|---------|
 | 1 | Apply phase60 + verify signup + credit IDOR tests | Migration live; pytest for unauthorized refund |
 | 2 | Public upload harden (pre-deduct + token) | Stop free AI / wallet drain |
-| 3 | Ownership = `has_client_access` for bank/batch | Assignees work; no IDOR |
-| 4 | RBAC product decision + RPC adjust | Documented firm access model |
+| 3 | Ownership = `has_client_access` for bank/batch/GSTR/sales | **Done** — firm-wide org members; no owner-only FastAPI gate |
+| 4 | RBAC product decision + RPC adjust | **Done** — firm-wide default documented (S1); no RPC rollback |
 | 5 | Recon virtualization + Clients aggregates | Smooth 1k+ row periods |
 | 6–7 | `upgrade_user_tier` ledger + admin UI org credits display | Wallet history + admin truth |
 | Buffer | Docs sync; graph rebuild; extract `credits.py` | Less drift |

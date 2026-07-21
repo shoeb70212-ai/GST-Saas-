@@ -17,21 +17,11 @@ SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
 from collections import defaultdict
 import rapidfuzz
 from openai import AsyncOpenAI
+from utils import get_user_supabase_client, verify_client_access
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-async def _verify_client_ownership_reconcile(token: str, client_id: str, user_id: str):
-    """Verify that a client_id belongs to the authenticated user before reconcile operations."""
-    async with get_shared_client() as http_client:
-        client_resp = await http_client.get(
-            f"{SUPABASE_URL}/rest/v1/clients?id=eq.{client_id}&user_id=eq.{user_id}&select=id",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
-        )
-        if not client_resp.json():
-            raise HTTPException(status_code=403, detail="Access denied: client not found")
 
 def period_to_date_range(period: str):
     """
@@ -78,10 +68,11 @@ async def reconcile_gstr2b(
         if user_resp.status_code != 200:
             raise HTTPException(status_code=401, detail="Invalid session token")
         user_id = user_resp.json().get("id")
-    
-    # Verify client ownership (fixes #14 — data leak prevention)
-    await _verify_client_ownership_reconcile(token, client_id, user_id)
-        
+
+    # Firm-wide org access via has_client_access (not clients.user_id owner-only)
+    sc = await get_user_supabase_client(authorization)
+    await verify_client_access(sc, client_id)
+
     content = await file.read()
     
     try:
@@ -301,10 +292,11 @@ async def deep_match_reconcile(
         if user_resp.status_code != 200:
             raise HTTPException(status_code=401, detail="Invalid session token")
         user_id = user_resp.json().get("id")
-    
-    # Verify client ownership (fixes #14 — data leak prevention)
-    await _verify_client_ownership_reconcile(token, client_id, user_id)
-    
+
+    # Firm-wide org access via has_client_access (not clients.user_id owner-only)
+    sc = await get_user_supabase_client(authorization)
+    await verify_client_access(sc, client_id)
+
     async with get_shared_client() as http_client:
         # Fetch PR Invoices
         pr_resp = await http_client.get(

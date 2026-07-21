@@ -152,7 +152,9 @@ async def ensure_sufficient_credits(sc, user_id: str, cost: int) -> None:
 
 async def verify_client_access(sc, client_id: str) -> None:
     """
-    Require org/assignment access via has_client_access RPC.
+    Require firm-wide org membership (or cross-org assignment) via
+    has_client_access RPC. Product default is any org member — not
+    clients.user_id owner-only.
 
     Never trusts client_id alone — caller must already be authenticated
     (JWT-backed supabase client). Raises 403 when the RPC denies access
