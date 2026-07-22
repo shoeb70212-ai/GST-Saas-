@@ -10,6 +10,19 @@ interface State {
   error: Error | null;
 }
 
+const CHUNK_RELOAD_KEY = 'khatalens_chunk_reload';
+
+function isChunkLoadError(error: Error | null): boolean {
+  if (!error) return false;
+  const msg = `${error.name} ${error.message}`;
+  return (
+    /Failed to fetch dynamically imported module/i.test(msg) ||
+    /Loading chunk [\d]+ failed/i.test(msg) ||
+    /Importing a module script failed/i.test(msg) ||
+    /error loading dynamically imported module/i.test(msg)
+  );
+}
+
 export class ErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
@@ -22,10 +35,36 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error:', error, errorInfo);
+
+    // After a deploy, browsers can hold a stale module graph while hashed chunks
+    // are replaced (502 / missing file). One hard reload usually recovers.
+    if (isChunkLoadError(error)) {
+      try {
+        const alreadyReloaded = sessionStorage.getItem(CHUNK_RELOAD_KEY) === '1';
+        if (!alreadyReloaded) {
+          sessionStorage.setItem(CHUNK_RELOAD_KEY, '1');
+          window.location.reload();
+          return;
+        }
+        sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+      } catch {
+        // sessionStorage may be blocked; fall through to the UI reload button
+      }
+    }
   }
+
+  private handleReload = () => {
+    try {
+      sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+    } catch {
+      /* ignore */
+    }
+    window.location.reload();
+  };
 
   public render() {
     if (this.state.hasError) {
+      const chunkError = isChunkLoadError(this.state.error);
       return (
         <div 
           className="min-h-screen bg-bg-base flex flex-col items-center justify-center p-4 text-text-primary"
@@ -38,10 +77,12 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
             <h1 className="text-2xl font-bold mb-4 font-display">Application Error</h1>
             <p className="text-text-secondary mb-8 text-sm">
-              An unexpected error occurred. Our team has been notified. Please try refreshing the page.
+              {chunkError
+                ? 'A new version of KhataLens was just deployed. Reload to load the latest app files.'
+                : 'An unexpected error occurred. Our team has been notified. Please try refreshing the page.'}
             </p>
             <button
-              onClick={() => window.location.reload()}
+              onClick={this.handleReload}
               className="btn-primary w-full flex items-center justify-center gap-2"
               aria-label="Reload application"
             >
