@@ -77,7 +77,9 @@ export function ScanUploadPanel({
               {uploadMode === 'single' ? "Drag & drop invoices" : "Drag & drop a ZIP folder"}
             </p>
             <p className="text-xs text-text-secondary">
-              {uploadMode === 'single' ? "JPG, PNG, PDF (Max 50 files)" : "ZIP (Unlimited invoices processed in background)"}
+              {uploadMode === 'single'
+                ? "JPG, PNG, PDF (Max 50 files)"
+                : "ZIP of JPG/PNG/PDF — max ~50 MB uncompressed (processed in background)"}
             </p>
           </div>
         </motion.div>

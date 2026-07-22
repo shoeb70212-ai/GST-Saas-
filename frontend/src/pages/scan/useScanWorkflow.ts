@@ -217,6 +217,15 @@ export function useScanWorkflow() {
       return;
     }
 
+    // Proxy (nginx) and backend reject oversized ZIPs with 413. Warn early.
+    const MAX_ZIP_BYTES = 80 * 1024 * 1024; // compressed ZIP soft limit (backend: 50MB uncompressed)
+    if (file.size > MAX_ZIP_BYTES) {
+      toast.error(
+        `ZIP is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Split into batches under ~80 MB compressed (50 MB uncompressed of images/PDFs).`,
+      );
+      return;
+    }
+
     const formData = new FormData();
     formData.append('file', file);
     formData.append('client_id', activeClientId);
@@ -236,7 +245,25 @@ export function useScanWorkflow() {
         body: formData,
       });
 
-      if (!response.ok) throw new Error("Failed to upload ZIP");
+      if (!response.ok) {
+        let detail = "";
+        try {
+          const errBody = await response.json();
+          detail = typeof errBody?.detail === "string" ? errBody.detail : "";
+        } catch {
+          /* ignore non-JSON 413 from nginx */
+        }
+        if (response.status === 413) {
+          throw new Error(
+            detail ||
+              "ZIP too large for the server (413). Split into smaller ZIPs (under ~50 MB of images/PDFs), or ask admin to raise proxy body size.",
+          );
+        }
+        if (response.status === 404) {
+          throw new Error("Batch upload API not found (404). Backend may need a redeploy.");
+        }
+        throw new Error(detail || `Failed to upload ZIP (${response.status})`);
+      }
       const resData = await response.json();
 
       toast.success(`Queued ${resData.queued_ids?.length || 0} invoices for background processing!`, { id: "zip-upload" });
