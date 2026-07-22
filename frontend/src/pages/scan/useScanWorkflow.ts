@@ -262,6 +262,12 @@ export function useScanWorkflow() {
         if (response.status === 404) {
           throw new Error("Batch upload API not found (404). Backend may need a redeploy.");
         }
+        if (response.status === 402) {
+          throw new Error(detail || "Insufficient credits for this ZIP batch.");
+        }
+        if (response.status === 400) {
+          throw new Error(detail || "Invalid ZIP or no supported invoice files found.");
+        }
         throw new Error(detail || `Failed to upload ZIP (${response.status})`);
       }
       const resData = await response.json();

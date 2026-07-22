@@ -1,3 +1,5 @@
+import io
+import uuid
 import zipfile
 import logging
 from fastapi import APIRouter, File, UploadFile, HTTPException, BackgroundTasks, Form, Depends
@@ -131,54 +133,109 @@ async def upload_batch(
     client_id: str = Form(...),
     auth: dict = Depends(get_current_user),
 ):
+    """
+    Accept a ZIP of invoice images/PDFs, debit credits upfront, queue pending
+    invoice rows, and process each file in a background worker.
+    """
     user_id = auth["user_id"]
     token = auth["token"]
     supabase_client = auth["supabase_client"]
 
     await ensure_org_not_suspended(supabase_client, user_id)
-
-    profile_resp = await supabase_client.table("profiles").select("tally_ledgers").eq("id", user_id).execute()
-    tally_ledgers = profile_resp.data[0].get("tally_ledgers") if profile_resp.data else None
-
     await verify_client_access(supabase_client, client_id)
 
     try:
-        with zipfile.ZipFile(file.file) as z:
+        profile_resp = (
+            await supabase_client.table("profiles")
+            .select("tally_ledgers")
+            .eq("id", user_id)
+            .execute()
+        )
+        tally_ledgers = (
+            profile_resp.data[0].get("tally_ledgers") if profile_resp.data else None
+        )
+    except Exception as e:
+        logger.warning("Could not load tally_ledgers for batch upload: %s", e)
+        tally_ledgers = None
+
+    # Read ZIP fully into memory — SpooledTemporaryFile + ZipFile is fragile on
+    # Render/Coolify and often surfaces as an opaque 500.
+    try:
+        zip_bytes = await file.read()
+    except Exception as e:
+        logger.error("Failed to read uploaded ZIP body: %s", e)
+        raise HTTPException(status_code=400, detail="Could not read uploaded ZIP file.")
+
+    if not zip_bytes:
+        raise HTTPException(status_code=400, detail="Empty ZIP file.")
+
+    MAX_COMPRESSED = 80 * 1024 * 1024
+    if len(zip_bytes) > MAX_COMPRESSED:
+        raise HTTPException(
+            status_code=413,
+            detail=f"ZIP is too large ({len(zip_bytes) // (1024 * 1024)} MB compressed). Max 80 MB.",
+        )
+
+    MAX_TOTAL_SIZE = 50 * 1024 * 1024
+    valid_exts = (".jpg", ".jpeg", ".png", ".pdf", ".webp")
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
             file_names = z.namelist()
-            valid_exts = [".jpg", ".jpeg", ".png", ".pdf", ".webp"]
             valid_files = [
                 f
                 for f in file_names
                 if any(f.lower().endswith(ext) for ext in valid_exts)
                 and not f.startswith("__MACOSX")
+                and not f.endswith("/")
+                and "/__MACOSX/" not in f.replace("\\", "/")
             ]
 
             if not valid_files:
-                raise HTTPException(status_code=400, detail="No valid images or PDFs found in ZIP.")
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "No valid images or PDFs found in ZIP. "
+                        "Include .jpg, .jpeg, .png, .pdf, or .webp files "
+                        "(HEIC/WhatsApp stickers are not supported)."
+                    ),
+                )
 
-            batch_ids = []
-            pending_records = []
-            file_details = []
+            batch_ids: list[str] = []
+            pending_records: list[dict] = []
+            file_details: list[dict] = []
             total_uncompressed_size = 0
-            MAX_TOTAL_SIZE = 50 * 1024 * 1024
+            skipped = 0
 
             for fname in valid_files:
                 file_info = z.getinfo(fname)
+                if file_info.is_dir():
+                    continue
                 total_uncompressed_size += file_info.file_size
                 if total_uncompressed_size > MAX_TOTAL_SIZE:
                     raise HTTPException(
                         status_code=413,
-                        detail="Zip archive is too large when uncompressed (Zip Bomb prevention).",
+                        detail=(
+                            "Zip archive is too large when uncompressed "
+                            "(max 50 MB of images/PDFs). Split into smaller batches."
+                        ),
                     )
 
-                file_bytes = z.read(fname)
+                try:
+                    file_bytes = z.read(fname)
+                except Exception as read_e:
+                    logger.warning("Skipping unreadable ZIP entry %s: %s", fname, read_e)
+                    skipped += 1
+                    continue
+
                 try:
                     mime_type = validate_file_content(file_bytes, fname)
                 except HTTPException:
+                    skipped += 1
                     continue
 
-                safe_fname = sanitize_filename(fname.split("/")[-1])
-                import uuid
+                base = fname.replace("\\", "/").split("/")[-1]
+                safe_fname = sanitize_filename(base)
 
                 pending_records.append(
                     {
@@ -192,75 +249,114 @@ async def upload_batch(
                 file_details.append({"bytes": file_bytes, "mime": mime_type})
 
             if not pending_records:
-                raise HTTPException(status_code=400, detail="No valid images or PDFs found in ZIP.")
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "No processable invoices in ZIP after validation. "
+                        f"Skipped {skipped} file(s) (wrong format, corrupt, or over 10 MB each)."
+                    ),
+                )
 
             cost = credit_costs.batch_upload_cost(len(pending_records))
+            zip_label = sanitize_filename(file.filename or "batch.zip")
 
-            rpc_resp = await supabase_client.rpc(
-                "decrement_credits",
-                {
-                    "user_id_param": user_id,
-                    "amount": cost,
-                    "task_type_param": "batch_upload_upfront",
-                    "file_name_param": file.filename,
-                    "tokens_used_param": 0,
-                },
-            ).execute()
+            try:
+                rpc_resp = await supabase_client.rpc(
+                    "decrement_credits",
+                    {
+                        "user_id_param": user_id,
+                        "amount": cost,
+                        "task_type_param": "batch_upload_upfront",
+                        "file_name_param": zip_label,
+                        "tokens_used_param": 0,
+                    },
+                ).execute()
+            except Exception as rpc_e:
+                logger.error("decrement_credits RPC failed for batch: %s", rpc_e)
+                raise HTTPException(
+                    status_code=500,
+                    detail="Credit deduction failed. Please try again or contact support.",
+                )
 
             if rpc_resp.data == -1:
                 raise HTTPException(
                     status_code=402,
-                    detail=f"Insufficient credits. This batch contains {cost} invoices. Please recharge your wallet.",
+                    detail=(
+                        f"Insufficient credits. This batch needs {cost} credits "
+                        f"({len(pending_records)} files). Please recharge your wallet."
+                    ),
                 )
 
             try:
-                ins_resp = await supabase_client.table("invoices").insert(pending_records).execute()
-                if ins_resp.data:
-                    for i, row in enumerate(ins_resp.data):
-                        invoice_id = row["id"]
-                        batch_ids.append(invoice_id)
-
-                        background_tasks.add_task(
-                            process_batch_worker,
-                            invoice_id=invoice_id,
-                            content=file_details[i]["bytes"],
-                            mime_type=file_details[i]["mime"],
-                            user_id=user_id,
-                            token=token,
-                            tally_ledgers=tally_ledgers,
-                            supabase_client=supabase_client,
-                        )
-                else:
-                    logger.error("Failed to bulk insert pending invoices after credit deduction")
+                ins_resp = (
+                    await supabase_client.table("invoices")
+                    .insert(pending_records)
+                    .execute()
+                )
+                if not ins_resp.data:
+                    logger.error(
+                        "Bulk insert returned empty after credit deduction (user=%s, n=%s)",
+                        user_id,
+                        len(pending_records),
+                    )
                     await supabase_client.rpc(
                         "refund_credits",
-                        {
-                            "user_id_param": user_id,
-                            "amount": cost,
-                        },
+                        {"user_id_param": user_id, "amount": cost},
                     ).execute()
-                    raise HTTPException(status_code=500, detail="Failed to queue batch invoices.")
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Failed to queue batch invoices (empty insert). Credits refunded.",
+                    )
+
+                for i, row in enumerate(ins_resp.data):
+                    invoice_id = row["id"]
+                    batch_ids.append(invoice_id)
+                    # Do not share the request-scoped Supabase client with workers —
+                    # each worker creates its own authenticated client via token.
+                    background_tasks.add_task(
+                        process_batch_worker,
+                        invoice_id=invoice_id,
+                        content=file_details[i]["bytes"],
+                        mime_type=file_details[i]["mime"],
+                        user_id=user_id,
+                        token=token,
+                        tally_ledgers=tally_ledgers,
+                        supabase_client=None,
+                    )
             except HTTPException:
                 raise
             except Exception as insert_e:
-                logger.error("Batch insert failed after credit deduction: %s", insert_e)
+                logger.error(
+                    "Batch insert failed after credit deduction: %s",
+                    insert_e,
+                    exc_info=True,
+                )
                 try:
                     await supabase_client.rpc(
                         "refund_credits",
-                        {
-                            "user_id_param": user_id,
-                            "amount": cost,
-                        },
+                        {"user_id_param": user_id, "amount": cost},
                     ).execute()
                 except Exception as refund_e:
                     logger.error("Failed to refund batch credits: %s", refund_e)
-                raise HTTPException(status_code=500, detail="Failed to queue batch invoices.")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to queue batch invoices: {insert_e}",
+                )
 
             return {
                 "status": "success",
                 "message": f"Queued {len(batch_ids)} files for processing.",
                 "queued_ids": batch_ids,
+                "skipped": skipped,
             }
 
+    except HTTPException:
+        raise
     except zipfile.BadZipFile:
         raise HTTPException(status_code=400, detail="Invalid ZIP file.")
+    except Exception as e:
+        logger.error("upload-batch unexpected failure: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Batch upload failed: {type(e).__name__}: {e}",
+        )
