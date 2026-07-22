@@ -29,6 +29,7 @@ export const CREDIT_COSTS = {
   whatsappReceipt: 1,
   bankStatementBase: 2,
   deepMatchBase: 5,
+  tallyConverterBase: 2,
 } as const;
 
 /**

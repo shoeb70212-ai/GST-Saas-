@@ -28,6 +28,7 @@ const SnapPage = lazy(() => import('./pages/SnapPage'));
 const PlatformAdminPage = lazy(() => import('./pages/PlatformAdminPage'));
 const SupportEnterPage = lazy(() => import('./pages/SupportEnterPage'));
 const WalletPage = lazy(() => import('./pages/WalletPage'));
+const TallyConverterPage = lazy(() => import('./pages/TallyConverterPage'));
 import PlatformAdminLayout from './components/PlatformAdminLayout';
 import { SuperAdminGate, OrgAdminGate } from './components/RouteAccessGate';
 import { ScanProvider } from './lib/ScanContext';
@@ -45,6 +46,7 @@ const LEGACY_APP_REDIRECTS: Array<{ from: string; to: string }> = [
   { from: '/invoices', to: '/app/invoices' },
   { from: '/bank-statements', to: '/app/bank-statements' },
   { from: '/bank-reconcile', to: '/app/bank-reconcile' },
+  { from: '/tally-converter', to: '/app/tally-converter' },
   { from: '/reconcile', to: '/app/reconcile' },
   { from: '/clients', to: '/app/clients' },
   { from: '/audit-logs', to: '/app/audit-logs' },
@@ -161,6 +163,7 @@ export default function App() {
               <Route path="invoices" element={<SavedInvoicesPage />} />
               <Route path="bank-statements" element={<BankStatementsPage />} />
               <Route path="bank-reconcile" element={<BankReconcilePage />} />
+              <Route path="tally-converter" element={<TallyConverterPage />} />
               <Route path="reconcile" element={<ReconciliationPage />} />
               <Route path="clients" element={<ClientsPage />} />
               <Route path="audit-logs" element={<AuditLogsPage />} />

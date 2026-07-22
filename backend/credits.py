@@ -35,6 +35,23 @@ BANK_EXCEL_ROWS_PER_UNIT = 50
 DEEP_MATCH_BASE = 5
 DEEP_MATCH_ITEMS_PER_UNIT = 20
 
+# Tally converter (PDF/Excel → Tally IR)
+CONVERTER_BASE = 2
+CONVERTER_PDF_PAGES_PER_UNIT = 5
+CONVERTER_ROWS_PER_UNIT = 50
+
+
+def converter_pdf_cost(page_count: int) -> int:
+    """PDF converter: max(2, ceil(pages / 5) * 2)."""
+    pages = max(int(page_count), 1)
+    return max(CONVERTER_BASE, math.ceil(pages / CONVERTER_PDF_PAGES_PER_UNIT) * CONVERTER_BASE)
+
+
+def converter_spreadsheet_cost(row_count: int) -> int:
+    """Excel/CSV converter: max(2, ceil(rows / 50) * 2)."""
+    rows = max(0, int(row_count))
+    return max(CONVERTER_BASE, math.ceil(rows / CONVERTER_ROWS_PER_UNIT) * CONVERTER_BASE)
+
 
 def batch_upload_cost(file_count: int) -> int:
     """Credits charged upfront for a batch ZIP (1 × valid queued files)."""

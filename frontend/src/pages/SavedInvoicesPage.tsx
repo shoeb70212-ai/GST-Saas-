@@ -304,11 +304,19 @@ export default function SavedInvoicesPage() {
         
       if (error) throw error;
       
-      exportToTallyXML(toExport, allLineItems || []);
-      toast.success("Exported to Tally XML successfully!");
-    } catch (err) {
+      const result = await exportToTallyXML(toExport, allLineItems || []);
+      if (result.report && !result.ok) {
+        const errs = (result.report.issues || [])
+          .filter((i: { severity: string }) => i.severity === 'error')
+          .slice(0, 3)
+          .map((i: { message: string }) => i.message);
+        toast.error(errs.join('; ') || 'Tally validation found errors — XML may be incomplete.');
+      } else {
+        toast.success('Exported Tally XML (with masters) successfully!');
+      }
+    } catch (err: any) {
       console.error("XML Export failed:", err);
-      toast.error("Failed to export to Tally XML.");
+      toast.error(err?.message || "Failed to export to Tally XML.");
     } finally {
       setIsExporting(false);
     }

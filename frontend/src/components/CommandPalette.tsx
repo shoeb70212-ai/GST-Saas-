@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, ScanLine, FileText, Network, Banknote, Building2,
-  CreditCard, Settings, Sparkles, ShieldAlert, TrendingUp, Search, CornerDownLeft
+  CreditCard, Settings, Sparkles, ShieldAlert, TrendingUp, Search, CornerDownLeft, FileOutput
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -22,6 +22,7 @@ const COMMANDS: PaletteItem[] = [
   { id: 'reconcile', label: 'GSTR-2B', hint: 'Match ITC vs books', path: '/app/reconcile', icon: Network, keywords: '2b gst recon' },
   { id: 'bank-statements', label: 'Bank statements', hint: 'Upload PDF / Excel', path: '/app/bank-statements', icon: Banknote, keywords: 'bank upload' },
   { id: 'bank-reconcile', label: 'Bank match', hint: 'Allocate payments', path: '/app/bank-reconcile', icon: Network, keywords: 'payment allocate' },
+  { id: 'tally-converter', label: 'Tally Converter', hint: 'PDF/Excel → Tally XML', path: '/app/tally-converter', icon: FileOutput, keywords: 'tally export xml register' },
   { id: 'tax', label: 'Tax liability', hint: 'Cash vs ITC estimate', path: '/app/tax-liability', icon: TrendingUp },
   { id: 'clients', label: 'Clients', hint: 'Practice workspaces', path: '/app/clients', icon: Building2, keywords: 'business firms' },
   { id: 'cfo', label: 'Virtual CFO', hint: 'AI desk assistant', path: '/app/cfo', icon: Sparkles },

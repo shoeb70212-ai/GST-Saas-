@@ -82,6 +82,7 @@ from whatsapp_routes import router as whatsapp_router
 from bank_routes import router as bank_router
 from bank_reconcile_routes import router as bank_reconcile_router
 from sales_routes import router as sales_router
+from tally_routes import router as tally_router
 
 app.state.limiter = public_limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -97,3 +98,4 @@ app.include_router(whatsapp_router, prefix="/api/whatsapp", tags=["whatsapp"])
 app.include_router(bank_router, prefix="/api/bank-statements", tags=["bank-statements"])
 app.include_router(bank_reconcile_router, prefix="/api/bank-reconcile", tags=["bank-reconcile"])
 app.include_router(sales_router, prefix="/api/sales", tags=["sales"])
+app.include_router(tally_router, prefix="/api", tags=["tally"])
