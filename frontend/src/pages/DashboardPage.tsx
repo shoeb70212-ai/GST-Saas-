@@ -35,9 +35,25 @@ const CONTINUE_WORK = [
   { to: '/app/bank-statements', label: 'Upload bank statement', hint: 'Parse PDF/Excel for payment matching', icon: Banknote },
 ] as const;
 
+function parseClientRpcPayload(rpcData: unknown): { id?: string } | null {
+  if (!rpcData) return null;
+  if (typeof rpcData === 'string') {
+    try {
+      return JSON.parse(rpcData) as { id?: string };
+    } catch {
+      return null;
+    }
+  }
+  if (typeof rpcData === 'object') {
+    return rpcData as { id?: string };
+  }
+  return null;
+}
+
 export default function DashboardPage() {
-  const { activeClientId, clients, setActiveClientId, credits } = useClient();
+  const { activeClientId, clients, setActiveClientId, credits, refreshClients, loading: clientsLoading } = useClient();
   const [showSettings, setShowSettings] = useState(false);
+  const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
   const [visibleWidgets, setVisibleWidgets] = useState<string[]>(DEFAULT_WIDGETS);
 
   const { data: dashboardData, isLoading, isError: isDashboardError, refetch: refetchDashboard } = useQuery({
@@ -189,6 +205,22 @@ export default function DashboardPage() {
   };
 
   if (!activeClientId) {
+    // Wait for ClientContext before offering Create workspace — avoids duplicate clients on reload flash.
+    if (clientsLoading) {
+      return (
+        <div className="p-4 md:p-8 max-w-content mx-auto h-[80vh] flex items-center justify-center">
+          <div className="w-full max-w-md space-y-4">
+            <Skeleton className="h-8 w-56 mx-auto" />
+            <Skeleton className="h-4 w-72 mx-auto" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
+              <Skeleton className="h-40 w-full rounded-xl" />
+              <Skeleton className="h-40 w-full rounded-xl" />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="p-4 md:p-8 max-w-content mx-auto h-[80vh] flex flex-col items-center justify-center text-center">
         <div className="w-16 h-16 rounded-xl bg-bg-sunken border border-border flex items-center justify-center mb-6">
@@ -221,30 +253,49 @@ export default function DashboardPage() {
 
             <button
               type="button"
+              disabled={isCreatingWorkspace}
               onClick={async () => {
-                const { data: { session } } = await supabase.auth.getSession();
-                if (session) {
-                  const { data: orgData } = await supabase.rpc('get_user_orgs');
-                  let currentOrgId = null;
-                  if (orgData && orgData.length > 0) {
-                    currentOrgId = orgData[0].org_id;
-                    await supabase.from('profiles').update({ active_org_id: currentOrgId }).eq('id', session.user.id);
+                if (isCreatingWorkspace) return;
+                setIsCreatingWorkspace(true);
+                try {
+                  const { data: { session } } = await supabase.auth.getSession();
+                  if (!session) {
+                    toast.error('Please sign in to create a workspace');
+                    return;
                   }
 
-                  const { data, error } = await supabase.from('clients').insert({
-                    user_id: session.user.id,
-                    org_id: currentOrgId,
-                    client_name: 'My Company'
-                  }).select().single();
+                  // Org already exists from signup (handle_new_user). Only create the business client.
+                  // Must use create_client_secure — direct clients.insert hits RLS 42501 (phase 58).
+                  const { data: rpcData, error } = await supabase.rpc('create_client_secure', {
+                    p_client_name: 'My Company',
+                    p_gstin: null,
+                    p_pan: null,
+                  });
+
                   if (error) {
                     toast.error(`Failed to create workspace: ${error.message}`);
-                  } else if (data) {
-                    setActiveClientId(data.id);
-                    localStorage.setItem('accountType', 'business');
+                    return;
                   }
+
+                  const data = parseClientRpcPayload(rpcData);
+                  if (data?.id) {
+                    // Persist before refresh so ClientContext heal-selection picks this id.
+                    localStorage.setItem('accountType', 'business');
+                    localStorage.setItem('khatalens_active_client', data.id);
+                    await refreshClients();
+                    setActiveClientId(data.id);
+                    toast.success('Workspace ready');
+                  } else {
+                    toast.error('Failed to create workspace. Please try again.');
+                  }
+                } catch (err: unknown) {
+                  const message = err instanceof Error ? err.message : 'Failed to create workspace';
+                  toast.error(message);
+                } finally {
+                  setIsCreatingWorkspace(false);
                 }
               }}
-              className="bg-bg-surface border border-border rounded-xl p-6 flex flex-col items-start text-left hover:border-border-focus transition-colors group"
+              className="bg-bg-surface border border-border rounded-xl p-6 flex flex-col items-start text-left hover:border-border-focus transition-colors group disabled:opacity-60 disabled:pointer-events-none"
             >
               <Briefcase className="w-5 h-5 text-text-secondary mb-3" />
               <h3 className="text-lg font-display font-semibold text-text-primary mb-1">Single business</h3>
@@ -252,7 +303,7 @@ export default function DashboardPage() {
                 Manage invoices and reconciliation for your own company only.
               </p>
               <span className="mt-auto text-text-secondary group-hover:text-text-primary text-sm font-semibold flex items-center gap-1">
-                Create workspace <ArrowRight className="w-4 h-4" />
+                {isCreatingWorkspace ? 'Creating…' : 'Create workspace'} <ArrowRight className="w-4 h-4" />
               </span>
             </button>
           </div>

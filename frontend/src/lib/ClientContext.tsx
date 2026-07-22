@@ -43,9 +43,18 @@ async function persistActiveOrgId(userId: string, orgId: string): Promise<void> 
   }
 }
 
+function readSavedClientId(): string | null {
+  try {
+    return localStorage.getItem('khatalens_active_client');
+  } catch {
+    return null;
+  }
+}
+
 export function ClientProvider({ children }: { children: ReactNode }) {
   const [clients, setClients] = useState<Client[]>([]);
-  const [activeClientId, setActiveClientIdState] = useState<string | null>(null);
+  // Hydrate from localStorage so Dashboard does not flash the welcome/create UI on reload.
+  const [activeClientId, setActiveClientIdState] = useState<string | null>(() => readSavedClientId());
   const [loading, setLoading] = useState(true);
   const [credits, setCredits] = useState<number | null>(null);
   const [orgs, setOrgs] = useState<OrgMembership[]>([]);
@@ -193,22 +202,22 @@ export function ClientProvider({ children }: { children: ReactNode }) {
 
       if (data) {
         setClients(data);
-        // Automatically select the first client if none is selected
-        if (data.length > 0 && !activeClientId) {
-          const savedId = localStorage.getItem('khatalens_active_client');
-          if (savedId && data.find((c) => c.id === savedId)) {
-            setActiveClientIdState(savedId);
-          } else {
-            setActiveClientIdState(data[0].id);
-          }
-        }
+        // Heal selection: keep current/saved if still visible, else first client, else clear.
+        // Prevents stale localStorage IDs and duplicate "Create workspace" clicks while loading.
+        setActiveClientIdState((current) => {
+          if (data.length === 0) return null;
+          if (current && data.some((c) => c.id === current)) return current;
+          const savedId = readSavedClientId();
+          if (savedId && data.some((c) => c.id === savedId)) return savedId;
+          return data[0].id;
+        });
       }
     } catch (error) {
       console.error('Error fetching clients:', error);
     } finally {
       setLoading(false);
     }
-  }, [activeClientId]);
+  }, []);
 
   useEffect(() => {
     fetchClients();
