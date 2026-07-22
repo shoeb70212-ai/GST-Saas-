@@ -157,6 +157,7 @@ class InvoiceExportItem(BaseModel):
     id: Optional[str] = None
     invoice_number: Optional[str] = None
     invoice_date: Optional[str] = None
+    created_at: Optional[str] = None  # fallback when invoice_date missing
     supplier_name: Optional[str] = None
     supplier_gstin: Optional[str] = None
     expense_category: Optional[str] = None

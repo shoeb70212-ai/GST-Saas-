@@ -57,7 +57,15 @@ Thumbs.db
 
 # Test / coverage artifacts
 .coverage
+*.coverage
 htmlcov/
+backend/test2.pdf
+backend/test3.pdf
+backend/test_bank.pdf
+backend/test_enc.pdf
+
+# One-off frontend TS fix scripts
+frontend/fix_ts_errors*.py
 
 # Local debug scripts (use service-role keys — never commit)
 debug_*.py
@@ -65,3 +73,7 @@ fix_*.py
 test_insert*.py
 test_orgs.py
 scratch_*.py
+
+# Extraction gold set — real invoices are PII; never commit
+backend/bench/data/
+backend/bench/results/

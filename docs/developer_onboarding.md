@@ -39,10 +39,14 @@ The backend handles AI orchestration and PyMuPDF extraction.
    SUPABASE_KEY=your_supabase_service_role_key
    OPENAI_API_KEY=your_openai_api_key
    ```
-5. **Run the server:**
+5. **Run the server (local, single process):**
    ```bash
    uvicorn main:app --reload --port 8000
    ```
+   Production Docker uses `WEB_CONCURRENCY` (default 2) uvicorn workers. Semaphores are **per process**:
+   - `AI_SEMAPHORE_LIMIT` (code default 5; Docker default 3)
+   - `FILE_SEMAPHORE_LIMIT` (code default 4; Docker default 2)
+   Effective AI capacity ≈ workers × `AI_SEMAPHORE_LIMIT`. Extraction result cache is process-local (not shared across workers). Platform hosts (Coolify/Azure) may override the container CMD — set these env vars there if needed.
 
 ## 3. Setting Up the Frontend (React/Vite)
 The frontend is a PWA-optimized SPA.

@@ -22,3 +22,5 @@ pillow_heif
 Pillow
 requests
 rapidfuzz
+opencv-python-headless>=4.9.0
+azure-ai-documentintelligence>=1.0.0

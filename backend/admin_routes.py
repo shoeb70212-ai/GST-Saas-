@@ -878,9 +878,15 @@ async def unsuspend_tenant(
 @router.post("/tenants/{tenant_id}/impersonate")
 async def impersonate_tenant(tenant_id: str, auth: dict = Depends(verify_super_admin)):
     """
-    Read-only support session: magic link for the tenant user.
-    Never impersonate another super-admin.
+    Read-only support session: stamp app_metadata, then magic link for the tenant.
+
+    Enforcement (defense in depth):
+      1. JWT app_metadata.is_support_session checked in get_current_user (API writes)
+      2. Postgres BEFORE triggers block direct Supabase client mutations
+      3. Frontend banner + /api/support/end to clear the flag
     """
+    from support_session import SUPPORT_SESSION_TTL_SECONDS, set_support_session_on_user
+
     admin_client = await _admin_client()
 
     # Block impersonating other super-admins
@@ -913,6 +919,16 @@ async def impersonate_tenant(tenant_id: str, auth: dict = Depends(verify_super_a
         raise HTTPException(status_code=400, detail=f"Could not load tenant auth user: {e}")
 
     try:
+        support_meta = await set_support_session_on_user(
+            admin_client, tenant_id, admin_user_id=auth["user_id"]
+        )
+    except Exception as e:
+        logger.error("Failed to stamp support session metadata: %s", e)
+        raise HTTPException(
+            status_code=500, detail="Failed to enable read-only support session"
+        ) from e
+
+    try:
         link_resp = await admin_client.auth.admin.generate_link(
             {"type": "magiclink", "email": email}
         )
@@ -938,8 +954,11 @@ async def impersonate_tenant(tenant_id: str, auth: dict = Depends(verify_super_a
         admin_user_id=auth["user_id"],
         action="impersonate_start",
         target_user_id=tenant_id,
-        note="read-only support session (magic link)",
-        after={"email_domain": email.split("@")[-1] if "@" in email else None},
+        note="read-only support session (magic link + app_metadata)",
+        after={
+            "email_domain": email.split("@")[-1] if "@" in email else None,
+            "support_session_expires_at": support_meta.get("support_session_expires_at"),
+        },
     )
 
     # Frontend should open support-enter which sets localStorage then redirects
@@ -955,7 +974,8 @@ async def impersonate_tenant(tenant_id: str, auth: dict = Depends(verify_super_a
         "mode": "read_only",
         "action_link": action_link,
         "support_enter_url": support_url,
-        "expires_hint_minutes": 15,
+        "expires_hint_minutes": max(1, SUPPORT_SESSION_TTL_SECONDS // 60),
+        "support_session": True,
     }
 
 
@@ -1102,4 +1122,47 @@ async def alerts_check(
 
     admin_client = await _admin_client()
     result = await ops_alerts.run_spike_check(admin_client)
+    return {"status": "success", **result}
+
+
+@router.post("/reconcile-stale-invoices")
+async def reconcile_stale_invoices(
+    request: Request,
+    older_than_minutes: int = Query(15, ge=5, le=1440),
+    dry_run: bool = Query(True),
+    limit: int = Query(200, ge=1, le=1000),
+    x_ops_alert_secret: str | None = Header(None, alias="X-Ops-Alert-Secret"),
+    authorization: str | None = Header(None),
+):
+    """
+    Refund credits for invoices stuck in pending / pending_from_client.
+
+    Auth: X-Ops-Alert-Secret (cron) OR super-admin Bearer JWT.
+    Default dry_run=true — pass dry_run=false to mutate.
+    """
+    from stale_invoice_reconcile import reconcile_stale_pending_invoices
+
+    allowed = False
+    expected = ops_alerts.alert_secret()
+    provided = x_ops_alert_secret or request.headers.get("X-Ops-Alert-Secret")
+    if expected and provided and provided == expected:
+        allowed = True
+    elif authorization and authorization.startswith("Bearer "):
+        try:
+            auth = await get_current_user(request, authorization)
+            await verify_super_admin(auth)
+            allowed = True
+        except HTTPException:
+            allowed = False
+
+    if not allowed:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    admin_client = await _admin_client()
+    result = await reconcile_stale_pending_invoices(
+        admin_client,
+        older_than_minutes=older_than_minutes,
+        dry_run=dry_run,
+        limit=limit,
+    )
     return {"status": "success", **result}

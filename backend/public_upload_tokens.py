@@ -10,12 +10,24 @@ TOKEN_TTL_SECONDS = int(os.getenv("PUBLIC_UPLOAD_TOKEN_TTL_SECONDS", str(7 * 24 
 
 
 def _token_secret() -> str:
-    secret = os.getenv("PUBLIC_UPLOAD_TOKEN_SECRET") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    """
+    HMAC secret for public portal upload tokens.
+
+    Must be a dedicated secret — never reuse SUPABASE_SERVICE_ROLE_KEY
+    (a service-key leak would otherwise allow forging unlimited upload tokens).
+    """
+    secret = (os.getenv("PUBLIC_UPLOAD_TOKEN_SECRET") or "").strip()
     if not secret:
         raise RuntimeError(
-            "PUBLIC_UPLOAD_TOKEN_SECRET or SUPABASE_SERVICE_ROLE_KEY must be configured"
+            "PUBLIC_UPLOAD_TOKEN_SECRET must be configured "
+            "(do not reuse SUPABASE_SERVICE_ROLE_KEY as the HMAC secret)"
         )
     return secret
+
+
+def assert_public_upload_token_secret_configured() -> None:
+    """Call at process startup so misconfig fails fast."""
+    _token_secret()
 
 
 def _sign(client_id: str, expires_at: int) -> str:

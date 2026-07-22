@@ -20,6 +20,7 @@ os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-service-key")
 os.environ.setdefault("META_ACCESS_TOKEN", "test-meta-token")
 os.environ.setdefault("META_PHONE_NUMBER_ID", "test-phone-id")
 
+import extraction_cache
 from extraction import (
     apply_tax_calculations,
     compute_confidence,
@@ -29,11 +30,22 @@ from extraction import (
 )
 from tests.helpers import build_supabase_mock, make_async_factory
 
+# Checksum-valid Maharashtra GSTIN (was ...Z2 in older fixtures)
+_OK_GSTIN = "27AADCB2230M1ZT"
+
+
+@pytest.fixture(autouse=True)
+def _clear_extraction_cache():
+    """Phase 1 cache is process-local; clear so escalate tests do not collide."""
+    extraction_cache.clear()
+    yield
+    extraction_cache.clear()
+
 
 class TestConfidenceFinancialGates:
     def test_line_reconcile_penalty_blocks_auto_accept(self):
         data = {
-            "Supplier_GSTIN": "27AADCB2230M1Z2",
+            "Supplier_GSTIN": _OK_GSTIN,
             "Supplier_Name": "Test Co",
             "Invoice_Number": "INV-1",
             "Invoice_Date": "01-01-2024",
@@ -48,7 +60,7 @@ class TestConfidenceFinancialGates:
 
     def test_matching_lines_and_total_auto_accept(self):
         data = {
-            "Supplier_GSTIN": "27AADCB2230M1Z2",
+            "Supplier_GSTIN": _OK_GSTIN,
             "Supplier_Name": "Test Co",
             "Invoice_Number": "INV-1",
             "Invoice_Date": "01-01-2024",
@@ -62,7 +74,7 @@ class TestConfidenceFinancialGates:
 
     def test_credit_note_missing_original_penalised(self):
         data = {
-            "Supplier_GSTIN": "27AADCB2230M1Z2",
+            "Supplier_GSTIN": _OK_GSTIN,
             "Supplier_Name": "Test Co",
             "Invoice_Number": "CN-1",
             "Invoice_Date": "01-01-2024",
@@ -117,20 +129,12 @@ class TestLineItemMapping:
 
 class TestEscalatePathMocked:
     @pytest.mark.asyncio
-    async def test_escalate_only_when_gate_fails(self):
-        """Primary returns needs_retry → verify model called once."""
+    async def test_hard_image_uses_verify_first(self):
+        """Image (hard) → verify model first; no wasted mini pass."""
         import extraction as ext
 
-        primary = {
-            "Supplier_GSTIN": "INVALID",
-            "Supplier_Name": None,
-            "Invoice_Number": None,
-            "Invoice_Date": None,
-            "Total_Amount": None,
-            "Line_Items": [],
-        }
         verify = {
-            "Supplier_GSTIN": "27AADCB2230M1Z2",
+            "Supplier_GSTIN": _OK_GSTIN,
             "Supplier_Name": "Good Co",
             "Invoice_Number": "INV-9",
             "Invoice_Date": "01-01-2024",
@@ -145,8 +149,6 @@ class TestEscalatePathMocked:
 
         async def fake_parse(ai_client, model, prompt, messages_content):
             call_models.append(model)
-            if model == ext.AI_MODEL_PRIMARY or "mini" in (model or ""):
-                return primary, 10
             return verify, 20
 
         with (
@@ -154,20 +156,22 @@ class TestEscalatePathMocked:
             patch.object(ext, "AI_MODEL_PRIMARY", "gpt-4o-mini"),
             patch.object(ext, "AI_MODEL_VERIFY", "gpt-4o"),
             patch.object(ext, "_parse_with_model", side_effect=fake_parse),
+            patch("extraction_router.ROUTING_ENABLED", True),
+            patch("extraction_router.ROUTING_USE_GEMINI_FOR_HARD", False),
         ):
-            data, tokens = await ext.run_ai_extraction(b"fake", "image/jpeg")
+            data, tokens = await ext.run_ai_extraction(b"fake-escalate", "image/jpeg")
 
-        assert "gpt-4o-mini" in call_models[0] or call_models[0] == "gpt-4o-mini"
-        assert any("gpt-4o" == m or m.endswith("gpt-4o") for m in call_models[1:])
+        assert call_models[0] == "gpt-4o"
         assert data["Extraction_State"] == "auto_accepted"
-        assert tokens == 30
+        assert tokens == 20
+        assert data.get("Route_Tier") == "hard"
 
     @pytest.mark.asyncio
-    async def test_no_escalate_when_primary_auto_accepted(self):
+    async def test_no_second_pass_when_hard_auto_accepted(self):
         import extraction as ext
 
         good = {
-            "Supplier_GSTIN": "27AADCB2230M1Z2",
+            "Supplier_GSTIN": _OK_GSTIN,
             "Supplier_Name": "Good Co",
             "Invoice_Number": "INV-9",
             "Invoice_Date": "01-01-2024",
@@ -188,10 +192,13 @@ class TestEscalatePathMocked:
             patch.object(ext, "AI_MODEL_PRIMARY", "gpt-4o-mini"),
             patch.object(ext, "AI_MODEL_VERIFY", "gpt-4o"),
             patch.object(ext, "_parse_with_model", side_effect=fake_parse),
+            patch("extraction_router.ROUTING_ENABLED", True),
+            patch("extraction_router.ROUTING_USE_GEMINI_FOR_HARD", False),
         ):
-            data, _ = await ext.run_ai_extraction(b"fake", "image/jpeg")
+            data, _ = await ext.run_ai_extraction(b"fake-no-escalate", "image/jpeg")
 
         assert len(calls) == 1
+        assert calls[0] == "gpt-4o"
         assert data["Extraction_State"] == "auto_accepted"
 
 

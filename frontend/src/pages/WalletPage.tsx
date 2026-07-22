@@ -251,7 +251,7 @@ export default function WalletPage() {
 
       <div className="card p-0 overflow-hidden mt-8">
         <div className="p-6 border-b border-border flex justify-between items-center">
-          <h2 className="text-lg font-bold text-text-primary flex items-center gap-2"><History className="w-5 h-5 text-text-secondary" /> Transaction History</h2>
+          <h2 className="text-lg font-bold text-text-primary flex items-center gap-2"><History className="w-5 h-5 text-text-secondary" /> Purchase History</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
@@ -267,7 +267,9 @@ export default function WalletPage() {
             <tbody className="divide-y divide-border">
               {transactions?.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-text-secondary">No transactions found.</td>
+                  <td colSpan={5} className="p-8 text-center text-text-secondary">
+                    No credit pack purchases yet. Scan usage appears in the AI Usage log below.
+                  </td>
                 </tr>
               ) : (
                 transactions?.map((tx: any) => (

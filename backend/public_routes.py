@@ -6,12 +6,11 @@ from typing import List
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Request, Depends, Query
 from pydantic import BaseModel
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from supabase import create_async_client
 from http_client import get_shared_client
 from utils import validate_file_content, sanitize_filename, compute_file_hash, SUPABASE_URL, SUPABASE_SERVICE_KEY, get_current_user, ensure_org_not_suspended
 from public_upload_tokens import create_public_upload_token, verify_public_upload_token
+from rate_limit import limiter
 import credits as credit_costs
 from extraction import (
     preprocess_invoice_file,
@@ -24,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-limiter = Limiter(key_func=get_remote_address)
+# Re-export for main.py / tests that import limiter from public_routes
+__all__ = ["router", "limiter", "process_public_worker", "get_admin_client"]
 
 
 async def get_admin_client():
@@ -283,7 +283,8 @@ async def public_upload(
                 user_id=user_id,
                 tally_ledgers=tally_ledgers,
                 credit_charged=True,
-                supabase_client=supabase_client,
+                # Isolate clients per worker (async client is not safe to share).
+                supabase_client=None,
             )
             uploaded_count += 1
 

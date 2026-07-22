@@ -126,12 +126,18 @@ async def health_ai(admin_client, window: str = "24h") -> dict:
     events = await fetch_ops_since(
         admin_client,
         since,
-        "event_type, severity, model_used, tokens_used, created_at",
+        "event_type, severity, model_used, tokens_used, meta, created_at",
     )
     tokens_total = 0
     by_model: dict[str, int] = defaultdict(int)
     escalate = 0
     extractish = 0
+    scan_count = 0
+    cost_sum = 0.0
+    cost_n = 0
+    cache_hits = 0
+    field_conf_sum = 0.0
+    field_conf_n = 0
     for ev in events:
         tokens = ev.get("tokens_used") or 0
         try:
@@ -142,6 +148,7 @@ async def health_ai(admin_client, window: str = "24h") -> dict:
         model = (ev.get("model_used") or "unknown").strip() or "unknown"
         by_model[model] += tokens_i
         et = ev.get("event_type") or ""
+        meta = ev.get("meta") if isinstance(ev.get("meta"), dict) else {}
         if et == "escalated_to_verify":
             escalate += 1
         if et in (
@@ -150,8 +157,27 @@ async def health_ai(admin_client, window: str = "24h") -> dict:
             "low_confidence",
             "duplicate_warning",
             "scan_success",
+            "scan_cost",
         ) or (ev.get("severity") in ("info", "warning") and tokens_i > 0):
             extractish += 1
+        if et == "scan_cost":
+            scan_count += 1
+            raw_cost = meta.get("estimated_cost_inr")
+            try:
+                if raw_cost is not None:
+                    cost_sum += float(raw_cost)
+                    cost_n += 1
+            except (TypeError, ValueError):
+                pass
+            if meta.get("cache_hit") is True:
+                cache_hits += 1
+            raw_fc = meta.get("avg_field_confidence")
+            try:
+                if raw_fc is not None:
+                    field_conf_sum += float(raw_fc)
+                    field_conf_n += 1
+            except (TypeError, ValueError):
+                pass
 
     mini_rate = float(
         os.getenv("AI_COST_PER_1K_TOKENS_MINI", str(DEFAULT_AI_COST_MINI_PER_1K))
@@ -175,6 +201,9 @@ async def health_ai(admin_client, window: str = "24h") -> dict:
     escalate_rate = (escalate / extractish) if extractish else 0.0
     hours = parse_window(window).total_seconds() / 3600.0 or 24.0
     tokens_per_day = (tokens_total / hours) * 24.0 if hours else tokens_total
+    avg_cost = round(cost_sum / cost_n, 4) if cost_n else None
+    cache_hit_rate = round(cache_hits / scan_count, 4) if scan_count else None
+    avg_field_conf = round(field_conf_sum / field_conf_n, 2) if field_conf_n else None
 
     return {
         "window": window,
@@ -186,6 +215,10 @@ async def health_ai(admin_client, window: str = "24h") -> dict:
         "escalate_rate": round(escalate_rate, 4),
         "estimated_cost_inr": round(estimated, 2),
         "rates_inr_per_1k": {"mini": mini_rate, "verify": verify_rate},
+        "scan_count": scan_count,
+        "avg_cost_per_scan_inr": avg_cost,
+        "cache_hit_rate": cache_hit_rate,
+        "avg_field_confidence": avg_field_conf,
     }
 
 

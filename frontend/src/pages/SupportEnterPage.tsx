@@ -5,6 +5,9 @@ import { Loader2 } from 'lucide-react';
 /**
  * Sets read-only support mode flag, then redirects to Supabase magic link
  * (or /app/dashboard if redirect missing).
+ *
+ * Server-side enforcement: tenant JWT carries app_metadata.is_support_session
+ * (stamped before the magic link). Exit via Layout banner → POST /api/support/end.
  */
 export default function SupportEnterPage() {
   const [params] = useSearchParams();

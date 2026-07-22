@@ -1,13 +1,35 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp, Cloud, AlertCircle, AlertTriangle, FileText } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { isValidGSTIN } from '../../utils/gstin';
 import type { FileState, InvoiceData, LineItem } from '../../lib/ScanContext';
+import { flaggedFieldSet, type ReviewReason } from '../../lib/ocrHighlight';
+import { OcrPreviewOverlay } from './OcrPreviewOverlay';
 
 const InvoiceRow = React.memo(function InvoiceRow({ fs, visibleColumns, onUpdate }: { fs: FileState, visibleColumns: string[], onUpdate: (data: InvoiceData) => void }) {
   const [expanded, setExpanded] = useState(false);
   const data = fs.extractedData || {};
   const hasItems = data.Line_Items && data.Line_Items.length > 0;
+  const reasons = useMemo(
+    () => (data.Review_Reasons || []) as ReviewReason[],
+    [data.Review_Reasons]
+  );
+  const flagged = useMemo(() => flaggedFieldSet(reasons), [reasons]);
+  const [highlightField, setHighlightField] = useState<string | null>(
+    () => (data.Review_Fields && data.Review_Fields[0]) || null
+  );
+
+  const fieldClass = (key: string) =>
+    cn(
+      'bg-transparent border-b px-0 py-1 text-sm text-text-primary outline-none w-full',
+      flagged.has(key)
+        ? 'border-amber-400/80 focus:border-amber-300'
+        : 'border-border focus:border-accent'
+    );
+
+  const onFocusField = (key: string) => {
+    if (flagged.has(key)) setHighlightField(key);
+  };
 
   return (
     <>
@@ -39,14 +61,16 @@ const InvoiceRow = React.memo(function InvoiceRow({ fs, visibleColumns, onUpdate
         </td>
         {visibleColumns.map(col => (
           <td key={col} className="p-4 text-sm text-text-primary whitespace-nowrap">
-            <input 
-              type="text" 
-              value={data[col] || ''} 
+            <input
+              type="text"
+              value={data[col] || ''}
               onChange={(e) => onUpdate({ ...data, [col]: e.target.value })}
+              onFocus={() => onFocusField(col)}
               className={cn(
                 "bg-transparent border-none focus:ring-1 focus:ring-accent rounded px-1 py-0.5 w-full min-w-[100px]",
-                col.includes('Amount') || col === 'Round_Off' ? 'text-right font-mono' : ''
-              )} 
+                col.includes('Amount') || col === 'Round_Off' ? 'text-right font-mono' : '',
+                flagged.has(col) && 'ring-1 ring-amber-400/60'
+              )}
             />
           </td>
         ))}
@@ -64,18 +88,56 @@ const InvoiceRow = React.memo(function InvoiceRow({ fs, visibleColumns, onUpdate
                 ) : (
                   <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
                 )}
-                <div>
+                <div className="min-w-0 flex-1">
                   <h4 className="text-sm font-semibold mb-1">
                     {data.Extraction_State === 'needs_retry' ? "Low Confidence Extraction" : "Moderate Confidence Extraction"}
                   </h4>
-                  <p className="text-xs opacity-90">
-                    {data.Extraction_State === 'needs_retry' 
-                      ? "The AI had difficulty reading this invoice. Accuracy may be poor. Please carefully review all fields below or retry the scan with a clearer image." 
+                  <p className="text-xs opacity-90 mb-2">
+                    {data.Extraction_State === 'needs_retry'
+                      ? "The AI had difficulty reading this invoice. Accuracy may be poor. Please carefully review all fields below or retry the scan with a clearer image."
                       : "Please manually review and validate the extracted fields before saving to ensure accuracy."}
                   </p>
+                  {reasons.length > 0 && (
+                    <ul className="text-xs space-y-1 mt-2 opacity-95">
+                      {reasons.slice(0, 8).map((r, i) => (
+                        <li key={`${r.code}-${r.field}-${i}`}>
+                          <button
+                            type="button"
+                            className="text-left hover:underline"
+                            onClick={() => r.field && setHighlightField(r.field)}
+                          >
+                            <span className="font-medium uppercase tracking-wide text-[10px] mr-1.5">
+                              {r.code}
+                            </span>
+                            {r.message}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
             )}
+
+            {(fs.previewUrl || (data.Ocr_Words && data.Ocr_Words.length > 0)) && (
+              <div className="mb-6">
+                <h4 className="text-xs font-semibold text-accent uppercase mb-2">
+                  Document preview
+                  {highlightField ? ` — ${highlightField.replace(/_/g, ' ')}` : ''}
+                </h4>
+                <OcrPreviewOverlay
+                  previewUrl={fs.previewUrl}
+                  words={data.Ocr_Words}
+                  highlightField={highlightField}
+                  highlightValue={highlightField ? data[highlightField] : undefined}
+                  onSelectField={setHighlightField}
+                  reasons={reasons}
+                  pageWidth={data.Scan_Meta?.ocr_page_width}
+                  pageHeight={data.Scan_Meta?.ocr_page_height}
+                />
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-6">
                <div className="space-y-3">
                  <h4 className="text-xs font-semibold text-accent uppercase flex items-center gap-2">Supplier Info</h4>
@@ -85,7 +147,10 @@ const InvoiceRow = React.memo(function InvoiceRow({ fs, visibleColumns, onUpdate
                  ].map(f => (
                    <div key={f.k} className="flex flex-col">
                      <div className="flex items-center justify-between">
-                       <label className="text-[10px] text-text-secondary uppercase tracking-wider">{f.l}</label>
+                       <label className="text-[10px] text-text-secondary uppercase tracking-wider">
+                         {f.l}
+                         {flagged.has(f.k) && <span className="ml-1 text-amber-400">•</span>}
+                       </label>
                        {(f.k === 'Supplier_GSTIN' || f.k === 'Buyer_GSTIN') && data[f.k] && (
                          <div className="flex items-center gap-2">
                            {!isValidGSTIN(data[f.k]) ? (
@@ -93,9 +158,9 @@ const InvoiceRow = React.memo(function InvoiceRow({ fs, visibleColumns, onUpdate
                            ) : (
                              <span className="text-[9px] text-green-500 font-medium">Valid Format</span>
                            )}
-                           <a 
-                             href="https://services.gst.gov.in/services/searchtp" 
-                             target="_blank" 
+                           <a
+                             href="https://services.gst.gov.in/services/searchtp"
+                             target="_blank"
                              rel="noreferrer"
                              onClick={() => navigator.clipboard.writeText(data[f.k])}
                              title="Copy GSTIN and verify on Govt Portal"
@@ -106,11 +171,17 @@ const InvoiceRow = React.memo(function InvoiceRow({ fs, visibleColumns, onUpdate
                          </div>
                        )}
                      </div>
-                     <input type="text" value={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-border focus:border-accent px-0 py-1 text-sm text-text-primary outline-none w-full" />
+                     <input
+                       type="text"
+                       value={data[f.k] || ''}
+                       onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })}
+                       onFocus={() => onFocusField(f.k)}
+                       className={fieldClass(f.k)}
+                     />
                    </div>
                  ))}
                </div>
-               
+
                <div className="space-y-3">
                  <h4 className="text-xs font-semibold text-accent uppercase flex items-center gap-2">Buyer Info</h4>
                  {[
@@ -119,7 +190,10 @@ const InvoiceRow = React.memo(function InvoiceRow({ fs, visibleColumns, onUpdate
                  ].map(f => (
                    <div key={f.k} className="flex flex-col">
                      <div className="flex items-center justify-between">
-                       <label className="text-[10px] text-text-secondary uppercase tracking-wider">{f.l}</label>
+                       <label className="text-[10px] text-text-secondary uppercase tracking-wider">
+                         {f.l}
+                         {flagged.has(f.k) && <span className="ml-1 text-amber-400">•</span>}
+                       </label>
                        {(f.k === 'Supplier_GSTIN' || f.k === 'Buyer_GSTIN') && data[f.k] && (
                          <div className="flex items-center gap-2">
                            {!isValidGSTIN(data[f.k]) ? (
@@ -127,9 +201,9 @@ const InvoiceRow = React.memo(function InvoiceRow({ fs, visibleColumns, onUpdate
                            ) : (
                              <span className="text-[9px] text-green-500 font-medium">Valid Format</span>
                            )}
-                           <a 
-                             href="https://services.gst.gov.in/services/searchtp" 
-                             target="_blank" 
+                           <a
+                             href="https://services.gst.gov.in/services/searchtp"
+                             target="_blank"
                              rel="noreferrer"
                              onClick={() => navigator.clipboard.writeText(data[f.k])}
                              title="Copy GSTIN and verify on Govt Portal"
@@ -140,7 +214,13 @@ const InvoiceRow = React.memo(function InvoiceRow({ fs, visibleColumns, onUpdate
                          </div>
                        )}
                      </div>
-                     <input type="text" value={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-border focus:border-accent px-0 py-1 text-sm text-text-primary outline-none w-full" />
+                     <input
+                       type="text"
+                       value={data[f.k] || ''}
+                       onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })}
+                       onFocus={() => onFocusField(f.k)}
+                       className={fieldClass(f.k)}
+                     />
                    </div>
                  ))}
                </div>
@@ -162,11 +242,21 @@ const InvoiceRow = React.memo(function InvoiceRow({ fs, visibleColumns, onUpdate
                  <h4 className="text-xs font-semibold text-accent uppercase flex items-center gap-2">Other Details</h4>
                  {[
                    {k:'Invoice_Date', l:'Invoice Date'}, {k:'Due_Date', l:'Due Date'}, {k:'PO_Number', l:'PO Number'},
-                   {k:'Amount_In_Words', l:'Amount in Words'}, {k:'Received_Amount', l:'Received Amount'}, {k:'Balance_Amount', l:'Balance Amount'}
+                   {k:'Amount_In_Words', l:'Amount in Words'}, {k:'Received_Amount', l:'Received Amount'}, {k:'Balance_Amount', l:'Balance Amount'},
+                   {k:'Invoice_Number', l:'Invoice Number'}, {k:'Total_Amount', l:'Total Amount'}, {k:'Taxable_Amount', l:'Taxable'}
                  ].map(f => (
                    <div key={f.k} className="flex flex-col">
-                     <label className="text-[10px] text-text-secondary uppercase tracking-wider">{f.l}</label>
-                     <input type="text" value={data[f.k] || ''} onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })} className="bg-transparent border-b border-border focus:border-accent px-0 py-1 text-sm text-text-primary outline-none w-full" />
+                     <label className="text-[10px] text-text-secondary uppercase tracking-wider">
+                       {f.l}
+                       {flagged.has(f.k) && <span className="ml-1 text-amber-400">•</span>}
+                     </label>
+                     <input
+                       type="text"
+                       value={data[f.k] || ''}
+                       onChange={(e) => onUpdate({ ...data, [f.k]: e.target.value })}
+                       onFocus={() => onFocusField(f.k)}
+                       className={fieldClass(f.k)}
+                     />
                    </div>
                  ))}
                </div>
@@ -190,16 +280,79 @@ const InvoiceRow = React.memo(function InvoiceRow({ fs, visibleColumns, onUpdate
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {data.Line_Items?.map((item: LineItem, idx: number) => (
+                    {data.Line_Items?.map((item: LineItem, idx: number) => {
+                      const updateLine = (field: keyof LineItem, raw: string) => {
+                        const items = [...(data.Line_Items || [])];
+                        const current = { ...(items[idx] || {}) };
+                        const numericFields: (keyof LineItem)[] = [
+                          'Quantity',
+                          'Unit_Price',
+                          'Tax_Rate',
+                          'Amount',
+                        ];
+                        if (numericFields.includes(field)) {
+                          const n = raw === '' ? undefined : Number(raw);
+                          (current as Record<string, unknown>)[field] =
+                            raw === '' || Number.isNaN(n as number) ? raw : n;
+                        } else {
+                          (current as Record<string, unknown>)[field] = raw;
+                        }
+                        items[idx] = current;
+                        onUpdate({ ...data, Line_Items: items });
+                      };
+                      return (
                       <tr key={idx} className="hover:bg-bg-subtle">
-                        <td className="py-2 pr-2"><input type="text" defaultValue={item.Description || ''} className="bg-transparent border-none w-full min-w-[150px]" /></td>
-                        <td className="py-2 px-2"><input type="text" defaultValue={item.HSN_SAC || ''} className="bg-transparent border-none w-full min-w-[80px]" /></td>
-                        <td className="py-2 px-2 text-right"><input type="text" defaultValue={item.Quantity || ''} className="bg-transparent border-none w-full text-right font-mono min-w-[60px]" /></td>
-                        <td className="py-2 px-2 text-right"><input type="text" defaultValue={item.Unit_Price || ''} className="bg-transparent border-none w-full text-right font-mono min-w-[80px]" /></td>
-                        <td className="py-2 px-2 text-right"><input type="text" defaultValue={item.Tax_Rate || ''} className="bg-transparent border-none w-full text-right font-mono min-w-[60px]" /></td>
-                        <td className="py-2 pl-2 text-right"><input type="text" defaultValue={item.Amount || ''} className="bg-transparent border-none w-full text-right font-mono min-w-[80px]" /></td>
+                        <td className="py-2 pr-2">
+                          <input
+                            type="text"
+                            value={item.Description ?? ''}
+                            onChange={(e) => updateLine('Description', e.target.value)}
+                            className="bg-transparent border-none w-full min-w-[150px] focus:ring-1 focus:ring-accent rounded px-1"
+                          />
+                        </td>
+                        <td className="py-2 px-2">
+                          <input
+                            type="text"
+                            value={item.HSN_SAC ?? ''}
+                            onChange={(e) => updateLine('HSN_SAC', e.target.value)}
+                            className="bg-transparent border-none w-full min-w-[80px] focus:ring-1 focus:ring-accent rounded px-1"
+                          />
+                        </td>
+                        <td className="py-2 px-2 text-right">
+                          <input
+                            type="text"
+                            value={item.Quantity ?? ''}
+                            onChange={(e) => updateLine('Quantity', e.target.value)}
+                            className="bg-transparent border-none w-full text-right font-mono min-w-[60px] focus:ring-1 focus:ring-accent rounded px-1"
+                          />
+                        </td>
+                        <td className="py-2 px-2 text-right">
+                          <input
+                            type="text"
+                            value={item.Unit_Price ?? ''}
+                            onChange={(e) => updateLine('Unit_Price', e.target.value)}
+                            className="bg-transparent border-none w-full text-right font-mono min-w-[80px] focus:ring-1 focus:ring-accent rounded px-1"
+                          />
+                        </td>
+                        <td className="py-2 px-2 text-right">
+                          <input
+                            type="text"
+                            value={item.Tax_Rate ?? ''}
+                            onChange={(e) => updateLine('Tax_Rate', e.target.value)}
+                            className="bg-transparent border-none w-full text-right font-mono min-w-[60px] focus:ring-1 focus:ring-accent rounded px-1"
+                          />
+                        </td>
+                        <td className="py-2 pl-2 text-right">
+                          <input
+                            type="text"
+                            value={item.Amount ?? ''}
+                            onChange={(e) => updateLine('Amount', e.target.value)}
+                            className="bg-transparent border-none w-full text-right font-mono min-w-[80px] focus:ring-1 focus:ring-accent rounded px-1"
+                          />
+                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

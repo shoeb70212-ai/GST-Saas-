@@ -7,7 +7,11 @@ import toast from 'react-hot-toast';
 import { cn } from '../lib/utils';
 import { AVAILABLE_COLUMNS, DEFAULT_COLUMNS } from '../lib/constants';
 import { useClient } from '../lib/ClientContext';
-import { exportToTallyXML, exportToRawExcel } from '../lib/exportService';
+import { exportToTallyXML, exportCustomReport, fetchAllMatchingInvoices, type ExportFormat } from '../lib/exportService';
+import {
+  formatExportGateMessage,
+  validateInvoicesForExport,
+} from '../lib/exportValidation';
 import { InvoiceDetailsModal } from '../components/InvoiceDetailsModal';
 import { ExportFieldPicker } from '../components/ExportFieldPicker';
 import { Skeleton } from '../components/ui/Skeleton';
@@ -232,24 +236,48 @@ export default function SavedInvoicesPage() {
   // Invoices array directly from server
   const filteredInvoices = invoices;
 
-  const getInvoicesToExport = () => {
-    let toExport = filteredInvoices;
+  const getInvoicesToExport = async () => {
+    // Selection on current page wins; otherwise pull all matching filters (not just page).
     if (selectedIds.size > 0) {
-      toExport = filteredInvoices.filter(inv => selectedIds.has(inv.id));
+      let toExport = filteredInvoices.filter((inv) => selectedIds.has(inv.id));
+      const isFirm = localStorage.getItem('accountType') === 'firm';
+      if (isFirm) {
+        const approvedOnly = toExport.filter((inv) => inv.approval_status !== 'pending_approval');
+        if (approvedOnly.length < toExport.length) {
+          toast.error(`Skipped ${toExport.length - approvedOnly.length} invoice(s) pending approval.`);
+        }
+        toExport = approvedOnly;
+      }
+      return toExport;
     }
+
+    if (!activeClientId) return [];
+
+    let toExport = await fetchAllMatchingInvoices({
+      clientId: activeClientId,
+      searchTerm: debouncedSearchTerm || undefined,
+      sortField,
+      sortDirection,
+    });
+
     const isFirm = localStorage.getItem('accountType') === 'firm';
     if (isFirm) {
-      const approvedOnly = toExport.filter(inv => inv.approval_status !== 'pending_approval');
+      const approvedOnly = toExport.filter((inv) => inv.approval_status !== 'pending_approval');
       if (approvedOnly.length < toExport.length) {
-         toast.error(`Skipped ${toExport.length - approvedOnly.length} invoice(s) pending approval.`);
+        toast.error(`Skipped ${toExport.length - approvedOnly.length} invoice(s) pending approval.`);
       }
-      return approvedOnly;
+      toExport = approvedOnly;
     }
     return toExport;
   };
 
 
-  const handleCustomExportConfirm = async (columns: string[], includeItems: boolean, remember: boolean) => {
+  const handleCustomExportConfirm = async (
+    columns: string[],
+    includeItems: boolean,
+    remember: boolean,
+    format: ExportFormat = 'xlsx',
+  ) => {
     setShowExportPicker(false);
     
     const { data: { session } } = await supabase.auth.getSession();
@@ -262,15 +290,24 @@ export default function SavedInvoicesPage() {
       queryClient.invalidateQueries({ queryKey: ['profile'] });
     }
 
-    const toExport = getInvoicesToExport();
-    if (toExport.length === 0) {
-      toast.error("No invoices to export.");
-      return;
-    }
-
     setIsExporting(true);
     try {
-      const invoiceIds = toExport.map(inv => inv.id);
+      const toExport = await getInvoicesToExport();
+      if (toExport.length === 0) {
+        toast.error("No invoices to export.");
+        return;
+      }
+
+      const gate = validateInvoicesForExport(toExport as Record<string, unknown>[]);
+      if (!gate.ok) {
+        toast.error(formatExportGateMessage(gate.errors), { duration: 8000 });
+        return;
+      }
+      if (gate.warnings.length) {
+        toast(gate.warnings.slice(0, 2).map((w) => w.message).join('; '), { icon: '⚠️' });
+      }
+
+      const invoiceIds = toExport.map((inv) => inv.id as string);
       const { data: allLineItems, error } = await supabase
         .from('invoice_line_items')
         .select('*')
@@ -278,7 +315,18 @@ export default function SavedInvoicesPage() {
         
       if (error) throw error;
       
-      exportToRawExcel(toExport, allLineItems || [], columns, includeItems);
+      await exportCustomReport(
+        toExport as Record<string, unknown>[],
+        allLineItems || [],
+        columns,
+        includeItems,
+        format,
+      );
+      toast.success(
+        selectedIds.size > 0
+          ? `Exported ${toExport.length} selected invoice(s) as ${format.toUpperCase()}`
+          : `Exported all ${toExport.length} matching invoice(s) as ${format.toUpperCase()}`,
+      );
     } catch (err) {
       console.error("Custom Export failed:", err);
       toast.error("Failed to generate custom export.");
@@ -288,15 +336,21 @@ export default function SavedInvoicesPage() {
   };
 
   const handleExportTallyXML = async () => {
-    const toExport = getInvoicesToExport();
-    if (toExport.length === 0) {
-      toast.error("No invoices to export.");
-      return;
-    }
-    
     setIsExporting(true);
     try {
-      const invoiceIds = toExport.map(inv => inv.id);
+      const toExport = await getInvoicesToExport();
+      if (toExport.length === 0) {
+        toast.error("No invoices to export.");
+        return;
+      }
+
+      const gate = validateInvoicesForExport(toExport as Record<string, unknown>[]);
+      if (!gate.ok) {
+        toast.error(formatExportGateMessage(gate.errors), { duration: 8000 });
+        return;
+      }
+    
+      const invoiceIds = toExport.map((inv) => inv.id as string);
       const { data: allLineItems, error } = await supabase
         .from('invoice_line_items')
         .select('*')
@@ -305,12 +359,19 @@ export default function SavedInvoicesPage() {
       if (error) throw error;
       
       const result = await exportToTallyXML(toExport, allLineItems || []);
-      if (result.report && !result.ok) {
-        const errs = (result.report.issues || [])
-          .filter((i: { severity: string }) => i.severity === 'error')
-          .slice(0, 3)
-          .map((i: { message: string }) => i.message);
+      const issues = result.report?.issues || [];
+      const errs = issues
+        .filter((i: { severity: string }) => i.severity === 'error')
+        .slice(0, 3)
+        .map((i: { message: string }) => i.message);
+      const warns = issues
+        .filter((i: { severity: string }) => i.severity === 'warning')
+        .slice(0, 2)
+        .map((i: { message: string }) => i.message);
+      if (errs.length) {
         toast.error(errs.join('; ') || 'Tally validation found errors — XML may be incomplete.');
+      } else if (warns.length) {
+        toast.success(`Exported Tally XML. Review: ${warns.join('; ')}`);
       } else {
         toast.success('Exported Tally XML (with masters) successfully!');
       }
@@ -465,7 +526,7 @@ export default function SavedInvoicesPage() {
             className="btn-ghost flex-1 md:flex-none disabled:opacity-50"
           >
             {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Table2 className="w-4 h-4" />}
-            {selectedIds.size > 0 ? `Custom Report (${selectedIds.size})` : 'Custom Report'}
+            {selectedIds.size > 0 ? `Custom Report (${selectedIds.size})` : 'Custom Report (all matching)'}
           </button>
           
           <button 
@@ -474,7 +535,7 @@ export default function SavedInvoicesPage() {
             className="btn-primary flex-1 md:flex-none disabled:opacity-50"
           >
             {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-            {selectedIds.size > 0 ? `Tally XML (${selectedIds.size})` : 'Tally XML'}
+            {selectedIds.size > 0 ? `Tally XML (${selectedIds.size})` : 'Tally XML (all matching)'}
           </button>
 
           <div className="relative">

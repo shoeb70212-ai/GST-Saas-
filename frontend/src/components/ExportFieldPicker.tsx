@@ -6,7 +6,12 @@ import { AVAILABLE_COLUMNS, DEFAULT_COLUMNS, EXPORT_CATEGORIES } from '../lib/co
 interface ExportFieldPickerProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (selectedColumns: string[], includeItems: boolean, remember: boolean) => void;
+  onConfirm: (
+    selectedColumns: string[],
+    includeItems: boolean,
+    remember: boolean,
+    format: 'xlsx' | 'csv' | 'json',
+  ) => void;
   initialColumns?: string[];
   initialIncludeItems?: boolean;
 }
@@ -15,6 +20,7 @@ export function ExportFieldPicker({ isOpen, onClose, onConfirm, initialColumns, 
   const [selectedColumns, setSelectedColumns] = useState<Set<string>>(new Set(initialColumns || DEFAULT_COLUMNS));
   const [includeItems, setIncludeItems] = useState(initialIncludeItems);
   const [remember, setRemember] = useState(true);
+  const [format, setFormat] = useState<'xlsx' | 'csv' | 'json'>('xlsx');
 
   useEffect(() => {
     if (isOpen) {
@@ -24,6 +30,7 @@ export function ExportFieldPicker({ isOpen, onClose, onConfirm, initialColumns, 
         setSelectedColumns(new Set(DEFAULT_COLUMNS));
       }
       setIncludeItems(initialIncludeItems);
+      setFormat('xlsx');
     }
   }, [isOpen, initialColumns, initialIncludeItems]);
 
@@ -56,7 +63,7 @@ export function ExportFieldPicker({ isOpen, onClose, onConfirm, initialColumns, 
       title={
         <div className="flex items-center gap-2">
           <Table2 className="w-5 h-5 text-accent" />
-          <span>Custom Excel Export</span>
+          <span>Custom Export</span>
         </div>
       }
       size="3xl"
@@ -64,7 +71,7 @@ export function ExportFieldPicker({ isOpen, onClose, onConfirm, initialColumns, 
       <div className="flex flex-col h-[70vh]">
         <div className="flex items-center justify-between mb-4 pb-4 border-b border-border">
           <div>
-            <p className="text-sm text-text-secondary">Select the fields you want to include in your Excel report.</p>
+            <p className="text-sm text-text-secondary">Select fields and format for your report.</p>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={handleSelectAll} className="text-xs text-accent hover:underline font-medium">Select All</button>
@@ -73,6 +80,27 @@ export function ExportFieldPicker({ isOpen, onClose, onConfirm, initialColumns, 
             <span className="text-border">|</span>
             <button onClick={handleReset} className="text-xs text-text-secondary hover:text-text-primary">Reset Defaults</button>
           </div>
+        </div>
+
+        <div className="mb-4 flex flex-wrap gap-2">
+          {([
+            { id: 'xlsx', label: 'Excel (.xlsx)' },
+            { id: 'csv', label: 'CSV' },
+            { id: 'json', label: 'JSON' },
+          ] as const).map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setFormat(opt.id)}
+              className={`text-xs px-3 py-1.5 rounded-md border transition-colors ${
+                format === opt.id
+                  ? 'bg-accent/10 border-accent/40 text-accent'
+                  : 'border-border text-text-secondary hover:bg-bg-sunken'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6">
@@ -130,11 +158,11 @@ export function ExportFieldPicker({ isOpen, onClose, onConfirm, initialColumns, 
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <button onClick={onClose} className="btn-secondary flex-1 sm:flex-none">Cancel</button>
             <button 
-              onClick={() => onConfirm(Array.from(selectedColumns), includeItems, remember)} 
+              onClick={() => onConfirm(Array.from(selectedColumns), includeItems, remember, format)} 
               disabled={selectedColumns.size === 0}
               className="btn-primary flex-1 sm:flex-none"
             >
-              Export {selectedColumns.size} Fields
+              Export {selectedColumns.size} Fields ({format.toUpperCase()})
             </button>
           </div>
         </div>

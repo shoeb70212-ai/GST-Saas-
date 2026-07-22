@@ -19,6 +19,7 @@ type ScanUploadPanelProps = {
   handleScanAll: () => void;
   retryScan: (id: string) => void;
   removeFile: (id: string) => void;
+  cancelScan: (id: string) => void;
 };
 
 export function ScanUploadPanel({
@@ -34,6 +35,7 @@ export function ScanUploadPanel({
   handleScanAll,
   retryScan,
   removeFile,
+  cancelScan,
 }: ScanUploadPanelProps) {
   return (
     <div className="w-full lg:w-[40%] xl:w-[35%] flex flex-col border-b lg:border-b-0 lg:border-r border-border bg-bg-surface">
@@ -138,6 +140,15 @@ export function ScanUploadPanel({
                     )}
                   </div>
                   <div className="flex items-center opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-all gap-1">
+                    {fs.isScanning && (
+                      <button
+                        onClick={() => cancelScan(fs.id)}
+                        className="p-1 hover:bg-bg-sunken rounded text-text-secondary hover:text-error"
+                        title="Cancel scan"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
                     {fs.error && (
                       <button
                         onClick={() => retryScan(fs.id)}

@@ -6,10 +6,11 @@ Extraction logic lives in extraction.py; this module keeps the HTTP surface thin
 import logging
 import asyncio
 
-from fastapi import APIRouter, File, UploadFile, HTTPException, Form, Depends
+from fastapi import APIRouter, File, UploadFile, HTTPException, Form, Depends, Request
 from dotenv import load_dotenv
 
-from utils import validate_file_content, get_current_user, get_org_credits, ensure_org_not_suspended
+from utils import validate_file_content, get_current_user, get_org_credits, ensure_org_not_suspended, resolve_active_org_id
+from rate_limit import limiter
 import credits as credit_costs
 from ops_log import build_ops_ctx, log_from_ctx
 from extraction import (
@@ -39,7 +40,9 @@ router = APIRouter()
 
 
 @router.post("/scan-invoice")
+@limiter.limit("30/minute")
 async def scan_invoice(
+    request: Request,
     file: UploadFile = File(...),
     password: str = Form(None),
     auth: dict = Depends(get_current_user),
@@ -87,12 +90,19 @@ async def scan_invoice(
 
     content = await file.read()
     mime_type = validate_file_content(content, file.filename)
+    org_id = None
+    try:
+        org_id = await resolve_active_org_id(sc, user_id)
+    except Exception:
+        org_id = None
     ops_ctx = build_ops_ctx(
         "scan",
         user_id=user_id,
+        org_id=org_id,
         file_name=file.filename,
         mime_type=mime_type,
     )
+    ops_ctx["supabase_client"] = sc
 
     async with get_file_processing_semaphore():
         try:
@@ -196,7 +206,13 @@ async def scan_invoice(
                         "Duplicate detection check failed (non-blocking): %s", dup_e
                     )
 
-        return {"status": "success", "data": data_dict}
+        return {
+            "status": "success",
+            "data": data_dict,
+            "tokens_used": tokens,
+            "estimated_cost_inr": data_dict.get("Estimated_Cost_INR"),
+            "cache_hit": bool(data_dict.get("Cache_Hit")),
+        }
     except HTTPException:
         raise
     except Exception as e:

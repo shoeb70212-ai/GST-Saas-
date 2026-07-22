@@ -58,7 +58,22 @@ export type InvoiceData = {
   Original_Invoice_Number?: string;
   Original_Invoice_Date?: string;
   Line_Items?: LineItem[];
-  [key: string]: any; 
+  /** Phase C — typed review queue reasons from the API */
+  Review_Reasons?: Array<{
+    code: string;
+    field?: string | null;
+    message: string;
+    severity?: string;
+  }>;
+  Review_Fields?: string[];
+  Ocr_Words?: Array<{ t: string; p: number; c?: number; b?: number[]; n?: boolean }>;
+  Ocr_Provider?: string;
+  Scan_Meta?: Record<string, unknown> & {
+    ocr_page_width?: number;
+    ocr_page_height?: number;
+  };
+  Field_Confidence?: Record<string, unknown>;
+  [key: string]: any;
 };
 
 export type FileState = {

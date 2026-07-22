@@ -162,7 +162,12 @@ class TestHermeticFixtureGates:
         case = next(c for c in m["cases"] if c["id"] == case_id)
         raw, mime = _source_bytes(case)
         out, out_mime = preprocess_invoice_file(raw, mime)
-        assert out_mime in ("text/markdown", "image/jpeg", "application/pdf")
+        assert out_mime in (
+            "text/markdown",
+            "image/jpeg",
+            "application/pdf",
+            "application/x-invoice-hybrid",
+        )
         assert out is not None
         if out_mime == "text/markdown":
             assert isinstance(out, str) and len(out) > 20
@@ -184,7 +189,30 @@ class TestEscalateHelpers:
 
     def test_no_escalate_on_strong_review(self):
         assert not should_escalate(
-            {"Extraction_State": "needs_review", "Confidence_Score": 92}
+            {
+                "Extraction_State": "needs_review",
+                "Confidence_Score": 92,
+                "Supplier_GSTIN": "27AADCB2230M1ZT",
+                "Invoice_Number": "INV-1",
+                "Invoice_Date": "01-01-2024",
+                "Taxable_Amount": 1000,
+                "CGST_Amount": 90,
+                "SGST_Amount": 90,
+                "IGST_Amount": 0,
+                "Total_Amount": 1180,
+            }
+        )
+
+    def test_escalate_needs_review_with_disputed_field(self):
+        assert should_escalate(
+            {
+                "Extraction_State": "needs_review",
+                "Confidence_Score": 90,
+                "Supplier_GSTIN": "27AADCB2230M1ZT",
+                "Invoice_Number": None,
+                "Invoice_Date": "01-01-2024",
+                "Total_Amount": 1180,
+            }
         )
 
 

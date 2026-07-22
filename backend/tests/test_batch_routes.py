@@ -252,8 +252,8 @@ class TestBatchWorkerRefund:
     @patch("batch_routes.create_async_client")
     def test_worker_refunds_one_credit_on_ai_failure(self, mock_create):
         """
-        Policy: each failed batch item refunds its 1 upfront credit via refund_credits.
-        Successful siblings are unaffected (partial-batch fair).
+        Policy: each failed batch item refunds its 1 upfront credit via refund_credits
+        when AI never completed. Successful siblings are unaffected.
         """
         import asyncio
         import batch_routes
@@ -293,3 +293,49 @@ class TestBatchWorkerRefund:
         for name, params in mock_sc.rpc_called_with:
             if name == "decrement_credits" and params:
                 assert params.get("amount", 0) >= 0
+
+    @patch("batch_routes.create_async_client")
+    def test_worker_keeps_credit_when_persist_fails_after_ai(self, mock_create):
+        """After AI succeeds, duplicate/DB persist errors must NOT refund."""
+        import asyncio
+        import batch_routes
+
+        mock_sc = build_supabase_mock(
+            rpc_results={"refund_credits": True, "decrement_credits": 0},
+        )
+        mock_create.side_effect = make_async_factory(mock_sc)
+
+        async def _ok_extract(*_a, **_kw):
+            return {"Invoice_Number": "DUP-1", "Supplier_Name": "Acme"}, 10
+
+        async def _persist_boom(*_a, **_kw):
+            raise Exception(
+                "{'message': 'duplicate key value violates unique constraint "
+                "\"unique_client_supplier_invoice\"', 'code': '23505'}"
+            )
+
+        with patch("batch_routes.run_ai_extraction", new=_ok_extract), patch(
+            "batch_routes.preprocess_invoice_file",
+            side_effect=lambda *a, **k: (b"x", "image/jpeg"),
+        ), patch(
+            "batch_routes.persist_extracted_invoice",
+            new=_persist_boom,
+        ), patch(
+            "gstin_service.verify_gstin",
+            new=AsyncMock(return_value="VALID"),
+        ):
+            asyncio.run(
+                batch_routes.process_batch_worker(
+                    invoice_id="inv-dup-1",
+                    content=MINIMAL_JPEG,
+                    mime_type="image/jpeg",
+                    user_id="user-123",
+                    token="fake.token",
+                    tally_ledgers=None,
+                )
+            )
+
+        refund_calls = [
+            name for name, _ in mock_sc.rpc_called_with if name == "refund_credits"
+        ]
+        assert refund_calls == [], "must keep credit after AI even if persist fails"

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "KhataLensInvoiceLabel",
+  "type": "object",
+  "required": ["id", "source_file", "fields"],
+  "properties": {
+    "id": { "type": "string" },
+    "source_file": { "type": "string" },
+    "difficulty": {
+      "type": "string",
+      "enum": ["clean_text", "scanned_print", "handwritten", "edge_blank", "edge_occluded", "unknown"]
+    },
+    "notes": { "type": "string" },
+    "fields": {
+      "type": "object",
+      "properties": {
+        "Supplier_Name": { "type": ["string", "null"] },
+        "Supplier_GSTIN": { "type": ["string", "null"] },
+        "Buyer_Name": { "type": ["string", "null"] },
+        "Buyer_GSTIN": { "type": ["string", "null"] },
+        "Invoice_Number": { "type": ["string", "null"] },
+        "Invoice_Date": { "type": ["string", "null"] },
+        "Taxable_Amount": { "type": ["number", "null"] },
+        "CGST_Amount": { "type": ["number", "null"] },
+        "SGST_Amount": { "type": ["number", "null"] },
+        "IGST_Amount": { "type": ["number", "null"] },
+        "Total_Amount": { "type": ["number", "null"] },
+        "Invoice_Type": { "type": ["string", "null"] }
+      }
+    },
+    "critical_fields": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [
+        "Supplier_GSTIN",
+        "Invoice_Number",
+        "Invoice_Date",
+        "Taxable_Amount",
+        "CGST_Amount",
+        "SGST_Amount",
+        "IGST_Amount",
+        "Total_Amount"
+      ]
+    }
+  }
+}

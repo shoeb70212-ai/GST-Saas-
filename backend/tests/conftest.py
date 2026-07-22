@@ -8,6 +8,15 @@ Key fix over the previous version:
   - execute() returns data keyed by the table that was set on *this* chain.
   - insert() records are returned per-table so assertions can be precise.
 """
+import os
+
+# Must be set before app modules read env (HMAC + limiter).
+os.environ.setdefault("TESTING", "1")
+os.environ.setdefault("PUBLIC_UPLOAD_TOKEN_SECRET", "test-upload-secret")
+os.environ.setdefault("VITE_SUPABASE_URL", "https://test.supabase.co")
+os.environ.setdefault("VITE_SUPABASE_ANON_KEY", "test-anon-key")
+os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-service-key")
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
@@ -15,7 +24,8 @@ from unittest.mock import AsyncMock, MagicMock
 @pytest.fixture(autouse=True)
 def disable_public_rate_limit():
     """Prevent slowapi from flaking unit tests."""
-    from public_routes import limiter
+    from rate_limit import limiter
+
     previous = limiter.enabled
     limiter.enabled = False
     yield

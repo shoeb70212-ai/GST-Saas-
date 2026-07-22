@@ -18,7 +18,6 @@ from tally_ir import (
     BillAllocation,
     DocType,
     ImportReport,
-    InventoryLeg,
     InvoiceBatchExportRequest,
     InvoiceExportItem,
     InvoiceLineItemExport,
@@ -184,9 +183,7 @@ def invoices_to_document(req: InvoiceBatchExportRequest) -> TallyDocument:
         if vtype == VoucherType.CREDIT_NOTE:
             party_is_debit = False  # reverse of sales
         if vtype == VoucherType.DEBIT_NOTE:
-            party_is_debit = True  # reverse of purchase? DN to supplier increases payable credit... 
-            # Debit Note (purchase side): party credited? Actually DN from us to supplier:
-            # We debit supplier (reduce payable) — party is debit.
+            # Debit Note (purchase side): we debit supplier (reduce payable)
             party_is_debit = True
 
         bill_ref = inv.invoice_number or "New Ref"
@@ -204,77 +201,70 @@ def invoices_to_document(req: InvoiceBatchExportRequest) -> TallyDocument:
             )
         )
 
+        # Header-first accounting: line-item expense legs often omit GST while
+        # party uses total_amount → large Dr≠Cr. Prefer taxable + tax headers.
         inv_items = items_by_inv.get(inv.id or "", [])
-        taxable_from_items = 0.0
-        inventory: list[InventoryLeg] = []
+        taxable_from_items = sum(float(li.amount or 0) for li in inv_items)
 
-        if inv_items:
-            for li in inv_items:
-                amt = float(li.amount or 0)
-                taxable_from_items += amt
-                desc = normalize_ledger_name(li.description) or expense
-                # Account-only mode: one expense leg per line (more reliable across Tally configs)
-                legs.append(
-                    LedgerLeg(
-                        ledger=expense,
-                        is_debit=not party_is_debit,
-                        amount=abs(amt),
-                    )
-                )
-                if li.description and (li.quantity or li.unit_price):
-                    inventory.append(
-                        InventoryLeg(
-                            item=desc,
-                            qty=float(li.quantity or 1),
-                            rate=float(li.unit_price or 0),
-                            amount=abs(amt),
-                            hsn=li.hsn_sac,
-                            accounting_ledger=expense,
-                            is_outward=is_sales_side,
-                        )
-                    )
-                    if desc not in masters:
-                        masters[desc] = MasterDef(
-                            kind=MasterKind.STOCKITEM,
-                            name=desc,
-                            parent="Primary",
-                            hsn=li.hsn_sac,
-                            tax_rate=li.tax_rate,
-                        )
+        cgst = float(inv.cgst_amount or 0)
+        sgst = float(inv.sgst_amount or 0)
+        igst = float(inv.igst_amount or 0)
+        cess = float(inv.cess_amount or 0)
+        ro = float(inv.round_off or 0)
+        tax_sum = cgst + sgst + igst + cess
+
+        if inv.taxable_amount is not None:
+            taxable = float(inv.taxable_amount)
+        elif taxable_from_items > 0:
+            taxable = taxable_from_items
         else:
-            # Single expense from taxable or total - taxes
-            tax_sum = sum(
-                float(x or 0)
-                for x in (inv.cgst_amount, inv.sgst_amount, inv.igst_amount, inv.cess_amount)
-            )
-            taxable = float(inv.taxable_amount) if inv.taxable_amount is not None else max(total - tax_sum, 0)
-            if taxable > 0 or total > 0:
-                legs.append(
-                    LedgerLeg(
-                        ledger=expense,
-                        is_debit=not party_is_debit,
-                        amount=abs(taxable if taxable > 0 else total - tax_sum),
-                    )
+            taxable = max(total - tax_sum - ro, 0.0)
+
+        # OCR often fills total + line taxable but leaves GST columns empty.
+        if tax_sum < 0.005 and total > 0 and taxable > 0:
+            implied = round(total - taxable - ro, 2)
+            if implied > 0.05:
+                # Prefer IGST when present on interstate invoices; else CGST/SGST split
+                if (inv.place_of_supply or "").strip() and igst == 0 and cgst == 0:
+                    igst = implied
+                elif cgst == 0 and sgst == 0 and igst == 0:
+                    half = round(implied / 2.0, 2)
+                    cgst, sgst = half, round(implied - half, 2)
+                else:
+                    igst = implied
+                tax_sum = cgst + sgst + igst + cess
+                warnings.append(
+                    f"Invoice {inv.invoice_number or party}: inferred GST {implied:.2f} "
+                    f"from total − taxable (export may need review)"
                 )
 
-        for tax_name, field in (
-            ("CGST", inv.cgst_amount),
-            ("SGST", inv.sgst_amount),
-            ("IGST", inv.igst_amount),
-            ("Cess", inv.cess_amount),
+        if taxable > 0 or (total > 0 and tax_sum == 0):
+            legs.append(
+                LedgerLeg(
+                    ledger=expense,
+                    is_debit=not party_is_debit,
+                    amount=abs(taxable if taxable > 0 else max(total - tax_sum - ro, 0)),
+                )
+            )
+
+        for tax_name, amt in (
+            ("CGST", cgst),
+            ("SGST", sgst),
+            ("IGST", igst),
+            ("Cess", cess),
         ):
-            if field:
+            if amt:
+                ensure_ledger(tax_name, "Duties & Taxes")
                 legs.append(
                     LedgerLeg(
                         ledger=tax_name,
                         is_debit=not party_is_debit,
-                        amount=abs(float(field)),
+                        amount=abs(amt),
                     )
                 )
 
-        if inv.round_off:
+        if ro:
             ensure_ledger("Round Off", "Indirect Expenses")
-            ro = float(inv.round_off)
             legs.append(
                 LedgerLeg(
                     ledger="Round Off",
@@ -289,27 +279,39 @@ def invoices_to_document(req: InvoiceBatchExportRequest) -> TallyDocument:
             if inv.original_invoice_date:
                 narration += f" dated {inv.original_invoice_date}"
 
+        voucher_date = (inv.invoice_date or "").strip()
+        if not voucher_date or not to_tally_date(voucher_date):
+            # Prefer created_at date part, else today — never block export on blank OCR date
+            fallback = ""
+            if inv.created_at:
+                fallback = str(inv.created_at)[:10]
+            if not to_tally_date(fallback):
+                fallback = datetime.utcnow().strftime("%Y-%m-%d")
+            warnings.append(
+                f"Invoice {inv.invoice_number or party}: missing/invalid date; "
+                f"using {fallback}"
+            )
+            voucher_date = fallback
+
         vouchers.append(
             VoucherIR(
                 vtype=vtype,
-                date=inv.invoice_date or "",
+                date=voucher_date,
                 number=inv.invoice_number,
                 party=party,
                 narration=narration,
                 ledger_legs=legs,
                 inventory=[],  # accounting-only vouchers for maximum import reliability
                 place_of_supply=inv.place_of_supply,
-                taxable_amount=inv.taxable_amount,
-                cgst=inv.cgst_amount,
-                sgst=inv.sgst_amount,
-                igst=inv.igst_amount,
-                cess=inv.cess_amount,
-                round_off=inv.round_off,
+                taxable_amount=taxable if taxable else inv.taxable_amount,
+                cgst=cgst or None,
+                sgst=sgst or None,
+                igst=igst or None,
+                cess=cess or None,
+                round_off=ro or inv.round_off,
             )
         )
 
-        if not inv.invoice_date:
-            warnings.append(f"Invoice {inv.invoice_number or party}: missing date")
         if not inv.supplier_name:
             warnings.append(f"Invoice {inv.invoice_number or '?'}: missing supplier name")
 
@@ -334,6 +336,8 @@ def invoices_to_document(req: InvoiceBatchExportRequest) -> TallyDocument:
 
 ROUND_OFF_TOLERANCE = 0.05  # INR; auto-add Round Off within this
 GST_TOLERANCE = 1.0  # INR soft check
+SOFT_ROUND_OFF_MAX = 1.00  # INR — common Indian invoicing pennies
+EXPORT_ADJUST_LEDGER = "Export Adjustment"
 
 
 def _leg_signed_amount(leg: LedgerLeg) -> tuple[float, float]:
@@ -344,36 +348,55 @@ def _leg_signed_amount(leg: LedgerLeg) -> tuple[float, float]:
     return 0.0, amt
 
 
-def balance_voucher(voucher: VoucherIR, auto_balance: bool = True) -> tuple[VoucherIR, bool]:
+def balance_voucher(
+    voucher: VoucherIR,
+    auto_balance: bool = True,
+    *,
+    force_adjust: bool = True,
+) -> tuple[VoucherIR, str | None]:
     """
-    Ensure Dr == Cr. If auto_balance and imbalance <= ROUND_OFF_TOLERANCE * 100
-    (or small), insert Round Off leg. Returns (voucher, applied_round_off).
+    Ensure Dr == Cr.
+
+    Returns (voucher, applied_kind) where applied_kind is:
+      None | "round_off" | "export_adjust"
     """
     dr = sum(_leg_signed_amount(l)[0] for l in voucher.ledger_legs)
     cr = sum(_leg_signed_amount(l)[1] for l in voucher.ledger_legs)
     diff = round(dr - cr, 2)
     if abs(diff) < 0.005:
-        return voucher, False
+        return voucher, None
     if not auto_balance:
-        return voucher, False
-    # Allow auto round-off up to 1.00 INR (common Indian invoicing)
-    if abs(diff) > 1.00:
-        return voucher, False
+        return voucher, None
 
-    # If Dr > Cr, need credit Round Off; else debit
     need_debit = diff < 0
     new_legs = list(voucher.ledger_legs)
+
+    if abs(diff) <= SOFT_ROUND_OFF_MAX:
+        new_legs.append(
+            LedgerLeg(
+                ledger="Round Off",
+                is_debit=need_debit,
+                amount=abs(diff),
+            )
+        )
+        voucher.ledger_legs = new_legs
+        if voucher.round_off is None:
+            voucher.round_off = diff if need_debit else -diff
+        return voucher, "round_off"
+
+    if not force_adjust:
+        return voucher, None
+
+    # Larger OCR/total mismatches — still export a balanced voucher; flag as warning.
     new_legs.append(
         LedgerLeg(
-            ledger="Round Off",
+            ledger=EXPORT_ADJUST_LEDGER,
             is_debit=need_debit,
             amount=abs(diff),
         )
     )
     voucher.ledger_legs = new_legs
-    if voucher.round_off is None:
-        voucher.round_off = diff if need_debit else -diff
-    return voucher, True
+    return voucher, "export_adjust"
 
 
 def validate_tally_document(
@@ -393,14 +416,19 @@ def validate_tally_document(
         v = v.model_copy(deep=True)
 
         if not v.date or not to_tally_date(v.date):
+            fallback = datetime.utcnow().strftime("%Y-%m-%d")
             issues.append(
                 ValidationIssue(
-                    severity="error",
+                    severity="warning",
                     voucher_index=idx,
                     code="invalid_date",
-                    message=f"Voucher {v.number or idx + 1}: invalid or missing date '{v.date}'",
+                    message=(
+                        f"Voucher {v.number or idx + 1}: invalid or missing date "
+                        f"'{v.date}'; using {fallback}"
+                    ),
                 )
             )
+            v.date = fallback
 
         if not v.ledger_legs:
             issues.append(
@@ -435,13 +463,35 @@ def validate_tally_document(
                 )
 
         v, applied = balance_voucher(v, auto_balance=auto_balance)
-        if applied:
+        if applied == "round_off":
             auto_ro += 1
             if "Round Off" not in master_names:
                 masters.append(
                     MasterDef(kind=MasterKind.LEDGER, name="Round Off", parent="Indirect Expenses")
                 )
                 master_names.add("Round Off")
+        elif applied == "export_adjust":
+            auto_ro += 1
+            if EXPORT_ADJUST_LEDGER not in master_names:
+                masters.append(
+                    MasterDef(
+                        kind=MasterKind.LEDGER,
+                        name=EXPORT_ADJUST_LEDGER,
+                        parent="Indirect Expenses",
+                    )
+                )
+                master_names.add(EXPORT_ADJUST_LEDGER)
+            issues.append(
+                ValidationIssue(
+                    severity="warning",
+                    voucher_index=idx,
+                    code="export_adjust",
+                    message=(
+                        f"Voucher {v.number or idx + 1}: balanced with "
+                        f"{EXPORT_ADJUST_LEDGER} — review amounts in Tally"
+                    ),
+                )
+            )
 
         dr = sum(_leg_signed_amount(l)[0] for l in v.ledger_legs)
         cr = sum(_leg_signed_amount(l)[1] for l in v.ledger_legs)

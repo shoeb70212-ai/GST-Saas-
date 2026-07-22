@@ -36,6 +36,12 @@ MINIMAL_JPEG = (
 CLIENT_ID = "client-abc-123"
 
 
+def _client_row(**extra):
+    row = {"id": CLIENT_ID, "client_name": "ACME Corp", "user_id": "user-abc"}
+    row.update(extra)
+    return row
+
+
 def _token_for(client_id: str = CLIENT_ID) -> str:
     token, _ = create_public_upload_token(client_id)
     return token
@@ -71,7 +77,7 @@ class TestGetClientInfo:
     @patch("public_routes.create_async_client")
     def test_valid_client_returns_name(self, mock_create):
         mock_sc = build_supabase_mock(
-            table_data={"clients": [{"client_name": "ACME Corp", "user_id": "user-abc"}]},
+            table_data={"clients": [_client_row()]},
         )
         mock_create.side_effect = make_async_factory(mock_sc)
 
@@ -120,8 +126,8 @@ class TestPublicUpload:
         """Daily upload limit of 200 must be enforced."""
         mock_sc = build_supabase_mock(
             table_data={
-                "clients": [{"user_id": "user-abc"}],
-                "profiles": [{"tally_ledgers": None}],
+                "clients": [_client_row()],
+                "profiles": [{"id": "user-abc", "tally_ledgers": None}],
             },
             table_counts={"invoices": 200},
         )
@@ -138,7 +144,7 @@ class TestPublicUpload:
     def test_invalid_file_type_rejected(self, mock_create):
         """Non-image/PDF file must be rejected with 400."""
         mock_sc = build_supabase_mock(
-            table_data={"clients": [{"user_id": "user-abc"}]},
+            table_data={"clients": [_client_row()]},
         )
         mock_create.side_effect = make_async_factory(mock_sc)
 
@@ -155,8 +161,8 @@ class TestPublicUpload:
         """Uploading the same file twice (same SHA-256) → 409 Conflict."""
         mock_sc = build_supabase_mock(
             table_data={
-                "clients": [{"user_id": "user-abc"}],
-                "profiles": [{"tally_ledgers": None}],
+                "clients": [_client_row()],
+                "profiles": [{"id": "user-abc", "tally_ledgers": None}],
                 "invoices": [{"id": "existing-invoice"}],
             },
             table_counts={"invoices": 5},
@@ -204,8 +210,8 @@ class TestPublicUpload:
         """Credits must be checked before AI — no free processing."""
         mock_sc = build_supabase_mock(
             table_data={
-                "clients": [{"user_id": "user-abc"}],
-                "profiles": [{"tally_ledgers": None}],
+                "clients": [_client_row()],
+                "profiles": [{"id": "user-abc", "tally_ledgers": None}],
                 "invoices": [],
             },
         )
@@ -225,8 +231,8 @@ class TestPublicUpload:
         """Storage 500 after deduct must refund before surfacing error."""
         mock_sc = build_supabase_mock(
             table_data={
-                "clients": [{"user_id": "user-abc"}],
-                "profiles": [{"tally_ledgers": None}],
+                "clients": [_client_row()],
+                "profiles": [{"id": "user-abc", "tally_ledgers": None}],
                 "invoices": [],
             },
         )
@@ -278,8 +284,8 @@ class TestPublicUpload:
     def test_successful_upload_deducts_before_queue(self, mock_shared, mock_create):
         mock_sc = build_supabase_mock(
             table_data={
-                "clients": [{"user_id": "user-abc"}],
-                "profiles": [{"tally_ledgers": None}],
+                "clients": [_client_row()],
+                "profiles": [{"id": "user-abc", "tally_ledgers": None}],
                 "invoices": [],
             },
         )

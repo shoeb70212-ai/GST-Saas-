@@ -7,8 +7,31 @@ import { useClient } from '../lib/ClientContext';
 import { cn } from '../lib/utils';
 import KhataLensIcon from './KhataLensIcon';
 import CommandPalette from './CommandPalette';
+import { getApiUrl } from '../lib/api';
 
 type NavItem = { name: string; path: string; icon: typeof LayoutDashboard };
+
+async function endSupportSessionAndReload() {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (token) {
+      await fetch(`${getApiUrl()}/api/support/end`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }
+  } catch {
+    /* best-effort clear of app_metadata */
+  }
+  try {
+    localStorage.removeItem('khatalens_support_mode');
+    localStorage.removeItem('khatalens_support_mode_at');
+  } catch {
+    /* ignore */
+  }
+  window.location.href = '/app/dashboard';
+}
 
 /**
  * Layout — authenticated app shell.
@@ -140,14 +163,12 @@ export default function Layout() {
     <div className="flex h-[100dvh] bg-bg-base overflow-hidden flex-col md:flex-row pb-safe md:pb-0">
       {typeof window !== 'undefined' && localStorage.getItem('khatalens_support_mode') === '1' && (
         <div className="w-full bg-warning-subtle text-warning text-center text-xs sm:text-sm py-2 px-3 border-b border-warning/30 z-[60] shrink-0">
-          Read-only support session — mutations may be blocked. Close this tab when finished.
+          Read-only support session — writes are blocked server-side. Close this tab when finished.
           <button
             type="button"
             className="ml-3 underline font-medium"
             onClick={() => {
-              localStorage.removeItem('khatalens_support_mode');
-              localStorage.removeItem('khatalens_support_mode_at');
-              window.location.reload();
+              void endSupportSessionAndReload();
             }}
           >
             Exit support mode

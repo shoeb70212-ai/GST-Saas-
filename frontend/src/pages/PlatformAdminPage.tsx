@@ -80,6 +80,10 @@ type HealthSummary = {
     escalate_rate: number;
     estimated_cost_inr: number;
     by_model: Record<string, number>;
+    scan_count?: number;
+    avg_cost_per_scan_inr?: number | null;
+    cache_hit_rate?: number | null;
+    avg_field_confidence?: number | null;
   };
   gstin: { miss_rate: number; verify_failures: number; cache_hits: number; cache_misses: number };
   channels: {
@@ -652,6 +656,33 @@ const PlatformAdminPage: React.FC = () => {
                         label="AI cost (ops)"
                         value={`₹ ${health.ai.estimated_cost_inr}`}
                         sub={`${Math.round(health.ai.tokens_per_day_est)} tok/day est`}
+                      />
+                      <HealthStat
+                        label="Avg ₹/scan"
+                        value={
+                          health.ai.avg_cost_per_scan_inr != null
+                            ? `₹ ${health.ai.avg_cost_per_scan_inr}`
+                            : '—'
+                        }
+                        sub={`${health.ai.scan_count ?? 0} scan_cost events`}
+                      />
+                      <HealthStat
+                        label="Cache hit %"
+                        value={
+                          health.ai.cache_hit_rate != null
+                            ? `${((health.ai.cache_hit_rate || 0) * 100).toFixed(1)}%`
+                            : '—'
+                        }
+                        sub="From scan_cost meta"
+                      />
+                      <HealthStat
+                        label="Field conf (proxy)"
+                        value={
+                          health.ai.avg_field_confidence != null
+                            ? String(health.ai.avg_field_confidence)
+                            : '—'
+                        }
+                        sub="Not gold-set accuracy"
                       />
                       <HealthStat
                         label="Avg confidence"

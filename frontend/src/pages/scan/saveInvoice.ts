@@ -1,6 +1,33 @@
 import { supabase } from '../../lib/supabase';
 import type { FileState } from '../../lib/ScanContext';
 import { formatDateToIso, safeNum } from './utils';
+import { getApiUrl } from '../../lib/api';
+
+/** Best-effort: teach vendor memory from CA edits vs extraction snapshot. */
+async function learnVendorCorrections(
+  data: Record<string, unknown>,
+  accessToken: string,
+) {
+  const snapshot = data.Extraction_Snapshot as Record<string, unknown> | undefined;
+  const gstin = (data.Supplier_GSTIN as string) || '';
+  if (!snapshot || !gstin) return;
+  try {
+    await fetch(`${getApiUrl()}/api/vendor-memory/learn`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        vendor_gstin: gstin,
+        snapshot,
+        final: data,
+      }),
+    });
+  } catch {
+    // Non-blocking — invoice save must succeed even if memory learn fails
+  }
+}
 
 export async function saveSingleInvoiceToDb(
   _fileId: string,
@@ -71,6 +98,11 @@ export async function saveSingleInvoiceToDb(
     tax_rate: safeNum(item.Tax_Rate),
     amount: safeNum(item.Amount),
   }));
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) {
+    await learnVendorCorrections(data, session.access_token);
+  }
 
   const { data: rpcData, error: rpcError } = await supabase.rpc('save_invoice_atomic', {
     invoice_data: invoiceData,

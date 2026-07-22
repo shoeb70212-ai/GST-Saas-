@@ -3,7 +3,7 @@ import uuid
 import re
 import hashlib
 import logging
-from fastapi import HTTPException, Header
+from fastapi import HTTPException, Header, Request
 from supabase import create_async_client
 
 logger = logging.getLogger(__name__)
@@ -11,6 +11,9 @@ logger = logging.getLogger(__name__)
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+# Paths that remain writable during an active support (impersonation) session.
+_SUPPORT_WRITE_ALLOW_SUFFIXES = ("/support/end",)
 
 
 def get_supabase_client():
@@ -44,16 +47,14 @@ async def get_user_supabase_client(authorization: str):
     )
 
 
-async def get_current_user(authorization: str = Header(None)):
+async def get_current_user(request: Request, authorization: str = Header(None)):
     """
     Centralized FastAPI dependency for user authentication.
     Verifies the JWT token and returns a dict with user_id and supabase client.
 
-    Usage in route:
-        @router.get("/example")
-        async def example(auth: dict = Depends(get_current_user)):
-            user_id = auth["user_id"]
-            sc = auth["supabase_client"]
+    Active support (impersonation) sessions are read-only: mutating HTTP methods
+    are rejected here (except /api/support/end). Postgres triggers provide a
+    second line of defense for direct Supabase client writes.
     """
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized: Missing or invalid Authorization header")
@@ -74,10 +75,35 @@ async def get_current_user(authorization: str = Header(None)):
         logger.error(f"Auth verification failed: {e}")
         raise HTTPException(status_code=401, detail="Unauthorized: Invalid session token")
 
+    from support_session import (
+        clear_support_session_on_user,
+        is_support_session_active,
+        support_session_needs_clear,
+    )
+
+    user = user_resp.user
+    if support_session_needs_clear(user) and SUPABASE_SERVICE_KEY:
+        try:
+            admin = await create_async_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+            await clear_support_session_on_user(admin, user.id)
+        except Exception as e:
+            logger.warning("Failed to clear expired support session for %s: %s", user.id, e)
+
+    support_read_only = is_support_session_active(user)
+    if support_read_only and request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        path = (request.url.path or "").rstrip("/")
+        allowed = any(path.endswith(suf) for suf in _SUPPORT_WRITE_ALLOW_SUFFIXES)
+        if not allowed:
+            raise HTTPException(
+                status_code=403,
+                detail="Support sessions are read-only. Exit support mode to make changes.",
+            )
+
     return {
-        "user_id": user_resp.user.id,
+        "user_id": user.id,
         "supabase_client": sc,
-        "token": token
+        "token": token,
+        "support_read_only": support_read_only,
     }
 
 

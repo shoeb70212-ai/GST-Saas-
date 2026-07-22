@@ -14,7 +14,14 @@ import type { FileState, InvoiceData, LineItem } from '../../lib/ScanContext';
 import { useClient } from '../../lib/ClientContext';
 import { saveSingleInvoiceToDb } from './saveInvoice';
 
-function compressImage(file: File, maxWidth: number, maxHeight: number): Promise<File> {
+/**
+ * Client-side image prep for scan upload (Phase 2).
+ * Quality floor + higher max edge so small tax digits survive WebP.
+ */
+const WEBP_QUALITY = 0.92;
+const MAX_LONG_EDGE = 2048;
+
+function compressImage(file: File, maxLongEdge = MAX_LONG_EDGE): Promise<File> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) {
       resolve(file);
@@ -28,14 +35,13 @@ function compressImage(file: File, maxWidth: number, maxHeight: number): Promise
       img.onload = () => {
         let width = img.width;
         let height = img.height;
+        const longEdge = Math.max(width, height);
 
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
-        }
-        if (height > maxHeight) {
-          width = Math.round((width * maxHeight) / height);
-          height = maxHeight;
+        // Only downscale when larger than max; never upscale
+        if (longEdge > maxLongEdge) {
+          const scale = maxLongEdge / longEdge;
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
         }
 
         const canvas = document.createElement('canvas');
@@ -47,7 +53,7 @@ function compressImage(file: File, maxWidth: number, maxHeight: number): Promise
         canvas.toBlob(
           (blob) => {
             if (blob) {
-              const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", {
+              const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, '') + '.webp', {
                 type: 'image/webp',
                 lastModified: Date.now(),
               });
@@ -57,7 +63,7 @@ function compressImage(file: File, maxWidth: number, maxHeight: number): Promise
             }
           },
           'image/webp',
-          0.8
+          WEBP_QUALITY
         );
       };
       img.onerror = (error) => reject(error);
@@ -86,6 +92,7 @@ export function useScanWorkflow() {
   const settingsRef = useRef<HTMLDivElement>(null);
   const activeClientIdRef = useRef<string | null>(activeClientId);
   const prevClientIdRef = useRef<string | null>(null);
+  const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
 
   useEffect(() => {
     activeClientIdRef.current = activeClientId;
@@ -94,6 +101,8 @@ export function useScanWorkflow() {
   // Clear scan queue when switching clients so saves don't target the wrong client
   useEffect(() => {
     if (prevClientIdRef.current !== null && prevClientIdRef.current !== activeClientId) {
+      abortControllersRef.current.forEach((c) => c.abort());
+      abortControllersRef.current.clear();
       setFileStates([]);
     }
     prevClientIdRef.current = activeClientId;
@@ -271,14 +280,19 @@ export function useScanWorkflow() {
         throw new Error(detail || `Failed to upload ZIP (${response.status})`);
       }
       const resData = await response.json();
-
-      toast.success(`Queued ${resData.queued_ids?.length || 0} invoices for background processing!`, { id: "zip-upload" });
+      const queued = resData.queued_ids?.length || 0;
+      const charged = resData.credits_charged ?? queued;
+      toast.success(
+        `Queued ${queued} invoices (−${charged} credit${charged === 1 ? "" : "s"})`,
+        { id: "zip-upload" },
+      );
+      await refreshCredits();
       fetchPendingBatchInvoices();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to upload ZIP";
       toast.error(message, { id: "zip-upload" });
     }
-  }, [activeClientId, fetchPendingBatchInvoices]);
+  }, [activeClientId, fetchPendingBatchInvoices, refreshCredits]);
 
   const autoSaveInvoiceRef = useRef<(fileId: string, fs: FileState, data: InvoiceData, clientId: string) => Promise<void>>(async () => {});
 
@@ -291,8 +305,16 @@ export function useScanWorkflow() {
       return;
     }
 
+    const existing = abortControllersRef.current.get(item.id);
+    existing?.abort();
+    const controller = new AbortController();
+    abortControllersRef.current.set(item.id, controller);
+
     try {
-      const processedFile = await compressImage(item.file, 1536, 1536);
+      const processedFile = await compressImage(item.file);
+      if (controller.signal.aborted) {
+        throw new DOMException('Scan cancelled', 'AbortError');
+      }
       const formData = new FormData();
       formData.append('file', processedFile);
       if (pdfPassword) {
@@ -309,6 +331,7 @@ export function useScanWorkflow() {
           'Authorization': `Bearer ${session.access_token}`
         },
         body: formData,
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -336,6 +359,17 @@ export function useScanWorkflow() {
       // Pass file state directly — never look it up from a stale React closure
       await autoSaveInvoiceRef.current(item.id, updatedItem, result.data, clientId);
     } catch (err: unknown) {
+      const aborted =
+        (err instanceof DOMException && err.name === 'AbortError') ||
+        (err instanceof Error && err.name === 'AbortError');
+      if (aborted) {
+        setFileStates(prev => prev.map(f =>
+          f.id === item.id
+            ? { ...f, error: 'Cancelled', isScanning: false, extractedData: null }
+            : f
+        ));
+        return;
+      }
       const errMsg = err instanceof Error ? err.message : 'An error occurred.';
       const message = errMsg.includes('Failed to fetch')
         ? 'Could not reach scan server. Check your connection and try again.'
@@ -343,8 +377,23 @@ export function useScanWorkflow() {
       setFileStates(prev => prev.map(f =>
         f.id === item.id ? { ...f, error: message, isScanning: false } : f
       ));
+    } finally {
+      abortControllersRef.current.delete(item.id);
     }
   }, [pdfPassword, refreshCredits, setFileStates]);
+
+  const cancelScan = useCallback((id: string) => {
+    const controller = abortControllersRef.current.get(id);
+    if (controller) {
+      controller.abort();
+      abortControllersRef.current.delete(id);
+    }
+    setFileStates(prev => prev.map(f =>
+      f.id === id && f.isScanning
+        ? { ...f, isScanning: false, error: 'Cancelled' }
+        : f
+    ));
+  }, [setFileStates]);
 
   const onDrop = useCallback((acceptedFiles: File[], fileRejections: { file: File }[]) => {
     if (!activeClientId) {
@@ -405,10 +454,14 @@ export function useScanWorkflow() {
   });
 
   const removeFile = (id: string) => {
+    abortControllersRef.current.get(id)?.abort();
+    abortControllersRef.current.delete(id);
     setFileStates(prev => prev.filter(f => f.id !== id));
   };
 
   const clearAll = () => {
+    abortControllersRef.current.forEach((c) => c.abort());
+    abortControllersRef.current.clear();
     setFileStates([]);
   };
 
@@ -516,7 +569,12 @@ export function useScanWorkflow() {
     }
   };
 
-  const handleCustomExportConfirm = async (columns: string[], includeItems: boolean, remember: boolean) => {
+  const handleCustomExportConfirm = async (
+    columns: string[],
+    includeItems: boolean,
+    remember: boolean,
+    format: 'xlsx' | 'csv' | 'json' = 'xlsx',
+  ) => {
     setShowExportPicker(false);
 
     if (remember) {
@@ -536,6 +594,18 @@ export function useScanWorkflow() {
         .filter(fs => fs.extractedData)
         .map(fs => ({ ...fs.extractedData, id: fs.id })) as (InvoiceData & { id: string })[];
 
+      if (invoices.length === 0) {
+        toast.error('No extracted invoices to export.');
+        return;
+      }
+
+      const { validateInvoicesForExport, formatExportGateMessage } = await import('../../lib/exportValidation');
+      const gate = validateInvoicesForExport(invoices as unknown as Record<string, unknown>[]);
+      if (!gate.ok) {
+        toast.error(formatExportGateMessage(gate.errors), { duration: 8000 });
+        return;
+      }
+
       const allLineItems: (LineItem & { invoice_id: string })[] = [];
       invoices.forEach(inv => {
         if (inv.Line_Items && Array.isArray(inv.Line_Items)) {
@@ -545,11 +615,18 @@ export function useScanWorkflow() {
         }
       });
 
-      const { exportToRawExcel } = await import('../../lib/exportService');
-      exportToRawExcel(invoices, allLineItems, columns, includeItems);
+      const { exportCustomReport } = await import('../../lib/exportService');
+      await exportCustomReport(
+        invoices as unknown as Record<string, unknown>[],
+        allLineItems,
+        columns,
+        includeItems,
+        format,
+      );
+      toast.success(`Exported ${invoices.length} invoice(s) as ${format.toUpperCase()}`);
     } catch (err) {
       console.error(err);
-      toast.error('Failed to generate Custom Excel Report');
+      toast.error('Failed to generate Custom Report');
     } finally {
       setIsExporting(false);
     }
@@ -580,6 +657,7 @@ export function useScanWorkflow() {
     toggleColumn,
     removeFile,
     clearAll,
+    cancelScan,
     updateExtractedData,
     handleScanAll,
     retryScan,

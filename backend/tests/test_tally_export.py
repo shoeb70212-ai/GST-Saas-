@@ -94,12 +94,12 @@ class TestValidator:
             ],
         )
         balanced, applied = balance_voucher(v, auto_balance=True)
-        assert applied
+        assert applied == "round_off"
         dr = sum(l.amount for l in balanced.ledger_legs if l.is_debit)
         cr = sum(l.amount for l in balanced.ledger_legs if not l.is_debit)
         assert abs(dr - cr) < 0.01
 
-    def test_unbalanced_large_diff_errors(self):
+    def test_large_diff_force_adjust_warns(self):
         doc = TallyDocument(
             vouchers=[
                 VoucherIR(
@@ -112,11 +112,14 @@ class TestValidator:
                 )
             ]
         )
-        _, report = validate_tally_document(doc, auto_balance=True)
-        assert not report.ok
-        assert any(i.code == "unbalanced" for i in report.issues)
+        out, report = validate_tally_document(doc, auto_balance=True)
+        assert report.ok
+        assert any(i.code == "export_adjust" for i in report.issues)
+        dr = sum(l.amount for l in out.vouchers[0].ledger_legs if l.is_debit)
+        cr = sum(l.amount for l in out.vouchers[0].ledger_legs if not l.is_debit)
+        assert abs(dr - cr) < 0.01
 
-    def test_invalid_date_errors(self):
+    def test_invalid_date_falls_back_with_warning(self):
         doc = TallyDocument(
             vouchers=[
                 VoucherIR(
@@ -129,8 +132,10 @@ class TestValidator:
                 )
             ]
         )
-        _, report = validate_tally_document(doc)
-        assert any(i.code == "invalid_date" for i in report.issues)
+        out, report = validate_tally_document(doc)
+        assert report.ok
+        assert any(i.code == "invalid_date" and i.severity == "warning" for i in report.issues)
+        assert to_tally_date(out.vouchers[0].date)
 
 
 class TestXmlGenerator:
@@ -260,6 +265,51 @@ class TestInvoiceBatch:
         assert result["report"]["ok"]
         assert "<ENVELOPE>" in result["xml"]
         assert "Supplier One" in result["xml"]
+
+    def test_infers_gst_when_header_tax_missing(self):
+        """Party total includes GST but CGST/SGST empty — common OCR gap."""
+        req = InvoiceBatchExportRequest(
+            invoices=[
+                InvoiceExportItem(
+                    id="inv2",
+                    invoice_number="04",
+                    invoice_date="2024-07-01",
+                    supplier_name="Vendor Big",
+                    expense_category="Machinery Purchase",
+                    total_amount=368160,
+                    taxable_amount=312000,
+                    # taxes missing — should infer 56160
+                )
+            ],
+            line_items=[
+                InvoiceLineItemExport(invoice_id="inv2", description="Machine", amount=312000),
+            ],
+        )
+        doc = invoices_to_document(req)
+        result = export_document(doc)
+        assert result["report"]["ok"], result["report"]
+        v = doc.vouchers[0]
+        tax_legs = sum(l.amount for l in v.ledger_legs if l.ledger in ("CGST", "SGST", "IGST", "Cess"))
+        assert abs(tax_legs - 56160) < 0.02
+
+    def test_missing_invoice_date_uses_fallback(self):
+        req = InvoiceBatchExportRequest(
+            invoices=[
+                InvoiceExportItem(
+                    id="inv3",
+                    invoice_number="470A",
+                    invoice_date="",
+                    created_at="2024-07-22T10:00:00Z",
+                    supplier_name="Vendor X",
+                    total_amount=100,
+                    taxable_amount=100,
+                )
+            ],
+        )
+        doc = invoices_to_document(req)
+        assert doc.vouchers[0].date.startswith("2024-07-22")
+        result = export_document(doc)
+        assert result["report"]["ok"]
 
 
 class TestConverterDetection:

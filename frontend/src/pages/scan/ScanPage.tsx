@@ -33,6 +33,7 @@ export default function ScanPage() {
             handleScanAll={scan.handleScanAll}
             retryScan={scan.retryScan}
             removeFile={scan.removeFile}
+            cancelScan={scan.cancelScan}
           />
           <ScanVerificationGrid
             fileStates={scan.fileStates}

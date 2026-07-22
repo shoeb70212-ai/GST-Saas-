@@ -213,8 +213,15 @@ def build_supabase_mock(
         )
     )
     sc.auth.admin.get_user_by_id = AsyncMock(
-        return_value=MagicMock(user=MagicMock(email="tenant@example.com", id=user_id))
+        return_value=MagicMock(
+            user=MagicMock(
+                email="tenant@example.com",
+                id=user_id,
+                app_metadata={},
+            )
+        )
     )
+    sc.auth.admin.update_user_by_id = AsyncMock(return_value=None)
 
     return sc
 

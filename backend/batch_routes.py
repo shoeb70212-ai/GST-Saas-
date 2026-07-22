@@ -2,7 +2,7 @@ import io
 import uuid
 import zipfile
 import logging
-from fastapi import APIRouter, File, UploadFile, HTTPException, BackgroundTasks, Form, Depends
+from fastapi import APIRouter, File, UploadFile, HTTPException, BackgroundTasks, Form, Depends, Request
 import os
 from supabase import create_async_client
 from utils import (
@@ -13,6 +13,7 @@ from utils import (
     format_date_to_iso,
     ensure_org_not_suspended,
 )
+from rate_limit import limiter
 import credits as credit_costs
 from extraction import (
     preprocess_invoice_file,
@@ -45,8 +46,9 @@ async def process_batch_worker(
     Background task for processing invoices submitted via a ZIP batch.
 
     Credits: 1 credit is deducted upfront per queued file in upload_batch.
-    Policy: refund that 1 credit via refund_credits if this worker fails
-    (AI or DB). Successful siblings keep their charge (partial-batch fair).
+    Policy: refund that 1 credit ONLY if this worker fails before AI finishes
+    (preprocess / extraction). After AI succeeds, the credit is kept even if
+    DB persist fails (e.g. duplicate invoice) — the AI work was consumed.
     """
     sc = supabase_client
     ops_ctx = build_ops_ctx(
@@ -54,6 +56,7 @@ async def process_batch_worker(
         user_id=user_id,
         mime_type=mime_type,
     )
+    ai_completed = False
     try:
         if sc is None:
             sc = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -75,6 +78,7 @@ async def process_batch_worker(
         data_dict, _tokens = await run_ai_extraction(
             content, mime_type, tally_ledgers, ops_ctx=ops_ctx
         )
+        ai_completed = True
 
         from gstin_service import verify_gstin
 
@@ -85,32 +89,40 @@ async def process_batch_worker(
         await persist_extracted_invoice(sc, invoice_id, data_dict)
 
     except Exception as e:
-        credit_outcome = "refunded"
+        # Keep credit if AI already ran (duplicate invoice, line-item insert, etc.)
+        should_refund = not ai_completed
+        credit_outcome = "refunded" if should_refund else "kept_after_ai"
         try:
             if sc is None:
                 sc = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
                 sc.postgrest.auth(token)
-            try:
-                await sc.rpc(
-                    "refund_credits",
-                    {
-                        "user_id_param": user_id,
-                        "amount": credit_costs.BATCH_PER_FILE,
-                    },
-                ).execute()
-            except Exception as refund_e:
-                credit_outcome = "refund_failed"
-                logger.error(
-                    "Failed to refund batch credit for invoice %s: %s",
-                    invoice_id,
-                    refund_e,
-                )
+            if should_refund:
+                try:
+                    await sc.rpc(
+                        "refund_credits",
+                        {
+                            "user_id_param": user_id,
+                            "amount": credit_costs.BATCH_PER_FILE,
+                        },
+                    ).execute()
+                except Exception as refund_e:
+                    credit_outcome = "refund_failed"
+                    logger.error(
+                        "Failed to refund batch credit for invoice %s: %s",
+                        invoice_id,
+                        refund_e,
+                    )
             await log_from_ctx(
                 ops_ctx,
                 severity="error",
                 event_type="channel_exception",
                 message=str(e),
-                meta={"invoice_id": invoice_id, "credit_outcome": credit_outcome, "refunded": credit_outcome == "refunded"},
+                meta={
+                    "invoice_id": invoice_id,
+                    "credit_outcome": credit_outcome,
+                    "ai_completed": ai_completed,
+                    "refunded": credit_outcome == "refunded",
+                },
             )
             await sc.table("invoices").update(
                 {
@@ -127,7 +139,9 @@ async def process_batch_worker(
 
 
 @router.post("/upload-batch")
+@limiter.limit("20/minute")
 async def upload_batch(
+    request: Request,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     client_id: str = Form(...),
@@ -348,6 +362,7 @@ async def upload_batch(
                 "message": f"Queued {len(batch_ids)} files for processing.",
                 "queued_ids": batch_ids,
                 "skipped": skipped,
+                "credits_charged": cost,
             }
 
     except HTTPException:

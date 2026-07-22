@@ -77,15 +77,36 @@ from admin_routes import router as admin_router
 from batch_routes import router as batch_router
 from reconcile_routes import router as reconcile_router
 from payment_routes import router as payment_router
-from public_routes import router as public_router, limiter as public_limiter
+from public_routes import router as public_router
+from rate_limit import limiter as public_limiter
 from whatsapp_routes import router as whatsapp_router
 from bank_routes import router as bank_router
 from bank_reconcile_routes import router as bank_reconcile_router
 from sales_routes import router as sales_router
 from tally_routes import router as tally_router
+from vendor_memory_routes import router as vendor_memory_router
+from support_routes import router as support_router
 
 app.state.limiter = public_limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Fail fast if public upload HMAC secret is missing (never fall back to service role key).
+_testing = bool(os.getenv("PYTEST_CURRENT_TEST")) or os.getenv("TESTING", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+if not _testing:
+    from public_upload_tokens import assert_public_upload_token_secret_configured
+
+    try:
+        assert_public_upload_token_secret_configured()
+    except RuntimeError:
+        logger.error(
+            "PUBLIC_UPLOAD_TOKEN_SECRET is required. "
+            "Generate a dedicated random secret; do not reuse SUPABASE_SERVICE_ROLE_KEY."
+        )
+        raise
 
 # app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(scan_router, prefix="/api", tags=["scan"])
@@ -99,3 +120,5 @@ app.include_router(bank_router, prefix="/api/bank-statements", tags=["bank-state
 app.include_router(bank_reconcile_router, prefix="/api/bank-reconcile", tags=["bank-reconcile"])
 app.include_router(sales_router, prefix="/api/sales", tags=["sales"])
 app.include_router(tally_router, prefix="/api", tags=["tally"])
+app.include_router(vendor_memory_router, prefix="/api", tags=["vendor-memory"])
+app.include_router(support_router, prefix="/api", tags=["support"])
