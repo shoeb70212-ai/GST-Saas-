@@ -12,8 +12,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application
 COPY . .
 
-# Expose the port
-EXPOSE 8000
+# Expose HTTP inside the container (Coolify Traefik maps domain → this port).
+# Host/NSG 8000 stays Coolify UI; do not publish this to the host.
+EXPOSE 80
+ENV PORT=80
 
 # Multi-worker defaults for Azure D4as-class (4 vCPU). Semaphores are per-process;
 # with WEB_CONCURRENCY=2, 3+3 AI / 2+2 file ≈ prior single-worker 5/4 budget.
@@ -21,5 +23,5 @@ ENV WEB_CONCURRENCY=2
 ENV AI_SEMAPHORE_LIMIT=3
 ENV FILE_SEMAPHORE_LIMIT=2
 
-# Shell form so ${WEB_CONCURRENCY} expands (Coolify/Azure may override CMD).
-CMD uvicorn main:app --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY}
+# Shell form so ${WEB_CONCURRENCY} / ${PORT} expand (Coolify/Azure may override CMD).
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT} --workers ${WEB_CONCURRENCY}

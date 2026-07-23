@@ -1,13 +1,13 @@
 version: "3.8"
 
-# Coolify notes (Azure VM):
-# - Host/NSG port 8000 = Coolify dashboard ONLY. Do NOT publish app backends on host :8000.
-# - App traffic is HTTPS :443 → Traefik → container (Docker network).
-# - Domain fields in Coolify UI need a port *suffix* so Traefik learns the container port:
-#     frontend → https://processstack.online:80
-#     backend  → https://back.processstack.online:8000
-#   That :8000 is the FastAPI listen port *inside* the backend container — not Azure NSG 8000.
-# - Frontend nginx proxies /api → http://backend:8000 on the compose network.
+# Coolify / Azure ports (keep it simple):
+# - Host NSG 80 + 443 = public HTTP/HTTPS (Traefik)
+# - Host NSG 8000 = Coolify dashboard ONLY
+# - Both app containers listen on container port 80 (Docker network only)
+# Coolify domain fields (both use :80):
+#   frontend → https://processstack.online:80
+#   backend  → https://back.processstack.online:80
+# Frontend nginx proxies /api → http://backend:80
 
 services:
   backend:
@@ -15,22 +15,22 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    # expose = Docker-network only (Traefik / sibling containers). No host bind → no clash with Coolify UI.
     expose:
-      - "8000"
+      - "80"
     healthcheck:
       test:
         [
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3)",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:80/', timeout=3)",
         ]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 40s
     environment:
+      - PORT=80
       # Bare KEY form: unset host vars must NOT become empty strings (overrides Coolify secrets).
       - OPENROUTER_API_KEY
       - OPENAI_API_KEY
