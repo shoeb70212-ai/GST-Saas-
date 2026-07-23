@@ -34,6 +34,8 @@ export default function ScanPage() {
             retryScan={scan.retryScan}
             removeFile={scan.removeFile}
             cancelScan={scan.cancelScan}
+            activeClientId={scan.activeClientId}
+            addImportedRows={scan.addImportedRows}
           />
           <ScanVerificationGrid
             fileStates={scan.fileStates}

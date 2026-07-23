@@ -13,6 +13,7 @@ import { DEFAULT_COLUMNS } from '../../lib/constants';
 import type { FileState, InvoiceData, LineItem } from '../../lib/ScanContext';
 import { useClient } from '../../lib/ClientContext';
 import { saveSingleInvoiceToDb } from './saveInvoice';
+import { importRowToFileState, type ImportPreviewRow } from './importRow';
 
 /**
  * Client-side image prep for scan upload (Phase 2).
@@ -88,7 +89,7 @@ export function useScanWorkflow() {
   });
 
   const [showSettings, setShowSettings] = useState(false);
-  const [uploadMode, setUploadMode] = useState<'single' | 'zip'>('single');
+  const [uploadMode, setUploadMode] = useState<'single' | 'zip' | 'import'>('single');
   const settingsRef = useRef<HTMLDivElement>(null);
   const activeClientIdRef = useRef<string | null>(activeClientId);
   const prevClientIdRef = useRef<string | null>(null);
@@ -472,6 +473,20 @@ export function useScanWorkflow() {
     setFileStates(prev => prev.map(f => f.id === id ? { ...f, extractedData: data, savedToCloud: false } : f));
   }, [setFileStates]);
 
+  /**
+   * Inject imported purchase-register rows into the existing Verification Grid
+   * as synthetic FileState entries. Commit reuses the existing handleSaveToCloud
+   * → saveSingleInvoiceToDb → save_invoice_atomic path (source='import').
+   */
+  const addImportedRows = useCallback((rows: ImportPreviewRow[]) => {
+    if (!activeClientId) {
+      toast.error('Please select a client first.');
+      return;
+    }
+    const newStates = rows.map((row) => importRowToFileState(row, activeClientId));
+    setFileStates(prev => [...prev, ...newStates]);
+  }, [activeClientId, setFileStates]);
+
   const autoSaveInvoice = useCallback(async (fileId: string, fs: FileState, data: InvoiceData, clientId: string) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -662,6 +677,7 @@ export function useScanWorkflow() {
     clearAll,
     cancelScan,
     updateExtractedData,
+    addImportedRows,
     handleScanAll,
     retryScan,
     handleSaveToCloud,

@@ -5,13 +5,15 @@ import {
 import { cn } from '../../lib/utils';
 import type { FileState } from '../../lib/ScanContext';
 import type { DropzoneInputProps, DropzoneRootProps } from 'react-dropzone';
+import { ImportPanel } from './ImportPanel';
+import type { ImportPreviewRow } from './importRow';
 
 type ScanUploadPanelProps = {
   getRootProps: () => DropzoneRootProps;
   getInputProps: () => DropzoneInputProps;
   isDragActive: boolean;
-  uploadMode: 'single' | 'zip';
-  setUploadMode: (mode: 'single' | 'zip') => void;
+  uploadMode: 'single' | 'zip' | 'import';
+  setUploadMode: (mode: 'single' | 'zip' | 'import') => void;
   pdfPassword: string;
   setPdfPassword: (value: string) => void;
   fileStates: FileState[];
@@ -20,6 +22,8 @@ type ScanUploadPanelProps = {
   retryScan: (id: string) => void;
   removeFile: (id: string) => void;
   cancelScan: (id: string) => void;
+  activeClientId: string | null;
+  addImportedRows: (rows: ImportPreviewRow[]) => void;
 };
 
 export function ScanUploadPanel({
@@ -36,14 +40,49 @@ export function ScanUploadPanel({
   retryScan,
   removeFile,
   cancelScan,
+  activeClientId,
+  addImportedRows,
 }: ScanUploadPanelProps) {
+  const modeTabs: Array<{ id: 'single' | 'zip' | 'import'; label: string }> = [
+    { id: 'single', label: 'Images / PDFs' },
+    { id: 'zip', label: 'ZIP Batch' },
+    { id: 'import', label: 'Import Register' },
+  ];
+
   return (
     <div className="w-full lg:w-[40%] xl:w-[35%] flex flex-col border-b lg:border-b-0 lg:border-r border-border bg-bg-surface">
       <div className="p-6 border-b border-border bg-bg-sunken/50">
         <h1 className="text-2xl font-bold tracking-tight text-text-primary mb-1">Digitize.</h1>
-        <p className="text-text-secondary text-sm">Drop messy invoices, get perfect data.</p>
+        <p className="text-text-secondary text-sm">
+          {uploadMode === 'import'
+            ? 'Upload a Purchase Register — no scanning needed.'
+            : 'Drop messy invoices, get perfect data.'}
+        </p>
       </div>
 
+      {/* Mode toggle (shared across scan + import) */}
+      <div className="px-6 pt-4">
+        <div className="flex bg-bg-sunken p-1 rounded-lg w-full">
+          {modeTabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setUploadMode(tab.id)}
+              className={cn(
+                'flex-1 text-xs py-1.5 rounded-md font-medium transition-colors',
+                uploadMode === tab.id
+                  ? 'bg-bg-surface text-text-primary shadow-sm'
+                  : 'text-text-secondary hover:text-text-primary',
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {uploadMode === 'import' ? (
+        <ImportPanel activeClientId={activeClientId} onAddRows={addImportedRows} />
+      ) : (
       <div className="p-6 flex-1 flex flex-col overflow-y-auto custom-scrollbar">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -57,20 +96,6 @@ export function ScanUploadPanel({
               isDragActive ? "border-accent bg-accent-subtle" : "border-border hover:border-accent hover:bg-bg-sunken bg-bg-base"
             )}
           >
-            <div className="flex bg-bg-sunken p-1 rounded-lg mb-4 w-full max-w-xs mx-auto">
-              <button
-                onClick={(e) => { e.stopPropagation(); setUploadMode('single'); }}
-                className={cn("flex-1 text-xs py-1.5 rounded-md font-medium transition-colors", uploadMode === 'single' ? "bg-bg-surface text-text-primary shadow-sm" : "text-text-secondary hover:text-text-primary")}
-              >
-                Images / PDFs
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); setUploadMode('zip'); }}
-                className={cn("flex-1 text-xs py-1.5 rounded-md font-medium transition-colors", uploadMode === 'zip' ? "bg-bg-surface text-text-primary shadow-sm" : "text-text-secondary hover:text-text-primary")}
-              >
-                ZIP Batch
-              </button>
-            </div>
             <input {...getInputProps()} />
             <div className="w-14 h-14 rounded-full bg-bg-sunken flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
               <UploadCloud className={cn("w-6 h-6", isDragActive ? "text-accent" : "text-text-secondary")} />
@@ -172,6 +197,7 @@ export function ScanUploadPanel({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

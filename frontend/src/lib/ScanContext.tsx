@@ -15,6 +15,8 @@ export type InvoiceData = {
   Expense_Category?: string;
   Extraction_State?: string;
   Confidence_Score?: number;
+  /** Provenance of the row: 'scan' (default) or 'import'. */
+  Source?: string;
   Supplier_Name?: string;
   Supplier_Address?: string;
   Supplier_Phone?: string;

@@ -88,6 +88,9 @@ export async function saveSingleInvoiceToDb(
     original_invoice_number: data.Original_Invoice_Number,
     original_invoice_date: formatDateToIso(data.Original_Invoice_Date as string | null | undefined),
     extraction_state: (data.Extraction_State as string) || 'auto_accepted',
+    // Provenance: 'scan' (default) or 'import'. RPC defaults to 'scan' even
+    // before migration_phase79 is applied, so this is safe/non-breaking.
+    source: (data.Source as string) || 'scan',
   };
 
   const lineItems = ((data.Line_Items as Array<Record<string, unknown>>) || []).map((item) => ({
