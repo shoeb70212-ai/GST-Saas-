@@ -7,24 +7,26 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      # Coolify / host env is the source of truth; list keys so compose passes them through.
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
-      - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
-      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
-      - PUBLIC_UPLOAD_TOKEN_SECRET=${PUBLIC_UPLOAD_TOKEN_SECRET}
-      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
-      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
-      - RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET}
-      - GSTIN_API_KEY=${GSTIN_API_KEY}
-      - CORS_ORIGINS=${CORS_ORIGINS}
-      - ENVIRONMENT=${ENVIRONMENT:-production}
+      # Use bare KEY form (not KEY=${KEY}): unset host vars must NOT become empty
+      # strings in the container — that overrides Coolify/.env and crashes startup
+      # when main.py requires PUBLIC_UPLOAD_TOKEN_SECRET.
+      - OPENROUTER_API_KEY
+      - OPENAI_API_KEY
+      - GEMINI_API_KEY
+      - VITE_SUPABASE_URL
+      - VITE_SUPABASE_ANON_KEY
+      - SUPABASE_SERVICE_ROLE_KEY
+      - PUBLIC_UPLOAD_TOKEN_SECRET
+      - RAZORPAY_KEY_ID
+      - RAZORPAY_KEY_SECRET
+      - RAZORPAY_WEBHOOK_SECRET
+      - GSTIN_API_KEY
+      - CORS_ORIGINS
+      - ENVIRONMENT=production
       - OCR_ENABLED=${OCR_ENABLED:-0}
       - OCR_PROVIDER=${OCR_PROVIDER:-azure}
-      - AZURE_DI_ENDPOINT=${AZURE_DI_ENDPOINT}
-      - AZURE_DI_KEY=${AZURE_DI_KEY}
+      - AZURE_DI_ENDPOINT
+      - AZURE_DI_KEY
       - WEB_CONCURRENCY=${WEB_CONCURRENCY:-2}
       - AI_SEMAPHORE_LIMIT=${AI_SEMAPHORE_LIMIT:-3}
       - FILE_SEMAPHORE_LIMIT=${FILE_SEMAPHORE_LIMIT:-2}
@@ -41,8 +43,7 @@ services:
     depends_on:
       - backend
     environment:
-      # Inject environment variables during runtime if needed
-      - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
-      - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
-      # The frontend can call the backend via the same domain (e.g., example.com/api) because of nginx reverse proxy
+      - VITE_SUPABASE_URL
+      - VITE_SUPABASE_ANON_KEY
+      # Same-origin nginx proxy — leave empty
       - VITE_API_URL=
