@@ -1,78 +1,83 @@
-# Coolify recovery — processstack.online broken (503 / no available server)
+# Coolify recovery — processstack.online
 
-## What “no available server” means
+## Your screenshot (wrong)
 
-Traefik (Coolify proxy) has **no running container** on the route for `processstack.online`.  
-The app code is fine — routing / deploy config is wrong or containers crashed.
+| Field | What you have | What it must be |
+|-------|----------------|-----------------|
+| **Domains for backend** | `https://back.processstack.online:80` | **EMPTY** (clear it) |
+| **Domains for frontend** | *(empty)* | `https://processstack.online:80` |
 
-## Fix in Coolify (do exactly this)
+### Why it crash-loops (10x restarts)
 
-### 1. Domains — ONE public domain only
+Coolify health-checks the port in the **domain suffix**.
 
-| Service | Domain field |
-|---------|----------------|
-| **frontend** | `https://processstack.online:80` |
-| **backend** | **leave empty** (no public domain) |
+- Domain says `:80` → Traefik/healthcheck hits container port **80**
+- Backend listens on **8000** only → connection refused → unhealthy → restart → **10/10 stop**
 
-Remove `back.processstack.online` from backend if set.  
-API is served at `https://processstack.online/api/` via nginx → internal `backend:8000`.
+Also: with frontend domain empty, `processstack.online` has **no server** → “no available server” / 503.
 
-The `:80` suffix is **required** in Coolify (tells Traefik the container port).
+---
 
-### 2. Compose path
+## Fix in Coolify UI (2 minutes)
 
-- Base directory: `/`
-- Docker Compose location: `./docker-compose.yml`
+1. **Configuration → Domains**
+   - **Domains for backend:** delete everything (leave blank)
+   - **Domains for frontend:** paste exactly:
+     ```
+     https://processstack.online:80
+     ```
+2. Click **Save** (if shown)
+3. Click **Deploy** / **Redeploy**
+4. Wait until status is **Running** (not Failed / Exited)
 
-### 3. Environment (Coolify → Environment)
+API URL (no separate backend domain):
 
-Minimum required:
+- Site: `https://processstack.online`
+- API: `https://processstack.online/api/`
+
+---
+
+## If you still want a public API subdomain
+
+Only then set backend domain to:
+
+```
+https://back.processstack.online:8000
+```
+
+(`:8000` = container port, required). Prefer the blank-backend setup above.
+
+---
+
+## After deploy — check Logs
+
+Open **Logs** (yellow warning icon):
+
+- Frontend should stay up (nginx)
+- Backend should show uvicorn listening on `0.0.0.0:8000`
+
+If backend still exits, look for missing Coolify **Environment** vars:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `PUBLIC_UPLOAD_TOKEN_SECRET`
-- `OPENROUTER_API_KEY` (or your AI keys)
 
-### 4. Redeploy
+Paste the backend traceback if it still restarts.
 
-1. Pull latest `main` (commit with full non-empty `docker-compose.yml`)
-2. **Redeploy**
-3. Open **Logs** tab → both containers must show **Running**
-4. If backend logs show Python traceback → paste it (env missing)
+---
 
-### 5. Verify
+## Verify
 
 ```bash
-curl -sS https://processstack.online/
-# HTML (200)
+curl -sS -o /dev/null -w "%{http_code}\n" https://processstack.online/
+# 200
 
 curl -sS https://processstack.online/api/
 # {"status":"InvoiceScanner Backend is running."}
 ```
 
-## Ports reference
+## Compose note
 
-| Port | Use |
-|------|-----|
-| NSG 443 | HTTPS (Traefik) — keep open |
-| NSG 80 | HTTP redirect — keep open |
-| NSG 8000 | Coolify UI only — not the app |
-| Container 80 | Frontend nginx (public) |
-| Container 8000 | FastAPI (internal Docker network only) |
-
-## If deploy still fails
-
-SSH to VM (or Coolify terminal):
-
-```bash
-docker ps -a | grep ij1wky   # or your resource id
-docker logs <backend-container-name> --tail 100
-docker logs <frontend-container-name> --tail 50
-```
-
-Common backend crash: missing `PUBLIC_UPLOAD_TOKEN_SECRET` or Supabase keys in Coolify env (not just local `.env`).
-
-## khatalens.com (Render)
-
-Separate deploy — fix Coolify first; Render needs its own `VITE_API_URL` or nginx proxy setup.
+`Docker Compose Location: /docker-compose.yml` is fine.  
+Backend uses `expose: "8000"` (internal). Frontend uses `ports: "80"` (public via Traefik).
