@@ -43,6 +43,9 @@ _DEFAULT_CORS_ORIGINS = [
     "https://gst-saas.vercel.app",
     "https://www.khatalens.com",
     "https://khatalens.com",
+    "https://processstack.online",
+    "https://www.processstack.online",
+    "https://back.processstack.online",
 ]
 
 

@@ -1,15 +1,37 @@
 version: "3.8"
 
+# Coolify notes:
+# - Domains MUST include the container port so Traefik gets loadbalancer.server.port:
+#     frontend → https://processstack.online:80
+#     backend  → https://back.processstack.online:8000
+# - Status "Running (Unknown)" usually means port not declared / healthcheck missing.
+# - Frontend nginx proxies /api → http://backend:8000 (same compose network).
+
 services:
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    # Required for Coolify/Traefik to discover the listen port
+    expose:
+      - "8000"
+    ports:
+      - "8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
     environment:
-      # Use bare KEY form (not KEY=${KEY}): unset host vars must NOT become empty
-      # strings in the container — that overrides Coolify/.env and crashes startup
-      # when main.py requires PUBLIC_UPLOAD_TOKEN_SECRET.
+      # Bare KEY form: unset host vars must NOT become empty strings (overrides Coolify secrets).
       - OPENROUTER_API_KEY
       - OPENAI_API_KEY
       - GEMINI_API_KEY
@@ -40,10 +62,14 @@ services:
         - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
         - VITE_API_URL=
     restart: unless-stopped
+    expose:
+      - "80"
+    ports:
+      - "80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     environment:
       - VITE_SUPABASE_URL
       - VITE_SUPABASE_ANON_KEY
-      # Same-origin nginx proxy — leave empty
       - VITE_API_URL=
