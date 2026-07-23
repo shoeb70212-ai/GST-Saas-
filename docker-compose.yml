@@ -1,0 +1,56 @@
+version: "3.8"
+
+# Coolify requires `ports:` (not only `expose:`) so Traefik gets a load-balancer
+# target. Use "8000" / "80" (container port only) — NOT "8000:8000" (that would
+# fight Coolify's own UI on host 8000).
+#
+# Domains in Coolify UI (required — include the port suffix):
+#   frontend → https://processstack.online:80
+#   backend  → https://back.processstack.online:8000
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000"
+    environment:
+      - PORT=8000
+      - OPENROUTER_API_KEY
+      - OPENAI_API_KEY
+      - GEMINI_API_KEY
+      - VITE_SUPABASE_URL
+      - VITE_SUPABASE_ANON_KEY
+      - SUPABASE_SERVICE_ROLE_KEY
+      - PUBLIC_UPLOAD_TOKEN_SECRET
+      - RAZORPAY_KEY_ID
+      - RAZORPAY_KEY_SECRET
+      - RAZORPAY_WEBHOOK_SECRET
+      - GSTIN_API_KEY
+      - CORS_ORIGINS
+      - ENVIRONMENT=production
+      - OCR_ENABLED=${OCR_ENABLED:-0}
+      - OCR_PROVIDER=${OCR_PROVIDER:-azure}
+      - AZURE_DI_ENDPOINT
+      - AZURE_DI_KEY
+      - WEB_CONCURRENCY=${WEB_CONCURRENCY:-2}
+      - AI_SEMAPHORE_LIMIT=${AI_SEMAPHORE_LIMIT:-3}
+      - FILE_SEMAPHORE_LIMIT=${FILE_SEMAPHORE_LIMIT:-2}
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+        - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+        - VITE_API_URL=
+    restart: unless-stopped
+    ports:
+      - "80"
+    environment:
+      - VITE_SUPABASE_URL
+      - VITE_SUPABASE_ANON_KEY
+      - VITE_API_URL=
