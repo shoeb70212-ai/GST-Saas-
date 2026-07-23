@@ -87,6 +87,131 @@ def validate_gstin(raw: str | None) -> dict[str, Any]:
     }
 
 
+# OCR / handwriting lookalikes (bidirectional)
+_OCR_CONFUSIONS: dict[str, str] = {
+    "0": "OQD",
+    "O": "0Q",
+    "1": "ILl",
+    "I": "1Ll",
+    "L": "1I",
+    "5": "S",
+    "S": "5",
+    "8": "B",
+    "B": "8",
+    "2": "Z",
+    "Z": "2",
+    "6": "G",
+    "G": "6",
+    "U": "V",
+    "V": "U",
+    "P": "R",
+    "R": "P",
+    "D": "0O",
+    "Q": "0O",
+}
+
+
+def repair_gstin_ocr(raw: str | None, *, max_edits: int = 2) -> dict[str, Any]:
+    """
+    Try OCR lookalike fixes so a near-miss GSTIN passes format + checksum.
+
+    Returns validate_gstin result plus optional ``repaired_from`` when changed.
+    """
+    base = validate_gstin(raw)
+    if base["ok"]:
+        return base
+    n = normalize_gstin(raw)
+    if len(n) != 15:
+        return base
+
+    # Adjacent swaps inside PAN / entity char only (indices 2..12) — keep check digit
+    for i in range(2, 12):
+        chars = list(n)
+        chars[i], chars[i + 1] = chars[i + 1], chars[i]
+        cand = "".join(chars)
+        fixed = validate_gstin(cand)
+        if fixed["ok"]:
+            fixed["repaired_from"] = n
+            fixed["warnings"] = list(fixed.get("warnings") or []) + ["ocr_transpose"]
+            return fixed
+
+    # Single-char OCR lookalike, keep original check digit
+    for i, ch in enumerate(n[:14]):
+        for alt in _OCR_CONFUSIONS.get(ch, ""):
+            if alt == ch:
+                continue
+            cand = n[:i] + alt + n[i + 1 :]
+            fixed = validate_gstin(cand)
+            if fixed["ok"]:
+                fixed["repaired_from"] = n
+                fixed["warnings"] = list(fixed.get("warnings") or []) + ["ocr_repaired_1"]
+                return fixed
+
+    # Check character only (body already correct)
+    soft = validate_gstin(n)
+    only_checksum = soft["errors"] and all(
+        e.startswith("checksum") for e in soft["errors"]
+    )
+    if only_checksum and n[13] == "Z":
+        expected = gstin_check_char(n[:14])
+        if expected:
+            candidate = n[:14] + expected
+            fixed = validate_gstin(candidate)
+            if fixed["ok"]:
+                fixed["repaired_from"] = n
+                fixed["warnings"] = list(fixed.get("warnings") or []) + ["check_char_repaired"]
+                return fixed
+
+    # Aggressive: OCR lookalike + recompute check digit (1–2 edits)
+    def _with_check(body14: str) -> str | None:
+        if len(body14) != 14 or body14[13] != "Z":
+            return None
+        exp = gstin_check_char(body14)
+        return (body14 + exp) if exp else None
+
+    from collections import deque
+
+    seen = {n}
+    q: deque[tuple[str, int]] = deque([(n, 0)])
+    while q:
+        cur, edits = q.popleft()
+        if edits >= max_edits:
+            continue
+        for i, ch in enumerate(cur[:14]):
+            for alt in _OCR_CONFUSIONS.get(ch, ""):
+                if alt == ch:
+                    continue
+                body = (cur[:i] + alt + cur[i + 1 :])[:14]
+                cand2 = _with_check(body)
+                if not cand2 or cand2 in seen:
+                    continue
+                seen.add(cand2)
+                fixed = validate_gstin(cand2)
+                if fixed["ok"]:
+                    fixed["repaired_from"] = n
+                    fixed["warnings"] = list(fixed.get("warnings") or []) + [
+                        f"ocr_repaired_{edits + 1}"
+                    ]
+                    return fixed
+                if edits + 1 < max_edits:
+                    q.append((cand2, edits + 1))
+                if len(seen) > 5000:
+                    return base
+    return base
+
+
+def apply_gstin_repairs(extracted: dict) -> dict:
+    """Mutate Supplier_/Buyer_GSTIN in place when OCR repair succeeds."""
+    for key in ("Supplier_GSTIN", "Buyer_GSTIN", "supplier_gstin", "buyer_gstin"):
+        if key not in extracted or not extracted.get(key):
+            continue
+        repaired = repair_gstin_ocr(extracted.get(key))
+        if repaired.get("ok") and repaired.get("normalized"):
+            if repaired.get("repaired_from"):
+                extracted[key] = repaired["normalized"]
+    return extracted
+
+
 def _f(v: Any) -> float:
     try:
         if v is None or v == "":

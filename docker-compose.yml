@@ -34,6 +34,8 @@ services:
       - GSTIN_API_KEY
       - CORS_ORIGINS
       - ENVIRONMENT=production
+      # For WhatsApp / phone photos of print+handwriting invoices, set OCR_ENABLED=1
+      # and Azure DI keys in Coolify (defaults off to avoid cost).
       - OCR_ENABLED=${OCR_ENABLED:-0}
       - OCR_PROVIDER=${OCR_PROVIDER:-azure}
       - AZURE_DI_ENDPOINT

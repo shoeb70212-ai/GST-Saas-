@@ -357,7 +357,14 @@ def compute_confidence(extracted: dict, computed_total: float) -> dict:
 def apply_tax_calculations(data_dict: dict) -> dict:
     """
     Deterministic CGST/SGST/IGST from supplier vs buyer GSTIN state codes.
+
+    When line items lack Tax_Rate (common on handwritten invoices), keep
+    header CGST/SGST/IGST/Total from extraction instead of zeroing tax.
     """
+    from validators import apply_gstin_repairs
+
+    apply_gstin_repairs(data_dict)
+
     line_items = data_dict.get("Line_Items", [])
     if not line_items:
         computed_total = data_dict.get("Total_Amount") or 0.0
@@ -367,9 +374,49 @@ def apply_tax_calculations(data_dict: dict) -> dict:
         return data_dict
 
     taxable = sum((item.get("Amount") or 0) for item in line_items)
+    header_taxable = data_dict.get("Taxable_Amount")
+    has_line_rates = any((item.get("Tax_Rate") or 0) for item in line_items)
+    header_has_tax = any(
+        (data_dict.get(k) or 0)
+        for k in ("CGST_Amount", "SGST_Amount", "IGST_Amount", "GST_Amount")
+    )
+
+    # Prefer printed/handwritten header taxable when lines look like qty/weight only
+    if header_taxable and abs(float(header_taxable or 0) - float(taxable or 0)) > 1.0:
+        if not has_line_rates:
+            taxable = float(header_taxable)
+
     cgst = 0.0
     sgst = 0.0
     igst = 0.0
+
+    if not has_line_rates and header_has_tax:
+        # Keep extractor header taxes (handwritten summary block)
+        cgst = float(data_dict.get("CGST_Amount") or 0)
+        sgst = float(data_dict.get("SGST_Amount") or 0)
+        igst = float(data_dict.get("IGST_Amount") or 0)
+        data_dict["Taxable_Amount"] = float(header_taxable or taxable)
+        computed_total = round(
+            float(data_dict.get("Taxable_Amount") or 0)
+            + cgst
+            + sgst
+            + igst
+            + float(data_dict.get("Cess_Amount") or 0)
+            + float(data_dict.get("Round_Off") or 0),
+            2,
+        )
+        # Prefer explicit invoice value when present and close
+        header_total = data_dict.get("Total_Amount")
+        if header_total and abs(float(header_total) - computed_total) <= 2.0:
+            computed_total = float(header_total)
+        elif header_total and abs(float(header_total) - computed_total) > 2.0:
+            # Trust handwritten invoice value over recomputed when rates missing
+            computed_total = float(header_total)
+        data_dict["Total_Amount"] = computed_total
+        confidence = compute_confidence(data_dict, computed_total)
+        data_dict["Confidence_Score"] = confidence["score"]
+        data_dict["Extraction_State"] = confidence["state"]
+        return data_dict
 
     sup_gstin = data_dict.get("Supplier_GSTIN")
     buy_gstin = data_dict.get("Buyer_GSTIN")
@@ -417,7 +464,6 @@ def apply_tax_calculations(data_dict: dict) -> dict:
     data_dict["Extraction_State"] = confidence["state"]
 
     return data_dict
-
 
 def should_escalate(data_dict: dict, text_layer: str | None = None) -> bool:
     """Escalate when trust gate fails (retry, weak review, or disputed critical fields)."""

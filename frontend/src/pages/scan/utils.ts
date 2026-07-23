@@ -1,7 +1,26 @@
 export const safeNum = (val: unknown) => {
   if (val === "" || val === null || val === undefined) return null;
-  const n = parseFloat(String(val));
+  const n = parseFloat(String(val).replace(/,/g, ""));
   return isNaN(n) ? null : n;
+};
+
+/** Clamp money to Postgres NUMERIC(18,2) — prevents "numeric field overflow" on save. */
+const MONEY_ABS_MAX = 1e16; // comfortably under NUMERIC(18,2)
+
+export const safeMoney = (val: unknown): number | null => {
+  const n = safeNum(val);
+  if (n === null) return null;
+  if (!Number.isFinite(n) || Math.abs(n) >= MONEY_ABS_MAX) return null;
+  return Math.round(n * 100) / 100;
+};
+
+/** Confidence is stored as NUMERIC(5,2) — accept 0–1 or 0–100. */
+export const safeConfidence = (val: unknown): number | null => {
+  const n = safeNum(val);
+  if (n === null) return null;
+  const pct = n > 0 && n <= 1 ? n * 100 : n;
+  if (pct < 0 || pct > 100) return Math.max(0, Math.min(100, pct));
+  return Math.round(pct * 100) / 100;
 };
 
 export function formatDateToIso(dateStr: string | null | undefined): string | null {

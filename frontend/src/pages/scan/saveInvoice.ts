@@ -1,6 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import type { FileState } from '../../lib/ScanContext';
-import { formatDateToIso, safeNum } from './utils';
+import { formatDateToIso, safeMoney, safeConfidence } from './utils';
 import { getApiUrl } from '../../lib/api';
 
 /** Best-effort: teach vendor memory from CA edits vs extraction snapshot. */
@@ -58,21 +58,21 @@ export async function saveSingleInvoiceToDb(
     po_number: data.PO_Number,
     e_way_bill_number: data.E_Way_Bill_Number,
     vehicle_number: data.Vehicle_Number,
-    taxable_amount: safeNum(data.Taxable_Amount),
-    cgst_amount: safeNum(data.CGST_Amount),
-    sgst_amount: safeNum(data.SGST_Amount),
-    igst_amount: safeNum(data.IGST_Amount),
-    round_off: safeNum(data.Round_Off),
-    total_amount: safeNum(data.Total_Amount),
-    gst_amount: safeNum(data.GST_Amount),
-    confidence_score: safeNum(data.Confidence_Score),
+    taxable_amount: safeMoney(data.Taxable_Amount),
+    cgst_amount: safeMoney(data.CGST_Amount),
+    sgst_amount: safeMoney(data.SGST_Amount),
+    igst_amount: safeMoney(data.IGST_Amount),
+    round_off: safeMoney(data.Round_Off),
+    total_amount: safeMoney(data.Total_Amount),
+    gst_amount: safeMoney(data.GST_Amount),
+    confidence_score: safeConfidence(data.Confidence_Score),
     amount_in_words: data.Amount_In_Words,
-    received_amount: safeNum(data.Received_Amount),
-    balance_amount: safeNum(data.Balance_Amount),
-    previous_balance: safeNum(data.Previous_Balance),
-    current_balance: safeNum(data.Current_Balance),
+    received_amount: safeMoney(data.Received_Amount),
+    balance_amount: safeMoney(data.Balance_Amount),
+    previous_balance: safeMoney(data.Previous_Balance),
+    current_balance: safeMoney(data.Current_Balance),
     account_holder: data.Account_Holder,
-    account_number: data.Account_Number,
+    account_number: data.Account_Number != null ? String(data.Account_Number) : null,
     bank_name: data.Bank_Name,
     branch_name: data.Branch_Name,
     ifsc_code: data.IFSC_Code,
@@ -83,7 +83,7 @@ export async function saveSingleInvoiceToDb(
       typeof data.Reverse_Charge_Applicable === 'boolean'
         ? data.Reverse_Charge_Applicable
         : null,
-    cess_amount: safeNum(data.Cess_Amount),
+    cess_amount: safeMoney(data.Cess_Amount),
     irn: data.IRN,
     original_invoice_number: data.Original_Invoice_Number,
     original_invoice_date: formatDateToIso(data.Original_Invoice_Date as string | null | undefined),
@@ -93,10 +93,10 @@ export async function saveSingleInvoiceToDb(
   const lineItems = ((data.Line_Items as Array<Record<string, unknown>>) || []).map((item) => ({
     description: item.Description,
     hsn_sac: item.HSN_SAC,
-    quantity: safeNum(item.Quantity),
-    unit_price: safeNum(item.Unit_Price),
-    tax_rate: safeNum(item.Tax_Rate),
-    amount: safeNum(item.Amount),
+    quantity: safeMoney(item.Quantity),
+    unit_price: safeMoney(item.Unit_Price),
+    tax_rate: safeMoney(item.Tax_Rate),
+    amount: safeMoney(item.Amount),
   }));
 
   const { data: { session } } = await supabase.auth.getSession();

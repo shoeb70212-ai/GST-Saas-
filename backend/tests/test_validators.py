@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from validators import (
     gstin_check_char,
+    repair_gstin_ocr,
     validate_extraction,
     validate_gstin,
     validate_tax_arithmetic,
@@ -39,6 +40,23 @@ class TestGstin:
 
     def test_check_char_helper(self):
         assert gstin_check_char("27AAPFU0939F1Z") == "V"
+
+    def test_repair_ocr_transpose_in_pan(self):
+        # Real GSTIN 27DVUPP6267A1Z1 misread as DVPUP (U/P swap)
+        bad = "27DVPUP6267A1Z1"
+        assert not validate_gstin(bad)["ok"]
+        fixed = repair_gstin_ocr(bad)
+        assert fixed["ok"], fixed
+        assert fixed["normalized"] == "27DVUPP6267A1Z1"
+        assert fixed.get("repaired_from") == bad
+
+    def test_repair_check_char_only(self):
+        # Body valid, wrong check digit
+        body = "27AAPFU0939F1Z"
+        wrong = body + "0"
+        fixed = repair_gstin_ocr(wrong)
+        assert fixed["ok"]
+        assert fixed["normalized"] == "27AAPFU0939F1ZV"
 
 
 class TestTaxArithmetic:
