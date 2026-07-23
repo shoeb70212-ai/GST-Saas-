@@ -107,6 +107,7 @@ from itc_risk_routes import router as itc_risk_router
 from ims_routes import router as ims_router
 from audit_routes import router as audit_router
 from bridge_routes import router as bridge_router
+from import_routes import router as import_router
 
 app.state.limiter = public_limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -148,3 +149,4 @@ app.include_router(itc_risk_router, prefix="/api", tags=["itc-risk"])
 app.include_router(ims_router, prefix="/api", tags=["ims"])
 app.include_router(audit_router, prefix="/api", tags=["audit"])
 app.include_router(bridge_router, prefix="/api", tags=["bridge"])
+app.include_router(import_router, prefix="/api", tags=["import"])
