@@ -1,11 +1,13 @@
 version: "3.8"
 
-# Coolify notes:
-# - Domains MUST include the container port so Traefik gets loadbalancer.server.port:
+# Coolify notes (Azure VM):
+# - Host/NSG port 8000 = Coolify dashboard ONLY. Do NOT publish app backends on host :8000.
+# - App traffic is HTTPS :443 → Traefik → container (Docker network).
+# - Domain fields in Coolify UI need a port *suffix* so Traefik learns the container port:
 #     frontend → https://processstack.online:80
 #     backend  → https://back.processstack.online:8000
-# - Status "Running (Unknown)" usually means port not declared / healthcheck missing.
-# - Frontend nginx proxies /api → http://backend:8000 (same compose network).
+#   That :8000 is the FastAPI listen port *inside* the backend container — not Azure NSG 8000.
+# - Frontend nginx proxies /api → http://backend:8000 on the compose network.
 
 services:
   backend:
@@ -13,10 +15,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    # Required for Coolify/Traefik to discover the listen port
+    # expose = Docker-network only (Traefik / sibling containers). No host bind → no clash with Coolify UI.
     expose:
-      - "8000"
-    ports:
       - "8000"
     healthcheck:
       test:
@@ -63,8 +63,6 @@ services:
         - VITE_API_URL=
     restart: unless-stopped
     expose:
-      - "80"
-    ports:
       - "80"
     depends_on:
       backend:
