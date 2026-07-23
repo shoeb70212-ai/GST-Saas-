@@ -1,14 +1,11 @@
 version: "3.8"
 
 # Coolify / Azure:
-# - Host NSG 80 + 443 = Traefik (public HTTPS)
-# - Host NSG 8000 = Coolify dashboard ONLY (never publish app ports onto host 8000)
-# - Backend container listens on 8000 on the Docker network only (expose, not ports:)
-# - Frontend container listens on 80
-# Coolify domain fields:
-#   frontend → https://processstack.online:80
-#   backend  → https://back.processstack.online:8000
-#   (:8000 here = container port for Traefik, NOT Azure Coolify UI)
+# - Host 80/443 = Traefik | Host 8000 = Coolify UI only
+# - Domains: frontend https://processstack.online:80
+#            backend  https://back.processstack.online:8000
+# - No healthcheck: a failing check made Traefik report "no available server"
+#   and blocked the whole compose stack.
 
 services:
   backend:
@@ -18,23 +15,8 @@ services:
     restart: unless-stopped
     expose:
       - "8000"
-    # Soft check only — do not block frontend with condition: service_healthy
-    # (a failed healthcheck previously aborted the whole Coolify deploy).
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3)",
-        ]
-      interval: 20s
-      timeout: 5s
-      retries: 10
-      start_period: 60s
     environment:
       - PORT=8000
-      # Bare KEY form: unset host vars must NOT become empty strings (overrides Coolify secrets).
       - OPENROUTER_API_KEY
       - OPENAI_API_KEY
       - GEMINI_API_KEY
@@ -67,8 +49,6 @@ services:
     restart: unless-stopped
     expose:
       - "80"
-    depends_on:
-      - backend
     environment:
       - VITE_SUPABASE_URL
       - VITE_SUPABASE_ANON_KEY

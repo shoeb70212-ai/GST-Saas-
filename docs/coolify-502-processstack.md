@@ -1,41 +1,41 @@
-# Coolify: processstack.online 502 / unhealthy deploy
+# Coolify: "no available server" / 503
 
-## Ports
+## Cause
 
-| Where | Port | Purpose |
-|-------|------|---------|
-| Azure NSG | **80**, **443** | Public site (Traefik) |
-| Azure NSG | **8000** | Coolify **dashboard** only |
-| Frontend container | **80** | nginx |
-| Backend container | **8000** | FastAPI on Docker network only (`expose`, not host bind) |
+Failed deploy left **no running containers**. Traefik then shows **no available server** (503) for `processstack.online`.
 
-Container **8000** ≠ host Coolify **8000**. They do not conflict.
+Often triggered by a Docker **healthcheck** marking backend unhealthy → compose aborts → frontend never starts.
 
-Do **not** run the API on container port 80 — Coolify often lacks bind permission → **unhealthy** → deploy fails (`dependency failed to start`).
+## Fix (in repo)
 
-## Coolify domain fields
+- No compose healthcheck
+- Frontend does not depend on backend health
+- Backend container port **8000** (expose only)
+- Frontend container port **80**
+
+## Coolify domains
 
 | Service | Domain field |
 |---------|----------------|
-| **frontend** | `https://processstack.online:80` |
-| **backend** | `https://back.processstack.online:8000` |
+| frontend | `https://processstack.online:80` |
+| backend | `https://back.processstack.online:8000` |
 
-Public URLs (no port in the browser):
+## Recovery steps
 
-- https://processstack.online  
-- https://back.processstack.online  
-- API via nginx: https://processstack.online/api/
-
-## If deploy says `backend is unhealthy`
-
-1. Coolify → backend container **Logs** (startup traceback).  
-2. Confirm env has `PUBLIC_UPLOAD_TOKEN_SECRET` and Supabase keys.  
-3. Redeploy commit that uses container **8000** + soft `depends_on` (no `service_healthy` gate).
+1. Coolify → this app → **Redeploy** (latest `main`)
+2. Wait until both **frontend** and **backend** containers show **Running**
+3. Open https://processstack.online (hard refresh)
+4. If still 503: open **backend Logs** — paste any Python traceback
 
 ## Verify
 
 ```bash
+curl -sS https://processstack.online/
+# HTML
+
 curl -sS https://back.processstack.online/
+# {"status":"InvoiceScanner Backend is running."}
+
 curl -sS https://processstack.online/api/
-# both → {"status":"InvoiceScanner Backend is running."}
+# same JSON
 ```
