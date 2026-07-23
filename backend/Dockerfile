@@ -20,9 +20,9 @@ ENV PORT=8000
 
 # Multi-worker defaults for Azure D4as-class (4 vCPU). Semaphores are per-process;
 # with WEB_CONCURRENCY=2, 3+3 AI / 2+2 file ≈ prior single-worker 5/4 budget.
-ENV WEB_CONCURRENCY=2
+ENV WEB_CONCURRENCY=1
 ENV AI_SEMAPHORE_LIMIT=3
 ENV FILE_SEMAPHORE_LIMIT=2
 
-# Shell form so ${WEB_CONCURRENCY} / ${PORT} expand (Coolify/Azure may override CMD).
-CMD uvicorn main:app --host 0.0.0.0 --port ${PORT} --workers ${WEB_CONCURRENCY}
+# Exec form — reliable port binding in Coolify (no shell ${PORT} expansion issues).
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

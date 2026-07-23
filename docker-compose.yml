@@ -1,12 +1,14 @@
 version: "3.8"
 
-# Coolify requires `ports:` (not only `expose:`) so Traefik gets a load-balancer
-# target. Use "8000" / "80" (container port only) — NOT "8000:8000" (that would
-# fight Coolify's own UI on host 8000).
+# Coolify (processstack.online) — SIMPLEST working layout:
 #
-# Domains in Coolify UI (required — include the port suffix):
-#   frontend → https://processstack.online:80
-#   backend  → https://back.processstack.online:8000
+# 1. Assign ONLY ONE public domain in Coolify:
+#      frontend → https://processstack.online:80
+# 2. Do NOT assign a public domain to backend (API is /api via nginx).
+# 3. Host NSG 8000 = Coolify dashboard — never publish app on host 8000.
+#
+# Backend listens on container port 8000 (Docker network only).
+# Frontend listens on container port 80 (Traefik routes here).
 
 services:
   backend:
@@ -14,7 +16,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    ports:
+    expose:
       - "8000"
     environment:
       - PORT=8000
@@ -25,6 +27,7 @@ services:
       - VITE_SUPABASE_ANON_KEY
       - SUPABASE_SERVICE_ROLE_KEY
       - PUBLIC_UPLOAD_TOKEN_SECRET
+      - BRIDGE_JWT_SECRET
       - RAZORPAY_KEY_ID
       - RAZORPAY_KEY_SECRET
       - RAZORPAY_WEBHOOK_SECRET
@@ -35,7 +38,7 @@ services:
       - OCR_PROVIDER=${OCR_PROVIDER:-azure}
       - AZURE_DI_ENDPOINT
       - AZURE_DI_KEY
-      - WEB_CONCURRENCY=${WEB_CONCURRENCY:-2}
+      - WEB_CONCURRENCY=${WEB_CONCURRENCY:-1}
       - AI_SEMAPHORE_LIMIT=${AI_SEMAPHORE_LIMIT:-3}
       - FILE_SEMAPHORE_LIMIT=${FILE_SEMAPHORE_LIMIT:-2}
 
@@ -50,6 +53,8 @@ services:
     restart: unless-stopped
     ports:
       - "80"
+    depends_on:
+      - backend
     environment:
       - VITE_SUPABASE_URL
       - VITE_SUPABASE_ANON_KEY
