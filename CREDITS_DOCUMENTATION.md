@@ -16,6 +16,9 @@ Canonical formulas live in `backend/credits.py`. Keep this table and `PricingPag
 | **Batch Invoice Upload** | 1 Credit | 1 per document inside the zip | `backend/batch_routes.py` (`batch_upload_cost`) |
 | **Bank Statement Scan** | 2 Credits | +2 Credits per 5 pages (PDF) or 50 rows (Excel) | `backend/bank_routes.py` (`bank_pdf_cost` / `bank_spreadsheet_cost`) |
 | **AI Deep Match (Recon)** | 5 Credits | +5 Credits per 20 items cross-referenced | `backend/reconcile_routes.py` (`deep_match_cost`) |
+| **Purchase-Register Import** | **Free (0 Credits)** | — deterministic spreadsheet parse, no LLM | `backend/import_routes.py` (`/api/import/purchase-register/preview`) |
+
+> **Purchase-Register import is free of AI credits.** It parses CSV/Excel deterministically (no LLM), so `/api/import/purchase-register/preview` never calls `deduct_credits_rpc` / `ensure_sufficient_credits`. This is the scan-free wedge for Milestone 1 ("reconcile without scanning"): imported rows flow through the existing Verification Grid and commit via `save_invoice_atomic` (`source='import'`). Only the optional scan accelerator spends credits.
 
 ## 3. Backend Logic & Architecture
 
