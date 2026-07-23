@@ -53,8 +53,7 @@ services:
     restart: unless-stopped
     ports:
       - "80"
-    depends_on:
-      - backend
+    # Do not depend on backend — keep the website up if API crash-loops
     environment:
       - VITE_SUPABASE_URL
       - VITE_SUPABASE_ANON_KEY

@@ -25,6 +25,9 @@ def _resolve_webhook_secret() -> str:
     """
     Webhook signing secret must not silently fall back to the API key secret
     in production — knowing KEY_SECRET must not allow forging webhooks.
+
+    Never raise at import time: that crash-loops Coolify (10x restart limit).
+    Payments/webhooks stay disabled until the secret is configured correctly.
     """
     explicit = (os.getenv("RAZORPAY_WEBHOOK_SECRET") or "").strip()
     key_secret = (os.getenv("RAZORPAY_KEY_SECRET") or RAZORPAY_KEY_SECRET or "").strip()
@@ -37,16 +40,19 @@ def _resolve_webhook_secret() -> str:
 
     if explicit:
         if env == "production" and not testing and explicit == key_secret:
-            raise RuntimeError(
-                "RAZORPAY_WEBHOOK_SECRET must differ from RAZORPAY_KEY_SECRET in production"
+            logger.error(
+                "RAZORPAY_WEBHOOK_SECRET must differ from RAZORPAY_KEY_SECRET in production; "
+                "webhook verification disabled until fixed"
             )
+            return ""
         return explicit
 
     if env == "production" and not testing and RAZORPAY_KEY_ID != "rzp_test_mock":
-        raise RuntimeError(
+        logger.error(
             "RAZORPAY_WEBHOOK_SECRET must be set in production "
-            "(do not reuse RAZORPAY_KEY_SECRET)"
+            "(do not reuse RAZORPAY_KEY_SECRET); webhook verification disabled"
         )
+        return ""
 
     logger.warning(
         "RAZORPAY_WEBHOOK_SECRET unset; falling back to RAZORPAY_KEY_SECRET (dev/test only)"
@@ -159,6 +165,10 @@ async def razorpay_webhook(request: Request):
             return {"status": "error"}
         # Mock mode — accept without verification (dev only)
         return {"status": "ok"}
+
+    if not RAZORPAY_WEBHOOK_SECRET:
+        logger.error("RAZORPAY_WEBHOOK_SECRET not configured; rejecting webhook")
+        raise HTTPException(status_code=503, detail="Webhook not configured")
 
     # Verify webhook signature
     try:

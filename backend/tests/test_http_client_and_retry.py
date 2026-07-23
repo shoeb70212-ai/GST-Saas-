@@ -56,5 +56,5 @@ def test_webhook_secret_requires_distinct_in_production(monkeypatch):
     import importlib
     import payment_routes
 
-    with pytest.raises(RuntimeError, match="differ"):
-        payment_routes._resolve_webhook_secret()
+    # Must not raise at import/call time (Coolify crash-loop); returns empty = disabled
+    assert payment_routes._resolve_webhook_secret() == ""
