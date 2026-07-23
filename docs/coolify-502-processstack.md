@@ -1,39 +1,41 @@
-# Coolify: processstack.online 502 Bad Gateway
+# Coolify: processstack.online 502 / unhealthy deploy
 
-## Ports (only these)
+## Ports
 
 | Where | Port | Purpose |
 |-------|------|---------|
 | Azure NSG | **80**, **443** | Public site (Traefik) |
 | Azure NSG | **8000** | Coolify **dashboard** only |
 | Frontend container | **80** | nginx |
-| Backend container | **80** | FastAPI (was 8000; changed to avoid clashing with Coolify UI mentally/ops) |
+| Backend container | **8000** | FastAPI on Docker network only (`expose`, not host bind) |
 
-No other app ports. Local `uvicorn` on a laptop can still use 8000; production Docker uses **80**.
+Container **8000** ≠ host Coolify **8000**. They do not conflict.
 
-## Coolify domain fields (both `:80`)
+Do **not** run the API on container port 80 — Coolify often lacks bind permission → **unhealthy** → deploy fails (`dependency failed to start`).
+
+## Coolify domain fields
 
 | Service | Domain field |
 |---------|----------------|
 | **frontend** | `https://processstack.online:80` |
-| **backend** | `https://back.processstack.online:80` |
+| **backend** | `https://back.processstack.online:8000` |
 
-Browsers use `https://…` with no port. The `:80` suffix only tells Traefik the container port.
+Public URLs (no port in the browser):
 
-## Verify after Redeploy
+- https://processstack.online  
+- https://back.processstack.online  
+- API via nginx: https://processstack.online/api/
+
+## If deploy says `backend is unhealthy`
+
+1. Coolify → backend container **Logs** (startup traceback).  
+2. Confirm env has `PUBLIC_UPLOAD_TOKEN_SECRET` and Supabase keys.  
+3. Redeploy commit that uses container **8000** + soft `depends_on` (no `service_healthy` gate).
+
+## Verify
 
 ```bash
 curl -sS https://back.processstack.online/
-# {"status":"InvoiceScanner Backend is running."}
-
 curl -sS https://processstack.online/api/
-# same JSON
+# both → {"status":"InvoiceScanner Backend is running."}
 ```
-
-## What 502 meant
-
-Frontend nginx could not reach the API container (wrong Traefik port / unhealthy backend) — not a Tally Converter code bug.
-
-## khatalens.com (Render)
-
-Separate stack; this Coolify port layout does not apply there.

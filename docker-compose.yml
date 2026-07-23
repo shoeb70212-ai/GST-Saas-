@@ -1,13 +1,14 @@
 version: "3.8"
 
-# Coolify / Azure ports (keep it simple):
-# - Host NSG 80 + 443 = public HTTP/HTTPS (Traefik)
-# - Host NSG 8000 = Coolify dashboard ONLY
-# - Both app containers listen on container port 80 (Docker network only)
-# Coolify domain fields (both use :80):
+# Coolify / Azure:
+# - Host NSG 80 + 443 = Traefik (public HTTPS)
+# - Host NSG 8000 = Coolify dashboard ONLY (never publish app ports onto host 8000)
+# - Backend container listens on 8000 on the Docker network only (expose, not ports:)
+# - Frontend container listens on 80
+# Coolify domain fields:
 #   frontend → https://processstack.online:80
-#   backend  → https://back.processstack.online:80
-# Frontend nginx proxies /api → http://backend:80
+#   backend  → https://back.processstack.online:8000
+#   (:8000 here = container port for Traefik, NOT Azure Coolify UI)
 
 services:
   backend:
@@ -16,21 +17,23 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     expose:
-      - "80"
+      - "8000"
+    # Soft check only — do not block frontend with condition: service_healthy
+    # (a failed healthcheck previously aborted the whole Coolify deploy).
     healthcheck:
       test:
         [
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:80/', timeout=3)",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3)",
         ]
-      interval: 15s
+      interval: 20s
       timeout: 5s
-      retries: 5
-      start_period: 40s
+      retries: 10
+      start_period: 60s
     environment:
-      - PORT=80
+      - PORT=8000
       # Bare KEY form: unset host vars must NOT become empty strings (overrides Coolify secrets).
       - OPENROUTER_API_KEY
       - OPENAI_API_KEY
@@ -65,8 +68,7 @@ services:
     expose:
       - "80"
     depends_on:
-      backend:
-        condition: service_healthy
+      - backend
     environment:
       - VITE_SUPABASE_URL
       - VITE_SUPABASE_ANON_KEY

@@ -12,10 +12,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application
 COPY . .
 
-# Expose HTTP inside the container (Coolify Traefik maps domain → this port).
-# Host/NSG 8000 stays Coolify UI; do not publish this to the host.
-EXPOSE 80
-ENV PORT=80
+# Listen on 8000 inside the container only (not published to the host).
+# Host/NSG 8000 = Coolify UI; container 8000 = FastAPI on the Docker network — no clash.
+# Port 80 inside the app container often fails (no CAP_NET_BIND_SERVICE) → unhealthy deploy.
+EXPOSE 8000
+ENV PORT=8000
 
 # Multi-worker defaults for Azure D4as-class (4 vCPU). Semaphores are per-process;
 # with WEB_CONCURRENCY=2, 3+3 AI / 2+2 file ≈ prior single-worker 5/4 budget.
