@@ -108,7 +108,9 @@ from bridge_routes import router as bridge_router
 app.state.limiter = public_limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Fail fast if public upload HMAC secret is missing (never fall back to service role key).
+# Fail loudly if public upload HMAC secret is missing (never fall back to service role key).
+# Do not abort the whole API process: an empty compose override of this secret previously
+# took down all /api routes (502). Public portal uploads will error until the secret is set.
 _testing = bool(os.getenv("PYTEST_CURRENT_TEST")) or os.getenv("TESTING", "").lower() in (
     "1",
     "true",
@@ -121,11 +123,10 @@ if not _testing:
         assert_public_upload_token_secret_configured()
     except RuntimeError:
         logger.error(
-            "PUBLIC_UPLOAD_TOKEN_SECRET is required. "
-            "Generate a dedicated random secret; do not reuse SUPABASE_SERVICE_ROLE_KEY."
+            "PUBLIC_UPLOAD_TOKEN_SECRET is missing or empty — public portal uploads disabled. "
+            "Set it in Coolify/host env (do not reuse SUPABASE_SERVICE_ROLE_KEY). "
+            "Other API routes will still start."
         )
-        raise
-
 # app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(scan_router, prefix="/api", tags=["scan"])
 app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
