@@ -1,12 +1,22 @@
+"""
+Bank AP reconciliation: Tier-1 exact + Tier-2 deterministic rules (no LLM by default).
+
+Set BANK_AI_MATCH=1 to re-enable optional GPT Tier-2 (legacy).
+"""
+from __future__ import annotations
+
 import os
 import json
 from openai import AsyncOpenAI
 from supabase import create_async_client
 from pydantic import BaseModel, Field
 
+from match_utils import match_bank_leftovers
+
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+BANK_AI_MATCH = os.getenv("BANK_AI_MATCH", "0").strip().lower() in ("1", "true", "yes")
 
 if OPENAI_API_KEY:
     client = AsyncOpenAI(api_key=OPENAI_API_KEY)
@@ -33,21 +43,10 @@ async def run_ai_matching_engine(client_id: str, user_id: str):
     if client_resp.data:
         auto_approve = client_resp.data[0].get("auto_approve_exact_matches", False)
 
-    # 1. Fetch unallocated bank transactions (Withdrawals only for AP matching)
-    bank_txns_resp = await sc.table("bank_transactions")\
-        .select("id, txn_date, description, reference_no, withdrawal, deposit, allocated_amount")\
-        .eq("statement_id.client_id", client_id)\
-        .eq("is_fully_allocated", False)\
-        .eq("has_math_error", False)\
-        .eq("needs_manual_review", False)\
-        .execute()
-    
-    # Wait, the eq("statement_id.client_id", client_id) join syntax in python supabase:
-    # We must fetch the statement IDs first or do a join string. Let's do it safely.
     stmts_resp = await sc.table("bank_statements").select("id").eq("client_id", client_id).execute()
     stmt_ids = [s["id"] for s in stmts_resp.data]
     if not stmt_ids:
-        return {"status": "success", "message": "No bank statements found.", "suggestions_created": 0}
+        return {"status": "success", "message": "No bank statements found.", "suggestions_created": 0, "engine": "rules"}
 
     bank_txns_resp = await sc.table("bank_transactions")\
         .select("id, txn_date, description, reference_no, withdrawal, deposit, allocated_amount")\
@@ -59,9 +58,8 @@ async def run_ai_matching_engine(client_id: str, user_id: str):
     
     unallocated_txns = bank_txns_resp.data
 
-    # 2. Fetch unpaid invoices
     invoices_resp = await sc.table("invoices")\
-        .select("id, supplier_name, total_amount, paid_amount, invoice_date")\
+        .select("id, supplier_name, invoice_number, total_amount, paid_amount, invoice_date")\
         .eq("client_id", client_id)\
         .neq("payment_status", "PAID")\
         .execute()
@@ -69,10 +67,11 @@ async def run_ai_matching_engine(client_id: str, user_id: str):
     unpaid_invoices = invoices_resp.data
 
     if not unallocated_txns or not unpaid_invoices:
-        return {"status": "success", "message": "Nothing to reconcile.", "suggestions_created": 0}
+        return {"status": "success", "message": "Nothing to reconcile.", "suggestions_created": 0, "engine": "rules"}
 
     suggestions_created = 0
     leftover_txns = []
+    used_invoice_ids: set[str] = set()
 
     # TIER 1: DETERMINISTIC EXACT MATCHING (Python)
     for txn in unallocated_txns:
@@ -86,14 +85,14 @@ async def run_ai_matching_engine(client_id: str, user_id: str):
 
         exact_match_found = False
         for inv in unpaid_invoices:
+            if inv["id"] in used_invoice_ids:
+                continue
             remaining_inv_amt = float(inv.get("total_amount") or 0.0) - float(inv.get("paid_amount") or 0.0)
             
-            # Exact amount match AND string match
-            if abs(remaining_bank_amt - remaining_inv_amt) < 1.0: # 1-paisa tolerance
+            if abs(remaining_bank_amt - remaining_inv_amt) < 1.0:
                 sup_name = (inv.get("supplier_name") or "").lower().strip()
                 txn_desc = (txn.get("description") or "").lower().strip()
                 
-                # Heuristic: Require absolute match for short acronyms to avoid false positives
                 is_valid_string_match = False
                 if sup_name and txn_desc:
                     if len(sup_name) < 4:
@@ -102,8 +101,6 @@ async def run_ai_matching_engine(client_id: str, user_id: str):
                         is_valid_string_match = (sup_name in txn_desc or txn_desc in sup_name)
 
                 if is_valid_string_match:
-                    
-                    # Always insert as SUGGESTED first to avoid RPC conflicts
                     status = "SUGGESTED"
                     
                     await sc.table("reconciliation_matches").insert({
@@ -113,7 +110,7 @@ async def run_ai_matching_engine(client_id: str, user_id: str):
                         "match_type": "EXACT",
                         "allocated_amount": remaining_inv_amt,
                         "status": status,
-                        "created_by": "AI"
+                        "created_by": "RULES"
                     }).execute()
                     
                     if auto_approve:
@@ -125,20 +122,57 @@ async def run_ai_matching_engine(client_id: str, user_id: str):
                             print(f"Auto-approve RPC failed: {e}")
                     
                     suggestions_created += 1
+                    used_invoice_ids.add(inv["id"])
                     exact_match_found = True
-                    break # Stop searching for this txn
+                    break
         
         if not exact_match_found:
             leftover_txns.append(txn)
 
-    # TIER 2: AI FUZZY MATCHING (GPT-4o-mini)
-    if leftover_txns and client:
+    # TIER 2: DETERMINISTIC RULES (default) — narration / amount / date / UTR
+    remaining_invoices = [i for i in unpaid_invoices if i["id"] not in used_invoice_ids]
+    rule_suggestions = match_bank_leftovers(leftover_txns, remaining_invoices, amount_tol=1.0)
+    matched_txn_ids = set()
+    for sugg in rule_suggestions:
+        await sc.table("reconciliation_matches").insert({
+            "client_id": client_id,
+            "invoice_id": sugg["invoice_id"],
+            "bank_transaction_id": sugg["bank_transaction_id"],
+            "match_type": sugg["match_type"],
+            "allocated_amount": sugg["allocated_amount"],
+            "status": "SUGGESTED",
+            "created_by": "RULES",
+        }).execute()
+        suggestions_created += 1
+        matched_txn_ids.add(sugg["bank_transaction_id"])
+        used_invoice_ids.add(sugg["invoice_id"])
+
+    # Optional legacy GPT Tier-2 (off by default)
+    still_leftover = [t for t in leftover_txns if t["id"] not in matched_txn_ids]
+    if BANK_AI_MATCH and still_leftover and client:
         chunk_size = 20
-        simple_invs = [{"id": i["id"], "supplier": i["supplier_name"], "due": float(i["total_amount"]) - float(i["paid_amount"]), "date": i["invoice_date"]} for i in unpaid_invoices]
+        simple_invs = [
+            {
+                "id": i["id"],
+                "supplier": i["supplier_name"],
+                "due": float(i["total_amount"]) - float(i["paid_amount"]),
+                "date": i["invoice_date"],
+            }
+            for i in unpaid_invoices
+            if i["id"] not in used_invoice_ids
+        ]
         
-        for idx in range(0, len(leftover_txns), chunk_size):
-            chunk_txns = leftover_txns[idx:idx + chunk_size]
-            simple_txns = [{"id": t["id"], "desc": t["description"], "amount": float(t["withdrawal"]) - float(t["allocated_amount"]), "date": t["txn_date"]} for t in chunk_txns]
+        for idx in range(0, len(still_leftover), chunk_size):
+            chunk_txns = still_leftover[idx:idx + chunk_size]
+            simple_txns = [
+                {
+                    "id": t["id"],
+                    "desc": t["description"],
+                    "amount": float(t["withdrawal"]) - float(t["allocated_amount"]),
+                    "date": t["txn_date"],
+                }
+                for t in chunk_txns
+            ]
             
             prompt = f"""
             You are an expert AI Reconciliation Engine.
@@ -175,4 +209,10 @@ async def run_ai_matching_engine(client_id: str, user_id: str):
             except Exception as e:
                 print(f"AI Matching failed on chunk {idx}: {e}")
 
-    return {"status": "success", "message": "Engine run complete.", "suggestions_created": suggestions_created}
+    return {
+        "status": "success",
+        "message": "Engine run complete.",
+        "suggestions_created": suggestions_created,
+        "engine": "rules",
+        "bank_ai_match": BANK_AI_MATCH,
+    }

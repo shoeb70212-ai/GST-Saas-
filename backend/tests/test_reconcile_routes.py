@@ -103,6 +103,9 @@ def _make_http_mock(
                 return FakeResp(200, {})
             return FakeResp(200, {})
 
+        async def patch(self, url, **kw):
+            return FakeResp(204, {})
+
         async def __aenter__(self):
             return self
 
@@ -375,11 +378,8 @@ class TestDeepMatchAuth:
         assert response.status_code == 200
         assert "No unmatched" in response.json()["message"]
 
-    def test_insufficient_credits_returns_402(self, monkeypatch):
-        """
-        If decrement_credits returns -1, deep-match must return 402
-        without calling Gemini.
-        """
+    def test_rules_engine_does_not_require_credits(self, monkeypatch):
+        """Smart Match is free (rules) — unmatched PR+2B still returns 200 without 402."""
         invoices = [
             {
                 "id": "inv-1",
@@ -397,6 +397,7 @@ class TestDeepMatchAuth:
                 "id": "b2b-1",
                 "supplier_gstin": "27TEST1234M1Z2",
                 "invoice_number": "INV001",
+                "invoice_date": "2024-03-01",
                 "taxable_value": 1000.0,
             }
         ]
@@ -412,7 +413,13 @@ class TestDeepMatchAuth:
             data={"client_id": "client-abc", "period": "03-2024"},
             headers={"Authorization": "Bearer valid.token.here"},
         )
-        assert response.status_code == 402
+        assert response.status_code == 200
+        body = response.json()
+        assert body.get("engine") == "rules"
+        deduct_posts = [
+            (url, body) for url, body in mock_http.posts if "decrement_credits" in url
+        ]
+        assert deduct_posts == []
 
     def test_no_unmatched_invoices_returns_success_no_ai_call(self, monkeypatch):
         """
@@ -441,10 +448,11 @@ class TestDeepMatchAuth:
         )
         assert response.status_code == 200
         assert "No unmatched" in response.json()["message"]
+        assert response.json().get("engine") == "rules"
 
 
 # ═══════════════════════════════════════════════════════════════
-# Deep Match refund-on-failure (C9)
+# Deep Match rules engine (replaces Gemini credit path)
 # ═══════════════════════════════════════════════════════════════
 
 def _deep_match_unmatched_fixtures():
@@ -465,21 +473,16 @@ def _deep_match_unmatched_fixtures():
             "id": "b2b-1",
             "supplier_gstin": "27TEST1234M1Z2",
             "invoice_number": "INV001",
+            "invoice_date": "2024-03-01",
             "taxable_value": 1000.0,
         }
     ]
     return invoices, gstr2b
 
 
-class TestDeepMatchRefund:
-    def test_total_ai_failure_refunds_full_cost(self, monkeypatch):
-        """
-        Policy: lump-sum deep-match charge is fully refunded when every AI
-        chunk fails. Uses refund_credits (never negative decrement_credits).
-        """
-        import reconcile_routes
-
-        monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+class TestDeepMatchRules:
+    def test_rules_match_without_gemini_or_credits(self, monkeypatch):
+        """Deterministic Smart Match finds pairs; no Gemini, no credit RPCs."""
         invoices, gstr2b = _deep_match_unmatched_fixtures()
         mock_http = _make_http_mock(
             invoices=invoices,
@@ -487,69 +490,6 @@ class TestDeepMatchRefund:
             rpc_result=10,
         )
         _patch_reconcile_access(monkeypatch, allowed=True, mock_http=mock_http)
-
-        class BoomCompletions:
-            async def create(self, *a, **kw):
-                raise RuntimeError("Gemini unavailable")
-
-        class FakeGemini:
-            def __init__(self, *a, **kw):
-                self.chat = MagicMock()
-                self.chat.completions = BoomCompletions()
-
-        monkeypatch.setattr(reconcile_routes, "AsyncOpenAI", FakeGemini)
-
-        response = client.post(
-            "/api/reconcile/deep-match",
-            data={"client_id": "client-abc", "period": "03-2024"},
-            headers={"Authorization": "Bearer valid.token.here"},
-        )
-        assert response.status_code == 500
-        assert "refunded" in response.json()["detail"].lower()
-
-        refund_posts = [
-            (url, body) for url, body in mock_http.posts if "refund_credits" in url
-        ]
-        assert len(refund_posts) == 1
-        # cost = max(5, ceil(2/20)*5) = 5
-        assert refund_posts[0][1]["amount"] == 5
-        assert refund_posts[0][1]["user_id_param"] == "user-123"
-
-        deduct_posts = [
-            (url, body) for url, body in mock_http.posts if "decrement_credits" in url
-        ]
-        assert len(deduct_posts) == 1
-        assert deduct_posts[0][1]["amount"] == 5
-
-    def test_successful_empty_matches_keeps_charge(self, monkeypatch):
-        """Successful AI with zero matches is billable — no refund."""
-        import reconcile_routes
-
-        monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
-        invoices, gstr2b = _deep_match_unmatched_fixtures()
-        mock_http = _make_http_mock(
-            invoices=invoices,
-            gstr2b_records=gstr2b,
-            rpc_result=10,
-        )
-        _patch_reconcile_access(monkeypatch, allowed=True, mock_http=mock_http)
-
-        class OkCompletions:
-            async def create(self, *a, **kw):
-                msg = MagicMock()
-                msg.content = "[]"
-                choice = MagicMock()
-                choice.message = msg
-                resp = MagicMock()
-                resp.choices = [choice]
-                return resp
-
-        class FakeGemini:
-            def __init__(self, *a, **kw):
-                self.chat = MagicMock()
-                self.chat.completions = OkCompletions()
-
-        monkeypatch.setattr(reconcile_routes, "AsyncOpenAI", FakeGemini)
 
         response = client.post(
             "/api/reconcile/deep-match",
@@ -557,7 +497,36 @@ class TestDeepMatchRefund:
             headers={"Authorization": "Bearer valid.token.here"},
         )
         assert response.status_code == 200
-        refund_posts = [
-            (url, body) for url, body in mock_http.posts if "refund_credits" in url
+        body = response.json()
+        assert body["engine"] == "rules"
+        assert len(body.get("matches") or []) >= 1
+        assert not any("decrement_credits" in url for url, _ in mock_http.posts)
+        assert not any("refund_credits" in url for url, _ in mock_http.posts)
+        assert any("bulk_update_invoices_recon" in url for url, _ in mock_http.posts)
+
+    def test_no_unmatched_2b_returns_success(self, monkeypatch):
+        invoices = [
+            {
+                "id": "inv-1",
+                "supplier_name": "Test Supplier",
+                "supplier_gstin": "27TEST1234M1Z2",
+                "invoice_number": "INV-001",
+                "invoice_date": "2024-03-01",
+                "taxable_amount": 1000.0,
+                "total_amount": 1180.0,
+                "recon_status": "missing_in_2b",
+            }
         ]
-        assert refund_posts == []
+        # Only already-matched 2B key present → unmatched_2b empty after filter
+        # (matched invoice list empty so all 2B considered unmatched — use empty 2B)
+        mock_http = _make_http_mock(invoices=invoices, gstr2b_records=[])
+        _patch_reconcile_access(monkeypatch, allowed=True, mock_http=mock_http)
+
+        response = client.post(
+            "/api/reconcile/deep-match",
+            data={"client_id": "client-abc", "period": "03-2024"},
+            headers={"Authorization": "Bearer valid.token.here"},
+        )
+        assert response.status_code == 200
+        assert "No GSTR-2B" in response.json()["message"]
+        assert response.json()["engine"] == "rules"

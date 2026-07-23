@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, ScanLine, FileText, Network, Banknote, Building2,
-  CreditCard, Settings, Sparkles, ShieldAlert, TrendingUp, Search, CornerDownLeft, FileOutput
+  CreditCard, Settings, Sparkles, ShieldAlert, TrendingUp, Search, CornerDownLeft, FileOutput, Inbox
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -20,6 +20,8 @@ const COMMANDS: PaletteItem[] = [
   { id: 'scan', label: 'Scan', hint: 'Upload invoices', path: '/app/scan', icon: ScanLine, keywords: 'ocr extract' },
   { id: 'invoices', label: 'Invoices', hint: 'Review purchase register', path: '/app/invoices', icon: FileText, keywords: 'pr books' },
   { id: 'reconcile', label: 'GSTR-2B', hint: 'Match ITC vs books', path: '/app/reconcile', icon: Network, keywords: '2b gst recon' },
+  { id: 'itc-risk', label: 'ITC at Risk', hint: 'Blocked / missing-2B ITC', path: '/app/itc-risk', icon: ShieldAlert, keywords: 'itc 17(5) blocked vendor' },
+  { id: 'ims', label: 'IMS Cockpit', hint: 'Accept / Reject / Pending', path: '/app/ims', icon: Inbox, keywords: 'ims deemed accept reject' },
   { id: 'bank-statements', label: 'Bank statements', hint: 'Upload PDF / Excel', path: '/app/bank-statements', icon: Banknote, keywords: 'bank upload' },
   { id: 'bank-reconcile', label: 'Bank match', hint: 'Allocate payments', path: '/app/bank-reconcile', icon: Network, keywords: 'payment allocate' },
   { id: 'tally-converter', label: 'Tally Converter', hint: 'PDF/Excel → Tally XML', path: '/app/tally-converter', icon: FileOutput, keywords: 'tally export xml register' },

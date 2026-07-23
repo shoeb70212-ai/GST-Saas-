@@ -1,5 +1,7 @@
 import os
 import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
@@ -10,7 +12,19 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="InvoiceScanner AI Backend")
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    yield
+    try:
+        from http_client import close_shared_client
+
+        await close_shared_client()
+    except Exception as e:
+        logger.warning("Failed to close shared HTTP client on shutdown: %s", e)
+
+
+app = FastAPI(title="InvoiceScanner AI Backend", lifespan=_lifespan)
 
 # 1. Strict Security Headers Middleware
 @app.middleware("http")
@@ -86,6 +100,10 @@ from sales_routes import router as sales_router
 from tally_routes import router as tally_router
 from vendor_memory_routes import router as vendor_memory_router
 from support_routes import router as support_router
+from itc_risk_routes import router as itc_risk_router
+from ims_routes import router as ims_router
+from audit_routes import router as audit_router
+from bridge_routes import router as bridge_router
 
 app.state.limiter = public_limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -122,3 +140,7 @@ app.include_router(sales_router, prefix="/api/sales", tags=["sales"])
 app.include_router(tally_router, prefix="/api", tags=["tally"])
 app.include_router(vendor_memory_router, prefix="/api", tags=["vendor-memory"])
 app.include_router(support_router, prefix="/api", tags=["support"])
+app.include_router(itc_risk_router, prefix="/api", tags=["itc-risk"])
+app.include_router(ims_router, prefix="/api", tags=["ims"])
+app.include_router(audit_router, prefix="/api", tags=["audit"])
+app.include_router(bridge_router, prefix="/api", tags=["bridge"])

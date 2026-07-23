@@ -19,11 +19,57 @@ from dotenv import load_dotenv
 from fastapi import HTTPException
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from http_client import get_shared_client
 import credits as credit_costs
 from ops_log import field_presence_flags, log_extraction_quality, log_from_ctx
+
+
+def _is_transient_llm_error(exc: BaseException) -> bool:
+    """Retry timeouts / connectivity / 5xx / rate limits — not 401/403/404."""
+    if isinstance(exc, (TimeoutError, asyncio.TimeoutError, ConnectionError, OSError)):
+        return True
+    try:
+        import httpx
+
+        if isinstance(
+            exc,
+            (
+                httpx.TimeoutException,
+                httpx.NetworkError,
+                httpx.RemoteProtocolError,
+            ),
+        ):
+            return True
+    except ImportError:
+        pass
+    try:
+        from openai import (
+            APIConnectionError,
+            APIStatusError,
+            APITimeoutError,
+            InternalServerError,
+            RateLimitError,
+        )
+
+        if isinstance(
+            exc,
+            (APIConnectionError, APITimeoutError, RateLimitError, InternalServerError),
+        ):
+            return True
+        if isinstance(exc, APIStatusError) and exc.status_code in (
+            408,
+            429,
+            500,
+            502,
+            503,
+            504,
+        ):
+            return True
+    except ImportError:
+        pass
+    return False
 
 load_dotenv()
 
@@ -487,7 +533,12 @@ def _messages_content(content: bytes | str, mime_type: str) -> list[dict]:
     return [{"type": "image_url", "image_url": {"url": image_url}}]
 
 
-@retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=6))
+@retry(
+    stop=stop_after_attempt(2),
+    wait=wait_exponential(multiplier=1, min=1, max=6),
+    retry=retry_if_exception(_is_transient_llm_error),
+    reraise=True,
+)
 async def _parse_with_model(ai_client: AsyncOpenAI, model: str, prompt: str, messages_content: list):
     """Single-model structured parse with pinned decode + timeout."""
     async def _call():
@@ -630,11 +681,11 @@ async def run_ai_extraction(
     prompt = _build_prompt(tally_ledgers)
     messages_content = _messages_content(content, mime_type)
     text_layer = _text_layer_from_content(content, mime_type)
-    # Phase B: classical OCR grounding (env-gated; never fails the scan)
-    text_layer, ocr_meta, ocr_words = _apply_ocr_grounding(
-        content, mime_type, text_layer
+    # Phase B: classical OCR is sync (Azure SDK) — keep it off the event loop.
+    text_layer, ocr_meta, ocr_words = await asyncio.to_thread(
+        _apply_ocr_grounding, content, mime_type, text_layer
     )
-    qr_seed = _qr_seed_from_content(content, mime_type)
+    qr_seed = await asyncio.to_thread(_qr_seed_from_content, content, mime_type)
 
     # Phase D: vendor memory (soft hints before LLM; exact rules after extract)
     vendor_rules: list = []

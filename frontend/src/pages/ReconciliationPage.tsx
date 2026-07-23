@@ -4,7 +4,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { supabase } from '../lib/supabase';
 import { useClient } from '../lib/ClientContext';
 import { getApiUrl } from '../lib/api';
-import { UploadCloud, CheckCircle2, AlertTriangle, AlertCircle, Loader2, FileSearch } from 'lucide-react';
+import { UploadCloud, CheckCircle2, AlertTriangle, AlertCircle, Loader2, FileSearch, Network } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ErrorState } from '../components/ui/ErrorState';
 import { Skeleton } from '../components/ui/Skeleton';
@@ -223,7 +223,7 @@ export default function ReconciliationPage() {
   const handleDeepMatch = useCallback(async () => {
     if (!activeClientId) return;
     setIsDeepMatching(true);
-    toast.loading("Running AI Deep Match...", { id: 'deep-match' });
+    toast.loading("Running Smart Match (rules)...", { id: 'deep-match' });
     try {
       const formData = new FormData();
       formData.append('client_id', activeClientId);
@@ -241,21 +241,19 @@ export default function ReconciliationPage() {
       });
 
       if (!response.ok) {
-        if (response.status === 402) {
-          throw new Error("Insufficient credits for AI Deep Match. Please recharge.");
-        }
-        throw new Error("Deep match failed");
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || "Smart Match failed");
       }
       
       const data = await response.json();
       toast.success(data.message, { id: 'deep-match' });
       refetchInvoices();
     } catch (err: any) {
-      toast.error(err.message || "AI Deep Match failed", { id: 'deep-match' });
+      toast.error(err.message || "Smart Match failed", { id: 'deep-match' });
     } finally {
       setIsDeepMatching(false);
     }
-  }, [activeClientId, period, refetchInvoices]);
+  }, [activeClientId, period, tolerance, refetchInvoices]);
 
   const isLoading = invoicesLoading || gstrLoading;
   const isError = invoicesError || gstrError;
@@ -298,10 +296,11 @@ export default function ReconciliationPage() {
           <button 
             onClick={handleDeepMatch} 
             disabled={isDeepMatching || isUploading || (missingIn2B.length === 0 || missingInPR.length === 0)}
-            className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white rounded-lg text-sm font-medium transition-all shadow-md shadow-purple-500/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 bg-bg-surface border border-border hover:border-accent text-text-primary rounded-lg text-sm font-medium transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Deterministic multi-pass matching — no credits"
           >
-            {isDeepMatching ? <Loader2 className="w-4 h-4 animate-spin" /> : <span className="text-base leading-none">✨</span>}
-            AI Deep Match (from 5 credits)
+            {isDeepMatching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Network className="w-4 h-4 text-accent" />}
+            Smart Match (rules)
           </button>
         </div>
       </div>

@@ -1,6 +1,6 @@
 import type { Variants } from 'framer-motion';
 
-export type SettingsTab = 'profile' | 'company' | 'team' | 'automation' | 'security' | 'export';
+export type SettingsTab = 'profile' | 'company' | 'team' | 'automation' | 'security' | 'export' | 'bridge';
 
 export const tabSlide: Variants = {
   hidden: { opacity: 0, y: 10 },

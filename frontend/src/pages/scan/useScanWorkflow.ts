@@ -317,6 +317,9 @@ export function useScanWorkflow() {
       }
       const formData = new FormData();
       formData.append('file', processedFile);
+      if (clientId) {
+        formData.append('client_id', clientId);
+      }
       if (pdfPassword) {
         formData.append('password', pdfPassword);
       }

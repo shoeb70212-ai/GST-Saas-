@@ -9,7 +9,14 @@ import asyncio
 from fastapi import APIRouter, File, UploadFile, HTTPException, Form, Depends, Request
 from dotenv import load_dotenv
 
-from utils import validate_file_content, get_current_user, get_org_credits, ensure_org_not_suspended, resolve_active_org_id
+from utils import (
+    validate_file_content,
+    get_current_user,
+    get_org_credits,
+    ensure_org_not_suspended,
+    resolve_active_org_id,
+    verify_client_access,
+)
 from rate_limit import limiter
 import credits as credit_costs
 from ops_log import build_ops_ctx, log_from_ctx
@@ -45,6 +52,7 @@ async def scan_invoice(
     request: Request,
     file: UploadFile = File(...),
     password: str = Form(None),
+    client_id: str | None = Form(None),
     auth: dict = Depends(get_current_user),
 ):
     """
@@ -57,6 +65,8 @@ async def scan_invoice(
     4. Shared preprocess + AI extraction (`run_ai_extraction`).
     5. Checks the vendor GSTIN against the KYC Cache (Supabase RPC).
     6. Deducts 1 credit from the user's account.
+
+    Optional ``client_id`` scopes duplicate detection to that client (multi-client firms).
     """
     if not SUPABASE_URL or not SUPABASE_ANON_KEY:
         raise HTTPException(status_code=500, detail="Missing Supabase configuration in .env.")
@@ -73,6 +83,10 @@ async def scan_invoice(
     scan_cost = credit_costs.INVOICE_SCAN
 
     await ensure_org_not_suspended(sc, user_id)
+
+    active_client_id = (client_id or "").strip() or None
+    if active_client_id:
+        await verify_client_access(sc, active_client_id)
 
     tally_ledgers = None
     try:
@@ -181,14 +195,16 @@ async def scan_invoice(
             inv_num = data_dict.get("Invoice_Number")
             if inv_num:
                 try:
-                    dup_resp = (
-                        await sc.table("invoices")
+                    dup_q = (
+                        sc.table("invoices")
                         .select("id")
                         .eq("user_id", user_id)
                         .eq("supplier_gstin", gstin)
                         .eq("invoice_number", inv_num)
-                        .execute()
                     )
+                    if active_client_id:
+                        dup_q = dup_q.eq("client_id", active_client_id)
+                    dup_resp = await dup_q.execute()
                     if dup_resp.data and len(dup_resp.data) > 0:
                         data_dict["Extraction_State"] = "duplicate_warning"
                         await log_from_ctx(
@@ -199,7 +215,10 @@ async def scan_invoice(
                             extraction_state="duplicate_warning",
                             confidence_score=data_dict.get("Confidence_Score"),
                             model_used=data_dict.get("Extraction_Model"),
-                            meta={"credit_outcome": "charged"},
+                            meta={
+                                "credit_outcome": "charged",
+                                "client_id": active_client_id,
+                            },
                         )
                 except Exception as dup_e:
                     logger.warning(

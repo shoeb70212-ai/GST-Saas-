@@ -8,6 +8,7 @@ import { TeamTab } from './TeamTab';
 import { AutomationTab } from './AutomationTab';
 import { ExportTab } from './ExportTab';
 import { SecurityTab } from './SecurityTab';
+import { BridgeTab } from './BridgeTab';
 
 export default function SettingsPage() {
   const s = useSettings();
@@ -98,6 +99,7 @@ export default function SettingsPage() {
                 onSubmit={s.handleSaveExport}
               />
             )}
+            {s.activeTab === 'bridge' && <BridgeTab />}
             {s.activeTab === 'security' && (
               <SecurityTab
                 user={s.user}

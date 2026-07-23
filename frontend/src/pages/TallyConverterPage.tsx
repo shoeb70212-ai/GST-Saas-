@@ -13,7 +13,7 @@ import toast from 'react-hot-toast';
 import { useClient } from '../lib/ClientContext';
 import { supabase } from '../lib/supabase';
 import { getApiUrl } from '../lib/api';
-import { exportTallyDocument } from '../lib/exportService';
+import { exportTallyDocument, pushDocumentToTallyBridge } from '../lib/exportService';
 import { ErrorState } from '../components/ui/ErrorState';
 
 type DocTypeOption =
@@ -254,6 +254,32 @@ export default function TallyConverterPage() {
     }
   }, [document, docType, mappings, activeClientId]);
 
+  const handlePushToTally = useCallback(async () => {
+    if (!document || !activeClientId) {
+      toast.error('Upload a file first.');
+      return;
+    }
+    setExporting(true);
+    setError(null);
+    try {
+      const docPayload = { ...document, doc_type: docType };
+      const job = await pushDocumentToTallyBridge(activeClientId, docPayload, mappings, {
+        downloadXml: false,
+      });
+      toast.success(
+        job.idempotent
+          ? `Job already ${job.job_status}. Bridge will push when online.`
+          : `Queued for Tally Bridge (${job.job_id.slice(0, 8)}…)`,
+      );
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Push to Tally failed';
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setExporting(false);
+    }
+  }, [document, docType, mappings, activeClientId]);
+
   if (!activeClientId) {
     return (
       <div className="p-8 text-center text-text-secondary">
@@ -352,20 +378,36 @@ export default function TallyConverterPage() {
                 <FileSpreadsheet className="w-4 h-4" />
                 Preview ({vouchers.length} vouchers)
               </h2>
-              <button
-                type="button"
-                className="btn-primary flex items-center gap-2"
-                onClick={handleExport}
-                disabled={exporting || vouchers.length === 0}
-                data-testid="tally-converter-export"
-              >
-                {exporting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Download className="w-4 h-4" />
-                )}
-                Download Tally XML
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn-primary flex items-center gap-2"
+                  onClick={handlePushToTally}
+                  disabled={exporting || vouchers.length === 0}
+                  data-testid="tally-converter-push"
+                >
+                  {exporting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4" />
+                  )}
+                  Push to Tally
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost flex items-center gap-2"
+                  onClick={handleExport}
+                  disabled={exporting || vouchers.length === 0}
+                  data-testid="tally-converter-export"
+                >
+                  {exporting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4" />
+                  )}
+                  Download XML
+                </button>
+              </div>
             </div>
 
             {(document.warnings || []).length > 0 && (

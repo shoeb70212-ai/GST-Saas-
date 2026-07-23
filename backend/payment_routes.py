@@ -19,7 +19,42 @@ router = APIRouter()
 
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "rzp_test_mock")
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "rzp_test_secret")
-RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", RAZORPAY_KEY_SECRET)
+
+
+def _resolve_webhook_secret() -> str:
+    """
+    Webhook signing secret must not silently fall back to the API key secret
+    in production — knowing KEY_SECRET must not allow forging webhooks.
+    """
+    explicit = (os.getenv("RAZORPAY_WEBHOOK_SECRET") or "").strip()
+    key_secret = (os.getenv("RAZORPAY_KEY_SECRET") or RAZORPAY_KEY_SECRET or "").strip()
+    env = (os.getenv("ENVIRONMENT") or "development").strip().lower()
+    testing = bool(os.getenv("PYTEST_CURRENT_TEST")) or os.getenv("TESTING", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+    if explicit:
+        if env == "production" and not testing and explicit == key_secret:
+            raise RuntimeError(
+                "RAZORPAY_WEBHOOK_SECRET must differ from RAZORPAY_KEY_SECRET in production"
+            )
+        return explicit
+
+    if env == "production" and not testing and RAZORPAY_KEY_ID != "rzp_test_mock":
+        raise RuntimeError(
+            "RAZORPAY_WEBHOOK_SECRET must be set in production "
+            "(do not reuse RAZORPAY_KEY_SECRET)"
+        )
+
+    logger.warning(
+        "RAZORPAY_WEBHOOK_SECRET unset; falling back to RAZORPAY_KEY_SECRET (dev/test only)"
+    )
+    return key_secret or RAZORPAY_KEY_SECRET
+
+
+RAZORPAY_WEBHOOK_SECRET = _resolve_webhook_secret()
 
 rzp_client = None
 if RAZORPAY_KEY_ID != "rzp_test_mock":

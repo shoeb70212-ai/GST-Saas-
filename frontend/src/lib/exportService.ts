@@ -382,6 +382,122 @@ export const exportToTallyXML = async (
   return { ok: !!json.report?.ok, report: json.report };
 };
 
+/**
+ * Enqueue XML for Tally Bridge push (also returns xml for optional download).
+ */
+export const pushInvoicesToTallyBridge = async (
+  clientId: string,
+  filteredInvoices: any[],
+  allLineItems: any[],
+  opts?: { downloadXml?: boolean },
+): Promise<{ job_id: string; job_status: string; idempotent?: boolean }> => {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+
+  const apiUrl = getApiUrl();
+  const res = await fetch(`${apiUrl}/api/tally/jobs`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      client_id: clientId,
+      source: 'invoices',
+      invoices: filteredInvoices.map((inv: any) => ({
+        id: inv.id,
+        invoice_number: inv.invoice_number,
+        invoice_date: inv.invoice_date,
+        created_at: inv.created_at,
+        supplier_name: inv.supplier_name,
+        supplier_gstin: inv.supplier_gstin,
+        expense_category: inv.expense_category,
+        total_amount: inv.total_amount,
+        taxable_amount: inv.taxable_amount,
+        cgst_amount: inv.cgst_amount,
+        sgst_amount: inv.sgst_amount,
+        igst_amount: inv.igst_amount,
+        cess_amount: inv.cess_amount,
+        round_off: inv.round_off,
+        invoice_type: inv.invoice_type,
+        original_invoice_number: inv.original_invoice_number,
+        original_invoice_date: inv.original_invoice_date,
+        place_of_supply: inv.place_of_supply,
+        document_type: inv.document_type,
+      })),
+      line_items: (allLineItems || []).map((li: any) => ({
+        invoice_id: li.invoice_id,
+        description: li.description,
+        hsn_sac: li.hsn_sac,
+        quantity: li.quantity,
+        unit_price: li.unit_price,
+        amount: li.amount,
+        tax_rate: li.tax_rate,
+      })),
+      default_voucher: 'Purchase',
+      auto_balance: true,
+      include_masters: true,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Tally push queue failed (${res.status})`);
+  }
+  const json = await res.json();
+  if (opts?.downloadXml && json.xml) {
+    downloadTextFile(json.xml, 'Tally_Vouchers.xml', 'application/xml');
+  }
+  return {
+    job_id: json.job_id,
+    job_status: json.job_status,
+    idempotent: json.idempotent,
+  };
+};
+
+export const pushDocumentToTallyBridge = async (
+  clientId: string,
+  document: any,
+  mappings: Record<string, string> = {},
+  opts?: { downloadXml?: boolean },
+): Promise<{ job_id: string; job_status: string; idempotent?: boolean }> => {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+
+  const res = await fetch(`${getApiUrl()}/api/tally/jobs`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      client_id: clientId,
+      source: 'converter',
+      document,
+      mappings,
+      auto_balance: true,
+      include_masters: true,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Tally push queue failed (${res.status})`);
+  }
+  const json = await res.json();
+  if (opts?.downloadXml && json.xml) {
+    downloadTextFile(json.xml, 'Tally_Converter.xml', 'application/xml');
+  }
+  return {
+    job_id: json.job_id,
+    job_status: json.job_status,
+    idempotent: json.idempotent,
+  };
+};
+
 export const exportTallyDocument = async (
   document: any,
   mappings: Record<string, string> = {},

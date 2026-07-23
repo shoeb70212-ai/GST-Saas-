@@ -74,9 +74,12 @@ async def verify_gstin(supabase_client, gstin: str) -> str:
             status = "Active" if random.random() > 0.1 else "Cancelled"
             legal_name = "Mock Company Pvt Ltd"
         else:
-            # AppyFlow API Call with 5-second timeout
-            async with get_shared_client(timeout=5.0) as client:
-                resp = await client.get(f"{GSTIN_API_URL}?gstNo={gstin}&key={GSTIN_API_KEY}")
+            # AppyFlow API Call with 5-second request timeout
+            async with get_shared_client() as client:
+                resp = await client.get(
+                    f"{GSTIN_API_URL}?gstNo={gstin}&key={GSTIN_API_KEY}",
+                    timeout=5.0,
+                )
                 if resp.status_code == 200:
                     data = resp.json()
 

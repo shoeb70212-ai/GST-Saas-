@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ScanLine, FileText, Settings, LogOut, Sparkles, Sun, Moon, Building2, ChevronDown, CreditCard, MoreHorizontal, TrendingUp, Banknote, Network, ShieldAlert, Search, FileOutput } from 'lucide-react';
+import { LayoutDashboard, ScanLine, FileText, Settings, LogOut, Sparkles, Sun, Moon, Building2, ChevronDown, CreditCard, MoreHorizontal, TrendingUp, Banknote, Network, ShieldAlert, Search, FileOutput, Inbox } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -106,6 +106,8 @@ export default function Layout() {
       label: 'Reconcile',
       items: [
         { name: 'GSTR-2B', path: '/app/reconcile', icon: FileText },
+        { name: 'ITC at Risk', path: '/app/itc-risk', icon: ShieldAlert },
+        { name: 'IMS', path: '/app/ims', icon: Inbox },
         { name: 'Bank Stmts', path: '/app/bank-statements', icon: Banknote },
         { name: 'Bank Match', path: '/app/bank-reconcile', icon: Network },
         { name: 'Tally Export', path: '/app/tally-converter', icon: FileOutput },

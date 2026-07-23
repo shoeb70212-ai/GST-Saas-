@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 import { cn } from '../lib/utils';
 import { AVAILABLE_COLUMNS, DEFAULT_COLUMNS } from '../lib/constants';
 import { useClient } from '../lib/ClientContext';
-import { exportToTallyXML, exportCustomReport, fetchAllMatchingInvoices, type ExportFormat } from '../lib/exportService';
+import { exportToTallyXML, pushInvoicesToTallyBridge, exportCustomReport, fetchAllMatchingInvoices, type ExportFormat } from '../lib/exportService';
 import {
   formatExportGateMessage,
   validateInvoicesForExport,
@@ -383,6 +383,41 @@ export default function SavedInvoicesPage() {
     }
   };
 
+  const handlePushToTally = async () => {
+    if (!activeClientId) return;
+    setIsExporting(true);
+    try {
+      const toExport = await getInvoicesToExport();
+      if (toExport.length === 0) {
+        toast.error('No invoices to push.');
+        return;
+      }
+      const gate = validateInvoicesForExport(toExport as Record<string, unknown>[]);
+      if (!gate.ok) {
+        toast.error(formatExportGateMessage(gate.errors), { duration: 8000 });
+        return;
+      }
+      const invoiceIds = toExport.map((inv) => inv.id as string);
+      const { data: allLineItems, error } = await supabase
+        .from('invoice_line_items')
+        .select('*')
+        .in('invoice_id', invoiceIds);
+      if (error) throw error;
+      const job = await pushInvoicesToTallyBridge(activeClientId, toExport, allLineItems || [], {
+        downloadXml: false,
+      });
+      toast.success(
+        job.idempotent
+          ? `Job already queued (${job.job_status}). Bridge will push when online.`
+          : `Queued for Tally Bridge (${job.job_id.slice(0, 8)}…)`,
+      );
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Push to Tally failed');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const [isDeleting, setIsDeleting] = useState(false);
   const handleDeleteSelected = async () => {
     if (selectedIds.size === 0) return;
@@ -530,12 +565,21 @@ export default function SavedInvoicesPage() {
           </button>
           
           <button 
-            onClick={handleExportTallyXML}
+            onClick={handlePushToTally}
             disabled={isExporting || filteredInvoices.length === 0}
             className="btn-primary flex-1 md:flex-none disabled:opacity-50"
+            title="Queue for local Tally Bridge"
           >
             {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-            {selectedIds.size > 0 ? `Tally XML (${selectedIds.size})` : 'Tally XML (all matching)'}
+            Push to Tally
+          </button>
+          <button 
+            onClick={handleExportTallyXML}
+            disabled={isExporting || filteredInvoices.length === 0}
+            className="btn-ghost flex-1 md:flex-none disabled:opacity-50"
+          >
+            {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+            {selectedIds.size > 0 ? `Download XML (${selectedIds.size})` : 'Download XML'}
           </button>
 
           <div className="relative">
@@ -814,11 +858,18 @@ export default function SavedInvoicesPage() {
             </button>
 
             <button 
+              onClick={handlePushToTally}
+              disabled={isExporting}
+              className="flex items-center gap-2 text-sm font-medium text-accent hover:text-accent/80 transition-colors disabled:opacity-50 whitespace-nowrap"
+            >
+              <FileText className="w-4 h-4" /> <span className="hidden sm:inline">Push to Tally</span>
+            </button>
+            <button 
               onClick={handleExportTallyXML}
               disabled={isExporting}
               className="flex items-center gap-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50 whitespace-nowrap"
             >
-              <FileText className="w-4 h-4" /> <span className="hidden sm:inline">Tally XML</span>
+              <FileText className="w-4 h-4" /> <span className="hidden sm:inline">Download XML</span>
             </button>
             <button 
               onClick={handleDeleteSelected}

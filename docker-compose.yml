@@ -7,13 +7,24 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      # These will be populated by Coolify's Environment Variables section
+      # Coolify / host env is the source of truth; list keys so compose passes them through.
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
       - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - PUBLIC_UPLOAD_TOKEN_SECRET=${PUBLIC_UPLOAD_TOKEN_SECRET}
+      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
+      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
+      - RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET}
+      - GSTIN_API_KEY=${GSTIN_API_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - OCR_ENABLED=${OCR_ENABLED:-0}
+      - OCR_PROVIDER=${OCR_PROVIDER:-azure}
+      - AZURE_DI_ENDPOINT=${AZURE_DI_ENDPOINT}
+      - AZURE_DI_KEY=${AZURE_DI_KEY}
       - WEB_CONCURRENCY=${WEB_CONCURRENCY:-2}
       - AI_SEMAPHORE_LIMIT=${AI_SEMAPHORE_LIMIT:-3}
       - FILE_SEMAPHORE_LIMIT=${FILE_SEMAPHORE_LIMIT:-2}

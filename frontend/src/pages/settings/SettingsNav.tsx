@@ -1,4 +1,4 @@
-import { LogOut, User, Building2, Shield, Zap, Users, Table2 } from 'lucide-react';
+import { LogOut, User, Building2, Shield, Zap, Users, Table2, MonitorSmartphone } from 'lucide-react';
 import type { SettingsTab } from './types';
 import type { ElementType } from 'react';
 
@@ -8,6 +8,7 @@ const tabs: { key: SettingsTab; label: string; icon: ElementType }[] = [
   { key: 'team', label: 'Team Management', icon: Users },
   { key: 'automation', label: 'Automation', icon: Zap },
   { key: 'export', label: 'Export Defaults', icon: Table2 },
+  { key: 'bridge', label: 'Tally Bridge', icon: MonitorSmartphone },
   { key: 'security', label: 'Security', icon: Shield },
 ];
 

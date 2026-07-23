@@ -29,6 +29,8 @@ const PlatformAdminPage = lazy(() => import('./pages/PlatformAdminPage'));
 const SupportEnterPage = lazy(() => import('./pages/SupportEnterPage'));
 const WalletPage = lazy(() => import('./pages/WalletPage'));
 const TallyConverterPage = lazy(() => import('./pages/TallyConverterPage'));
+const ItcRiskPage = lazy(() => import('./pages/ItcRiskPage'));
+const ImsCockpitPage = lazy(() => import('./pages/ImsCockpitPage'));
 import PlatformAdminLayout from './components/PlatformAdminLayout';
 import { SuperAdminGate, OrgAdminGate } from './components/RouteAccessGate';
 import { ScanProvider } from './lib/ScanContext';
@@ -165,6 +167,8 @@ export default function App() {
               <Route path="bank-reconcile" element={<BankReconcilePage />} />
               <Route path="tally-converter" element={<TallyConverterPage />} />
               <Route path="reconcile" element={<ReconciliationPage />} />
+              <Route path="itc-risk" element={<ItcRiskPage />} />
+              <Route path="ims" element={<ImsCockpitPage />} />
               <Route path="clients" element={<ClientsPage />} />
               <Route path="audit-logs" element={<AuditLogsPage />} />
               <Route path="settings" element={<SettingsPage />} />
